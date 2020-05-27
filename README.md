@@ -1,0 +1,1 @@
+# strapi-connector-firebase
