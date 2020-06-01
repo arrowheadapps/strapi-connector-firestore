@@ -1,6 +1,6 @@
 {
   "name": "strapi-connector-firestore",
-  "version": "3.0.0-alpha.01",
+  "version": "3.0.0-alpha.02",
   "description": "Firestore hook for the Strapi framework",
   "keywords": [
     "firestore",
@@ -11,7 +11,7 @@
   ],
   "author": "Arrowhead Apps Ltd",
   "license": "MIT",
-  "main": "./lib",
+  "main": "./lib/index.js",
   "engines": {
     "node": ">=10.0.0",
     "npm": ">=6.0.0"
