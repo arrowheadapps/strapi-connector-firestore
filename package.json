@@ -1,6 +1,6 @@
 {
-  "name": "strapi-connector-mongoose",
-  "version": "3.0.0",
+  "name": "strapi-connector-firestore",
+  "version": "3.0.0-alpha.01",
   "description": "Firestore hook for the Strapi framework",
   "keywords": [
     "firestore",
@@ -9,29 +9,24 @@
     "nosql",
     "strapi"
   ],
-  "directories": {
-    "lib": "./lib"
-  },
+  "author": "Arrowhead Apps Ltd",
+  "license": "MIT",
   "main": "./lib",
-  "dependencies": {
-    "@types/lodash": "^4.14.153",
-    "@types/mongoose": "^5.7.21",
-    "firebase-admin": "^8.12.1",
-    "lodash": "^4.17.11",
-    "mongoose": "5.8.0",
-    "mongoose-float": "^1.0.4",
-    "mongoose-long": "^0.2.1",
-    "pluralize": "^7.0.0",
-    "semver": "^7.3.2",
-    "strapi-utils": "3.0.0"
-  },
-  "author": "Arrowhead Apps Ltd.",
   "engines": {
     "node": ">=10.0.0",
     "npm": ">=6.0.0"
   },
-  "license": "MIT",
+  "directories": {
+    "lib": "./lib"
+  },
   "scripts": {
     "build": "tsc"
-  }
+  },
+  "dependencies": {
+    "@types/lodash": "^4.14.153",
+    "firebase-admin": "^8.12.1",
+    "lodash": "^4.17.11",
+    "strapi-utils": "3.0.0"
+  },
+  "devDependencies": {}
 }
