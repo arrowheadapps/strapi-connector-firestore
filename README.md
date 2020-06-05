@@ -1,3 +1,20 @@
+## ⚠️⚠️ Warning: help needed ⚠️⚠️
+
+This package is in a very early state. Simple database operations and simple relations *seem* to be working, but most functions have either been only lightly tested or not tested at all.
+
+This is package is not suitable for production in it's current state.
+
+Known issues/not implemented
+- ORM lifecycle hooks
+- Search queries
+- Sorting by ID or timestamps
+- Higher complexity relations such as many-many, components, and polymorphism are untested
+
+I welcome contributors to help get this package to a production ready state and maintain it.
+
+See the discussion in [issue #1](https://github.com/arrowheadapps/strapi-connector-firestore/issues/1).
+
+
 # strapi-connector-firestore
 
 Strapi database connector for [Cloud Firestore](https://firebase.google.com/docs/firestore) database on Google Cloud Platform.
@@ -9,16 +26,6 @@ It has several advantages such as:
 - Realtime updates.
 - Integration with the suite of mobile and web development that come with Firebase, such as Authentication, Push Notifications, Cloud Functions, etc.
 - Generous [free usage tier](https://firebase.google.com/pricing) so there is no up-front cost to get started.
-
-## ⚠️⚠️ Warning ⚠️⚠️
-
-This package is in a very early state. Simple database operations and simple relations *seem* to be working, but most functions have either been only lightly tested or not tested at all.
-
-This is package is not suitable for production in it's current state. 
-
-I welcome contributors to help get this package to a production ready state and maintain it.
-
-See the discussion in [issue #1](https://github.com/arrowheadapps/strapi-connector-firestore/issues/1).
 
 ## Installation
 

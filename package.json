@@ -1,6 +1,6 @@
 {
   "name": "strapi-connector-firestore",
-  "version": "3.0.0-alpha.02",
+  "version": "3.0.0-alpha.03",
   "description": "Strapi database connector for Firestore database on Google Cloud Platform.",
   "keywords": [
     "firestore",
@@ -11,6 +11,7 @@
   ],
   "author": "Arrowhead Apps Ltd",
   "license": "MIT",
+  "repository": "github:arrowheadapps/strapi-connector-firestore",
   "main": "./lib/index.js",
   "engines": {
     "node": ">=10.0.0",
