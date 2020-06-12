@@ -1,19 +1,10 @@
-'use strict';
+import * as path from 'path';
+import * as fs from 'fs';
+import * as _ from 'lodash';
+import * as firebase from 'firebase-admin';
 
-/**
- * Module dependencies
- */
-
-// Public node modules.
-const path = require('path');
-const fs = require('fs');
-const _ = require('lodash');
-const firebase = require('firebase-admin');
-
-const relations = require('./relations');
-const buildQuery = require('./buildQuery');
-const mountModels = require('./mount-models');
-const queries = require('./queries');
+import { mountModels } from './mount-models';
+import { queries } from './queries';
 
 /**
  * Firestore hook
@@ -23,7 +14,7 @@ const defaults = {
   defaultConnection: 'default',
 };
 
-const isFirestoreConnection = ({ connector }) => connector === 'firestore';
+const isFirestoreConnection = ({ connector }: any) => connector === 'firestore';
 
 module.exports = function(strapi) {
   function initialize() {
@@ -131,7 +122,7 @@ module.exports = function(strapi) {
   return {
     defaults,
     //...relations,
-    buildQuery,
+    //buildQuery,
 
     // Used by connector-registry.js
     initialize, 

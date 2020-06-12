@@ -1,6 +1,4 @@
-'use strict';
-
-const { getDocRef, getModel } = require('./get-doc-ref');
+import { getDocRef, getModel } from './get-doc-ref';
 
 /**
  * @param {FirebaseFirestore.CollectionReference} model
@@ -26,7 +24,7 @@ function assignMeta(model, docSnap, docData) {
  * @param {string[]} populateFields 
  * @param {FirebaseFirestore.Transaction} transaction 
  */
-module.exports = async function populateDocs(model, docs, populateFields, transaction) {
+export async function populateDocs(model, docs, populateFields, transaction) {
   const docsData = [];
   /** @type {{ doc: FirebaseFirestore.DocumentReference, data: any, assign: (data: FirebaseFirestore.DocumentData) => void }[]} */
   const subDocs = [];

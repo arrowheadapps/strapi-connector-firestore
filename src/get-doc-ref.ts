@@ -1,9 +1,7 @@
-'use strict';
+import * as _ from 'lodash';
+import * as firebase from 'firebase-admin';
 
-const _ = require('lodash');
-const firebase = require('firebase-admin');
-
-const getModel = function(model, plugin) {
+export function getModel(model, plugin) {
   return (
     _.get(strapi.plugins, [plugin, 'models', model]) ||
     _.get(strapi, ['models', model]) ||
@@ -17,7 +15,7 @@ const getModel = function(model, plugin) {
  * @param {FirebaseFirestore.CollectionReference} model 
  * @returns {FirebaseFirestore.DocumentReference | FirebaseFirestore.DocumentReference[] | null}
  */
-const getDocRef = (value, model) => {
+export function getDocRef(value, model) {
   return value = value instanceof firebase.firestore.DocumentReference
     ? value
     : value 
@@ -26,5 +24,3 @@ const getDocRef = (value, model) => {
         : model.doc(_.get(value, model.primaryKey, value))
       : null;
 }
-
-module.exports = { getDocRef, getModel };

@@ -1,11 +1,9 @@
-'use strict';
+import * as _ from 'lodash';
 
-const _ = require('lodash');
+import { models } from 'strapi-utils';
+import * as relations from './relations';
 
-const utilsModels = require('strapi-utils').models;
-const relations = require('./relations');
-
-module.exports = ({ models, target }, ctx) => {
+export function mountModels({ models, target }, ctx) {
 
   /** @type {FirebaseFirestore.Firestore} */
   const firebase = ctx.instance;

@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "lib": ["ES2019"],
+    "module": "CommonJS",
+    "strict": true,
+    "noImplicitReturns": true,
+    "noUnusedLocals": true,
+    "outDir": "lib",
+    "target": "ES2019",
+    "types": ["node"]
+  },
+  "compileOnSave": true,
+  "include": [
+    "src"
+  ]
+}

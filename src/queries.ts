@@ -1,12 +1,11 @@
-'use strict';
 /**
  * Implementation of model queries for mongo
  */
 
-const _ = require('lodash');
-const populateDocs = require('./populate');
-const { getDocRef, getModel } = require('./get-doc-ref');
-const { convertRestQueryParams, buildQuery, models: modelUtils } = require('strapi-utils');
+import * as _ from 'lodash';
+import * as populateDocs from './populate';
+import { getDocRef, getModel } from './get-doc-ref';
+import { convertRestQueryParams, buildQuery, models: modelUtils } from 'strapi-utils';
 
 const { findComponentByGlobalId } = require('./utils/helpers');
 
@@ -18,7 +17,7 @@ const getPK = (obj, model) => (_.has(obj, model.primaryKey) ? obj[model.primaryK
  * @param {Object} options - Query options
  * @param {FirebaseFirestore.CollectionReference} options.model - The model you are querying
  */
-module.exports = ({ model, modelKey, strapi }) => {
+export function queries({ model, modelKey, strapi }) {
   const assocKeys = model.associations.map(ast => ast.alias);
   const componentKeys = Object.keys(model.attributes).filter(key =>
     ['component', 'dynamiczone'].includes(model.attributes[key].type)
