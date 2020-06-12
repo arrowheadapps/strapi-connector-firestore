@@ -5,19 +5,19 @@
 import * as _ from 'lodash';
 import * as populateDocs from './populate';
 import { getDocRef, getModel } from './get-doc-ref';
-import { convertRestQueryParams, buildQuery, models: modelUtils } from 'strapi-utils';
+import { convertRestQueryParams, models } from 'strapi-utils';
+import { StrapiModel, StrapiQueryParams } from './types';
+import { StatusError } from './utils/status-error';
+import { deleteRelations } from './relations';
+import { firestore } from 'firebase-admin';
 
 const { findComponentByGlobalId } = require('./utils/helpers');
 
-const hasPK = (obj, model) => _.has(obj, model.primaryKey) || _.has(obj, 'id');
-const getPK = (obj, model) => (_.has(obj, model.primaryKey) ? obj[model.primaryKey] : obj.id);
+const hasPK = (obj: any, model: StrapiModel) => _.has(obj, model.primaryKey) || _.has(obj, 'id');
+const getPK = (obj: any, model: StrapiModel) => (_.has(obj, model.primaryKey) ? obj[model.primaryKey] : obj.id);
 
-/**
- * 
- * @param {Object} options - Query options
- * @param {FirebaseFirestore.CollectionReference} options.model - The model you are querying
- */
-export function queries({ model, modelKey, strapi }) {
+
+export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
   const assocKeys = model.associations.map(ast => ast.alias);
   const componentKeys = Object.keys(model.attributes).filter(key =>
     ['component', 'dynamiczone'].includes(model.attributes[key].type)
@@ -38,11 +38,6 @@ export function queries({ model, modelKey, strapi }) {
     return _.omit(values, excludedKeys);
   };
 
-  /**
-   * 
-   * @param {FirebaseFirestore.DocumentReference} docRef 
-   * @param {*} values 
-   */
   async function createComponents(data, values) {
     if (componentKeys.length === 0) return;
 
@@ -56,9 +51,7 @@ export function queries({ model, modelKey, strapi }) {
         const componentModel = strapi.components[component];
 
         if (required === true && !_.has(values, key)) {
-          const err = new Error(`Component ${key} is required`);
-          err.status = 400;
-          throw err;
+          throw new StatusError(`Component ${key} is required`, 400);
         }
 
         if (!_.has(values, key)) continue;
@@ -99,9 +92,7 @@ export function queries({ model, modelKey, strapi }) {
         const { required = false } = attr;
 
         if (required === true && !_.has(values, key)) {
-          const err = new Error(`Dynamiczone ${key} is required`);
-          err.status = 400;
-          throw err;
+          throw new StatusError(`Dynamiczone ${key} is required`, 400);
         }
 
         if (!_.has(values, key)) continue;
@@ -352,7 +343,7 @@ export function queries({ model, modelKey, strapi }) {
     }
   }
 
-  async function deleteComponents(entry) {
+  async function deleteComponents(entry, transaction?: firestore.Transaction) {
     if (componentKeys.length === 0) return;
 
     for (let key of componentKeys) {
@@ -474,11 +465,7 @@ export function queries({ model, modelKey, strapi }) {
     };
   }
 
-  /**
-   * 
-   * @param {FirebaseFirestore.Transaction} transaction 
-   */
-  async function buildFirestoreQuery(params, transaction) {
+  async function buildFirestoreQuery(params, transaction?: firestore.Transaction) {
 
     /**
       {
@@ -698,15 +685,13 @@ export function queries({ model, modelKey, strapi }) {
       const snap = await trans.get(ref);
       const entry = snap.data();
       if (!entry) {
-        const err = new Error('entry.notFound');
-        err.status = 404;
-        throw err;
+        throw new StatusError('entry.notFound', 404);
       }
 
       const docs = await populateDocs(model, [{ snap }], defaultPopulate, trans);
 
       await deleteComponents(entry, trans);
-      await model.deleteRelations({ data: entry }, trans);
+      await deleteRelations(model, { data: entry }, trans);
 
       trans.delete(ref);
 
@@ -715,10 +700,10 @@ export function queries({ model, modelKey, strapi }) {
   }
 
   function search(params, populate) {
-    throw new Error('notImplemented');
+    throw new StatusError('notImplemented', 500);
 
     // // Convert `params` object to filters compatible with Mongo.
-    // const filters = modelUtils.convertParams(modelKey, params);
+    // const filters = models.convertParams(modelKey, params);
 
     // const $or = buildSearchOr(model, params._q);
     // if ($or.length === 0) return Promise.resolve([]);
@@ -733,7 +718,7 @@ export function queries({ model, modelKey, strapi }) {
   }
 
   function countSearch(params) {
-    throw new Error('notImplemented');
+    throw new StatusError('notImplemented', 500);
 
     // const $or = buildSearchOr(model, params._q);
     // if ($or.length === 0) return Promise.resolve(0);

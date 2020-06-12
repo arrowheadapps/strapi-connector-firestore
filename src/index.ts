@@ -5,6 +5,7 @@ import * as firebase from 'firebase-admin';
 
 import { mountModels } from './mount-models';
 import { queries } from './queries';
+import { Strapi, FirestoreConnectorContext, StrapiModel } from './types';
 
 /**
  * Firestore hook
@@ -14,9 +15,9 @@ const defaults = {
   defaultConnection: 'default',
 };
 
-const isFirestoreConnection = ({ connector }: any) => connector === 'firestore';
+const isFirestoreConnection = ({ connector }: StrapiModel) => connector === 'firestore';
 
-module.exports = function(strapi) {
+module.exports = function(strapi: Strapi) {
   function initialize() {
     const { connections } = strapi.config;
 
@@ -58,7 +59,7 @@ module.exports = function(strapi) {
           require(initFunctionPath)(instance, connection);
         }
 
-        const ctx = {
+        const ctx: FirestoreConnectorContext = {
           instance,
           connection,
           strapi
@@ -77,42 +78,37 @@ module.exports = function(strapi) {
     return Promise.all(connectionsPromises);
   }
 
-  function mountComponents(connectionName, ctx) {
-    const options = {
-      models: _.pickBy(strapi.components, ({ connection }) => connection === connectionName),
-      target: strapi.components,
-    };
-
-    return mountModels(options, ctx);
+  function mountComponents(connectionName: string, ctx: FirestoreConnectorContext) {
+    return mountModels(
+      _.pickBy(strapi.components, ({ connection }) => connection === connectionName), 
+      strapi.components, 
+      ctx
+    );
   }
 
-  function mountApis(connectionName, ctx) {
-    const options = {
-      models: _.pickBy(strapi.models, ({ connection }) => connection === connectionName),
-      target: strapi.models,
-    };
-
-    return mountModels(options, ctx);
+  function mountApis(connectionName: string, ctx: FirestoreConnectorContext) {
+    return mountModels(
+      _.pickBy(strapi.models, ({ connection }) => connection === connectionName),
+      strapi.models,
+      ctx
+    );
   }
 
-  function mountAdmin(connectionName, ctx) {
-    const options = {
-      models: _.pickBy(strapi.admin.models, ({ connection }) => connection === connectionName),
-      target: strapi.admin.models,
-    };
-
-    return mountModels(options, ctx);
+  function mountAdmin(connectionName: string, ctx: FirestoreConnectorContext) {
+    return mountModels(
+      _.pickBy(strapi.admin.models, ({ connection }) => connection === connectionName),
+      strapi.admin.models,
+      ctx
+    );
   }
 
-  function mountPlugins(connectionName, ctx) {
+  function mountPlugins(connectionName: string, ctx: FirestoreConnectorContext) {
     return Promise.all(
       Object.keys(strapi.plugins).map(name => {
         const plugin = strapi.plugins[name];
         return mountModels(
-          {
-            models: _.pickBy(plugin.models, ({ connection }) => connection === connectionName),
-            target: plugin.models,
-          },
+          _.pickBy(plugin.models, ({ connection }) => connection === connectionName),
+          plugin.models,
           ctx
         );
       })

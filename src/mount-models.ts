@@ -1,18 +1,13 @@
 import * as _ from 'lodash';
+import * as utils from 'strapi-utils';
 
-import { models } from 'strapi-utils';
-import * as relations from './relations';
+import { FirestoreConnectorContext, StrapiModel, FirestoreConnectorModel } from './types';
 
-export function mountModels({ models, target }, ctx) {
+export function mountModels(models: Record<string, StrapiModel>, target: Record<string, StrapiModel | FirestoreConnectorModel>, ctx: FirestoreConnectorContext) {
 
-  /** @type {FirebaseFirestore.Firestore} */
-  const firebase = ctx.instance;
-
-
-  function mountModel(modelKey) {
+  function mountModel(modelKey: string) {
     const definition = models[modelKey];
-    const collection = firebase.collection(definition.globalId);
-    definition.associations = [];
+    const collection = ctx.instance.collection(definition.collectionName || definition.globalId);
 
     // We need to emulate the bookshelf query behaviour 
     // because strapi has hard-coded behaviour
@@ -38,13 +33,16 @@ export function mountModels({ models, target }, ctx) {
       _.set(definition, 'options.timestamps', false);
     }
 
-
     // TODO
     // ORM lifecycle hooks
 
 
     // Expose ORM functions through the `target` object.
-    target[modelKey] = _.assign(collection, target[modelKey]);
+    target[modelKey] = _.assign(
+      collection, 
+      target[modelKey],
+      { _attributes: definition.attributes, associations: [] }
+    );
 
 
     // HACK:
@@ -64,10 +62,11 @@ export function mountModels({ models, target }, ctx) {
 
     // It seems that the aim here is to emulate searching for a prefix
     // in the key field
+    // @ts-ignore
     target[modelKey].query = (init) => {
-      let field, value;
+      let field!: string, value!: string;
       const qb = {
-        where: (f, op, v) => {
+        where: (f: string, op: string, v: string) => {
           if (op !== 'like') {
             throw new Error('Not implemented!');
           }
@@ -105,13 +104,8 @@ export function mountModels({ models, target }, ctx) {
     // handle relational attrs
     relationalAttributes.forEach(name => {
       // Build associations key
-      utilsModels.defineAssociations(modelKey.toLowerCase(), definition, definition.attributes[name], name);
+      utils.models.defineAssociations(modelKey.toLowerCase(), definition, definition.attributes[name], name);
     });
-
-    // Push attributes to be aware of model schema.
-    target[modelKey]._attributes = definition.attributes;
-    target[modelKey].updateRelations = relations.update;
-    target[modelKey].deleteRelations = relations.deleteRelations;
   }
 
   // Parse every authenticated model.

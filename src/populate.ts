@@ -1,11 +1,9 @@
 import { getDocRef, getModel } from './get-doc-ref';
+import { firestore } from 'firebase-admin';
+import { FirestoreConnectorModel } from './types';
 
-/**
- * @param {FirebaseFirestore.CollectionReference} model
- * @param {FirebaseFirestore.DocumentSnapshot} docSnap 
- * @param {FirebaseFirestore.DocumentData} docData 
- */
-function assignMeta(model, docSnap, docData) {
+
+function assignMeta(model: FirestoreConnectorModel, docSnap: firestore.DocumentSnapshot, docData: any) {
   docData[model.primaryKey] = docSnap.id;
   docData._createTime = docSnap.createTime && docSnap.createTime.toDate();
   docData._updateTime = docSnap.updateTime && docSnap.updateTime.toDate();
@@ -18,21 +16,15 @@ function assignMeta(model, docSnap, docData) {
   docData.id = docData[model.primaryKey];
 }
 
-/**
- * @param {FirebaseFirestore.CollectionReference} model
- * @param {{ snap: FirebaseFirestore.QueryDocumentSnapshot, data: any }[]} docs 
- * @param {string[]} populateFields 
- * @param {FirebaseFirestore.Transaction} transaction 
- */
-export async function populateDocs(model, docs, populateFields, transaction) {
-  const docsData = [];
-  /** @type {{ doc: FirebaseFirestore.DocumentReference, data: any, assign: (data: FirebaseFirestore.DocumentData) => void }[]} */
-  const subDocs = [];
+
+export async function populateDocs(model: FirestoreConnectorModel, docs: { snap: FirebaseFirestore.QueryDocumentSnapshot, data: any }[], populateFields: string [], transaction?: firestore.Transaction) {
+  const docsData: any[] = [];
+  const subDocs: { doc: FirebaseFirestore.DocumentReference, data?: any, assign: (data: FirebaseFirestore.DocumentData) => void }[] = [];
 
   await Promise.all(docs.map(doc => {
     const data = Object.assign({}, doc.data || doc.snap.data());
     if (!data) {
-      throw new Error(`Document not found: ${doc.snap.path || doc.snap.ref.path}`);
+      throw new Error(`Document not found: ${(doc.snap as any as firestore.DocumentReference).path || doc.snap.ref.path}`);
     }
 
     assignMeta(model, doc.snap, data);
@@ -41,7 +33,6 @@ export async function populateDocs(model, docs, populateFields, transaction) {
     return Promise.all(populateFields
       .map(async f => {
         const details = model._attributes[f];
-        /** @type {FirebaseFirestore.CollectionReference} */
         const assocModel = getModel(details.model || details.collection, details.plugin);
 
 
@@ -69,7 +60,7 @@ export async function populateDocs(model, docs, populateFields, transaction) {
           // Expects array of DocumentReference instances
           data[f].forEach(ref => {
             subDocs.push({
-              doc: getDocRef(ref, assocModel),
+              doc: getDocRef(ref, assocModel) as firestore.DocumentReference,
               assign: (d) => data[f].push(d)
             });
           });
@@ -79,7 +70,7 @@ export async function populateDocs(model, docs, populateFields, transaction) {
         } else {
           // one-to-one or many-to-one etc
           subDocs.push({
-            doc: getDocRef(data[f], assocModel), // Expects instance of DocumentReference
+            doc: getDocRef(data[f], assocModel) as firestore.DocumentReference, // Expects instance of DocumentReference
             assign: (d) => data[f] = d
           });
         }
