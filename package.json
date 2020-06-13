@@ -18,14 +18,15 @@
     "npm": ">=6.0.0"
   },
   "files": [
-    "lib/**/*.js"
+    "lib/**/*.js",
+    "lib/**/*.t.ds"
   ],
   "scripts": {
     "build": "rm -rf lib && tsc",
     "prepare": "tsc --skipLibCheck"
   },
   "dependencies": {
-    "firebase-admin": "^8.12.1",
+    "@google-cloud/firestore": "^3.8.5",
     "lodash": "^4.17.11",
     "strapi-utils": "3.0.0"
   },

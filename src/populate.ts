@@ -1,33 +1,37 @@
-import { getDocRef, getModel } from './get-doc-ref';
-import { firestore } from 'firebase-admin';
+import * as _ from 'lodash';
+import { getDocRef, getModel } from './utils/get-doc-ref';
 import { FirestoreConnectorModel } from './types';
+import type { DocumentSnapshot, DocumentReference, DocumentData, Transaction } from '@google-cloud/firestore';
 
+function convertTimestampToDate(data: any, key: string) {
+  const value = data[key];
+  if (value && typeof value.toDate === 'function') {
+    data[key] = value.toDate();
+  }
+}
 
-function assignMeta(model: FirestoreConnectorModel, docSnap: firestore.DocumentSnapshot, docData: any) {
+function assignMeta(model: FirestoreConnectorModel, docSnap: Partial<DocumentSnapshot>, docData: any) {
   docData[model.primaryKey] = docSnap.id;
-  docData._createTime = docSnap.createTime && docSnap.createTime.toDate();
-  docData._updateTime = docSnap.updateTime && docSnap.updateTime.toDate();
 
-  // HACK:
-  // I don't understand why, but it seems like the field 'id' is used rather than
-  // the model.primaryKey (in this case '_id')
-  // strapi-plugin-users-permissions/config/policies/permissions.js L78
-  // I don't know if this is the intended behaviour or not
-  docData.id = docData[model.primaryKey];
+  if (_.isArray(model.options.timestamps)) {
+    const [createdAtKey, updatedAtKey] = model.options.timestamps;
+    convertTimestampToDate(docData, createdAtKey);
+    convertTimestampToDate(docData, updatedAtKey);
+  }
 }
 
 
-export async function populateDocs(model: FirestoreConnectorModel, docs: { snap: FirebaseFirestore.QueryDocumentSnapshot, data: any }[], populateFields: string [], transaction?: firestore.Transaction) {
+export async function populateDocs(model: FirestoreConnectorModel, docs: { id: string, ref: DocumentReference, data: () => any }[], populateFields: string [], transaction?: Transaction) {
   const docsData: any[] = [];
-  const subDocs: { doc: FirebaseFirestore.DocumentReference, data?: any, assign: (data: FirebaseFirestore.DocumentData) => void }[] = [];
+  const subDocs: { doc: DocumentReference, data?: any, assign: (data: DocumentData) => void }[] = [];
 
   await Promise.all(docs.map(doc => {
-    const data = Object.assign({}, doc.data || doc.snap.data());
+    const data = Object.assign({}, doc.data());
     if (!data) {
-      throw new Error(`Document not found: ${(doc.snap as any as firestore.DocumentReference).path || doc.snap.ref.path}`);
+      throw new Error(`Document not found: ${doc.ref.path}`);
     }
 
-    assignMeta(model, doc.snap, data);
+    assignMeta(model, doc, data);
     docsData.push(data);
 
     return Promise.all(populateFields
@@ -35,32 +39,31 @@ export async function populateDocs(model: FirestoreConnectorModel, docs: { snap:
         const details = model._attributes[f];
         const assocModel = getModel(details.model || details.collection, details.plugin);
 
+        if (!assocModel) {
+          // This seems to happen for polymorphic relations such as images
+          // Can we just safely ignore this?
+          return;
+        }
 
         if (!data[f]) {
-          if (!assocModel) {
-            // TODO:
-            // For example, this happens for polymorphic relations such as images
-            // Can we just safely ignore this?
-          } else {
-
-            // For the following types of relations
-            // The list is maintained in the related object not this one
-            //  - oneToMany
-            const q = assocModel.where(details.via, '==', doc.snap.ref || model.doc(doc.snap.id));
-            const snaps = (await (transaction ? transaction.get(q) : q.get())).docs;
-            data[f] = snaps.map(snap => {
-              const d = snap.data();
-              assignMeta(assocModel, snap, d);
-              return d;
-            });
-
-          }
+          // For the following types of relations
+          // The list is maintained in the related object not this one
+          //  - oneToMany
+          const q = assocModel.where(details.via, '==', doc.ref || model.doc(doc.id));
+          const snaps = (await (transaction ? transaction.get(q) : q.get())).docs;
+          data[f] = snaps.map(snap => {
+            const d = snap.data();
+            assignMeta(assocModel, snap, d);
+            return d;
+          });
+          
         } else if (Array.isArray(data[f])) {
-          // one-to-many or many-to-many etc
+
+          // oneToMany or manyToMany etc
           // Expects array of DocumentReference instances
           data[f].forEach(ref => {
             subDocs.push({
-              doc: getDocRef(ref, assocModel) as firestore.DocumentReference,
+              doc: getDocRef(ref, assocModel) as DocumentReference,
               assign: (d) => data[f].push(d)
             });
           });
@@ -68,9 +71,9 @@ export async function populateDocs(model: FirestoreConnectorModel, docs: { snap:
           // waiting for the document data to be populated
           data[f] = [];
         } else {
-          // one-to-one or many-to-one etc
+          // oneToOne or manyToOne etc
           subDocs.push({
-            doc: getDocRef(data[f], assocModel) as firestore.DocumentReference, // Expects instance of DocumentReference
+            doc: getDocRef(data[f], assocModel) as DocumentReference,
             assign: (d) => data[f] = d
           });
         }

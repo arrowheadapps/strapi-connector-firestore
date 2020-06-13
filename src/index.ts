@@ -1,9 +1,9 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import * as _ from 'lodash';
-import * as firebase from 'firebase-admin';
+import { Firestore, Settings } from '@google-cloud/firestore';
 
-import { mountModels } from './mount-models';
+import { mountModels, DEFAULT_CREATE_TIME_KEY, DEFAULT_UPDATE_TIME_KEY } from './mount-models';
 import { queries } from './queries';
 import { Strapi, FirestoreConnectorContext, StrapiModel } from './types';
 
@@ -28,25 +28,24 @@ module.exports = function(strapi: Strapi) {
 
         _.defaults(connection.settings, strapi.config.hook.settings.firestore);
 
-
-        firebase.initializeApp(connection.settings);
-        const instance = firebase.firestore();
+        const settings: Settings = {
+          ignoreUndefinedProperties: true,
+          ...connection.settings,
+        };
 
         if (connection.options.useEmulator) {
-          instance.settings({
-            ignoreUndefinedProperties: true,
+          // Direct the Firestore instance to connect to a local emulator
+          Object.assign(settings, {
             port: 8080,
             host: 'localhost',
+            sslCreds: require('@grpc/grpc-js').credentials.createInsecure(),
             customHeaders: {
               "Authorization": "Bearer owner"
             },
-            sslCreds: require('@grpc/grpc-js').credentials.createInsecure()
-          });
-        } else {
-          instance.settings({
-            ignoreUndefinedProperties: true,
           });
         }
+
+        const instance = new Firestore(settings);
 
         const initFunctionPath = path.resolve(
           strapi.config.appPath,
@@ -117,20 +116,11 @@ module.exports = function(strapi: Strapi) {
 
   return {
     defaults,
-    //...relations,
-    //buildQuery,
-
-    // Used by connector-registry.js
     initialize, 
-
-    // Used by database-manager.js @ query() L84
-    // Then by create-query.js (just a wrapper adding lifecycle callbacks)
     queries, 
 
-    // Used by database-manager.js
-    // Used by check-reserved-named.js
     get defaultTimestamps() {
-      return ['_createTime', '_updateTime'];
+      return [DEFAULT_CREATE_TIME_KEY, DEFAULT_UPDATE_TIME_KEY];
     },
   };
 };

@@ -8,7 +8,8 @@
     "outDir": "lib",
     "target": "ES2019",
     "types": ["node"],
-    "noImplicitAny": false
+    "noImplicitAny": false,
+    "declaration": true
   },
   "compileOnSave": true,
   "include": [

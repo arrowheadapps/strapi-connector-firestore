@@ -3,27 +3,27 @@ import * as utils from 'strapi-utils';
 
 import { FirestoreConnectorContext, StrapiModel, FirestoreConnectorModel } from './types';
 
+export const DEFAULT_CREATE_TIME_KEY = 'createdAt';
+export const DEFAULT_UPDATE_TIME_KEY = 'updatedAt';
+
+
 export function mountModels(models: Record<string, StrapiModel>, target: Record<string, StrapiModel | FirestoreConnectorModel>, ctx: FirestoreConnectorContext) {
 
   function mountModel(modelKey: string) {
     const definition = models[modelKey];
     const collection = ctx.instance.collection(definition.collectionName || definition.globalId);
-
-    // We need to emulate the bookshelf query behaviour 
-    // because strapi has hard-coded behaviour
-    // See: strapi-plugin-content-manager/services/utils/store.js L53
     definition.orm = 'firestore'; 
 
 
     // Set the default values to model settings.
     _.defaults(definition, {
-      primaryKey: '_id',
+      primaryKey: 'id',
       primaryKeyType: 'string',
     });
 
     // Use default timestamp column names if value is `true`
     if (_.get(definition, 'options.timestamps', false) === true) {
-      _.set(definition, 'options.timestamps', ['_createTime', '_updateTime']);
+      _.set(definition, 'options.timestamps', [DEFAULT_CREATE_TIME_KEY, DEFAULT_UPDATE_TIME_KEY]);
     }
     // Use false for values other than `Boolean` or `Array`
     if (

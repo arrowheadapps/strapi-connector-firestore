@@ -1,4 +1,4 @@
-import type { firestore } from 'firebase-admin';
+import type { Firestore, CollectionReference } from '@google-cloud/firestore';
 
 declare global {
   const strapi: Strapi
@@ -8,12 +8,17 @@ export interface Strapi {
   config: any
   components: Record<string, FirestoreConnectorModel>
   models: Record<string, FirestoreConnectorModel>
-  admin: {
-    models: Record<string, FirestoreConnectorModel>
-  }
-  plugins: Record<string, { models: Record<string, FirestoreConnectorModel> }>
+  admin: StrapiPlugin
+  plugins: Record<string, StrapiPlugin>
+  db: any
+
+  getModel(ref, source): FirestoreConnectorModel
 
   query(modelKey: string): StrapiQuery
+}
+
+export interface StrapiPlugin {
+  models: Record<string, FirestoreConnectorModel>
 }
 
 export interface StrapiQuery {
@@ -47,13 +52,26 @@ export interface StrapiModel {
   }
 }
 
+export interface StrapiFilter {
+  sort?: { field: string, order: 'asc' | 'desc'  }[]
+  start?: number,
+  limit?: number,
+  where?: StrapiWhereFilter[]
+}
+
+export interface StrapiWhereFilter {
+  field: string
+  operator: 'eq' | 'ne' | 'in' | 'nin' | 'contains' | 'ncontains' | 'containss' | 'ncontainss' | 'lt' | 'lte' | 'gt' | 'gte' | 'null'
+  value: any
+}
+
 export interface FirestoreConnectorContext {
-  instance: firestore.Firestore
+  instance: Firestore
   strapi: Strapi
   connection: StrapiModel
 }
 
-export interface FirestoreConnectorModel extends firestore.CollectionReference, StrapiModel {
+export type FirestoreConnectorModel = CollectionReference & StrapiModel & {
   _attributes: Record<string, any>
   associations: any[]
 }
