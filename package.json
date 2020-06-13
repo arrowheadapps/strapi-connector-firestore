@@ -19,7 +19,7 @@
   },
   "files": [
     "lib/**/*.js",
-    "lib/**/*.t.ds"
+    "lib/**/*.d.ts"
   ],
   "scripts": {
     "build": "rm -rf lib && tsc",
