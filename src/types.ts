@@ -50,7 +50,22 @@ export interface StrapiModel {
   options: {
     timestamps: boolean | [string, string]
   }
-  associations: any[]
+  associations: StrapiAssociation[]
+}
+
+export type StrapiRelation = 'oneWay' | 'manyWay' | 'oneToMany' | 'oneToOne' | 'manyToMany' | 'manyToOne' | 'oneToManyMorph' | 'manyToManyMorph' | 'manyMorphToMany' | 'manyMorphToOne' | 'oneMorphToOne' | 'oneMorphToMany';
+
+export interface StrapiAssociation {
+  alias: string
+  autoPopulate: boolean
+  collection: string
+  dominant: boolean
+  filter: string
+  nature: StrapiRelation
+  plugin: string
+  type: string
+  via: string
+  model: string
 }
 
 export interface StrapiFilter {

@@ -1,7 +1,7 @@
 import * as _ from 'lodash';
 import { getDocRef, getModel } from './utils/get-doc-ref';
 import { FirestoreConnectorModel } from './types';
-import type { DocumentSnapshot, DocumentReference, DocumentData, Transaction } from '@google-cloud/firestore';
+import type { DocumentSnapshot, DocumentReference, DocumentData, Transaction, Query } from '@google-cloud/firestore';
 
 function convertTimestampToDate(data: any, key: string) {
   const value = data[key];
@@ -37,6 +37,7 @@ export async function populateDocs(model: FirestoreConnectorModel, docs: { id: s
     return Promise.all(populateFields
       .map(async f => {
         const details = model._attributes[f];
+        const assoc = model.associations.find(a => a.alias === f)!;
         const assocModel = getModel(details.model || details.collection, details.plugin);
 
         if (!assocModel) {
@@ -49,7 +50,30 @@ export async function populateDocs(model: FirestoreConnectorModel, docs: { id: s
           // For the following types of relations
           // The list is maintained in the related object not this one
           //  - oneToMany
-          const q = assocModel.where(details.via, '==', doc.ref || model.doc(doc.id));
+
+          let q: Query
+          switch (assoc.nature) {
+            case 'oneToMany':
+            case 'manyToMany':
+            // FIXME: I'm pretty sure the morph lookups won't work
+            case 'manyToManyMorph':
+            case 'manyMorphToMany':
+            case 'oneMorphToMany':
+            case 'oneToManyMorph':
+              q = assocModel.where(details.via, 'array-contains', doc.ref || model.doc(doc.id));
+              break;
+
+            case 'manyToOne':
+            case 'manyWay':
+            case 'oneToOne':
+            case 'oneWay':
+            // FIXME: I'm pretty sure the morph lookups won't work
+            case 'oneMorphToOne':
+            case 'manyMorphToOne':
+              q = assocModel.where(details.via, '==', doc.ref || model.doc(doc.id));
+              break;
+          }
+
           const snaps = (await (transaction ? transaction.get(q) : q.get())).docs;
           data[f] = snaps.map(snap => {
             const d = snap.data();

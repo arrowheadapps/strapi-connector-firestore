@@ -80,7 +80,7 @@ export async function updateRelations(model: FirestoreConnectorModel, params: { 
   // Only update fields which are on this document.
   const values = Object.keys(removeUndefinedKeys(params.values)).reduce((acc, attribute) => {
     const details = model._attributes[attribute];
-    const association = model.associations.find(x => x.alias === attribute);
+    const association = model.associations.find(x => x.alias === attribute)!;
 
     const assocModel = getModel(details.model || details.collection, details.plugin);
     if (!assocModel) {
