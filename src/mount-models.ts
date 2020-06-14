@@ -13,7 +13,7 @@ export function mountModels(models: Record<string, StrapiModel>, target: Record<
     const definition = models[modelKey];
     const collection = ctx.instance.collection(definition.collectionName || definition.globalId);
     definition.orm = 'firestore'; 
-
+    definition.associations = [];
 
     // Set the default values to model settings.
     _.defaults(definition, {
@@ -41,7 +41,7 @@ export function mountModels(models: Record<string, StrapiModel>, target: Record<
     target[modelKey] = _.assign(
       collection, 
       target[modelKey],
-      { _attributes: definition.attributes, associations: [] }
+      { _attributes: definition.attributes }
     );
 
 

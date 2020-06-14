@@ -50,6 +50,7 @@ export interface StrapiModel {
   options: {
     timestamps: boolean | [string, string]
   }
+  associations: any[]
 }
 
 export interface StrapiFilter {
@@ -73,5 +74,4 @@ export interface FirestoreConnectorContext {
 
 export type FirestoreConnectorModel = CollectionReference & StrapiModel & {
   _attributes: Record<string, any>
-  associations: any[]
 }

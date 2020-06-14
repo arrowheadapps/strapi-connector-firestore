@@ -6,8 +6,7 @@ This is package is not suitable for production in it's current state.
 
 Known issues/not implemented
 - ORM lifecycle hooks
-- Search queries
-- Sorting by ID or timestamps
+- Sorting by ID
 - Higher complexity relations such as many-many, components, and polymorphism are untested
 
 I welcome contributors to help get this package to a production ready state and maintain it.

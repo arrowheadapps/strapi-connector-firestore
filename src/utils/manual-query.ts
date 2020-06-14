@@ -1,4 +1,4 @@
-import { Query, Transaction, DocumentData, QueryDocumentSnapshot } from '@google-cloud/firestore';
+import { Query, Transaction, DocumentData, QueryDocumentSnapshot, DocumentSnapshot } from '@google-cloud/firestore';
 
 export type ManualFilter = ((data: DocumentData) => boolean);
 
@@ -7,16 +7,16 @@ export type ManualFilter = ((data: DocumentData) => boolean);
  * the query and applies the manual filters, performing multiple queries
  * if necessary to fulfil the given limit. 
  */
-export async function manualQuery(baseQuery: Query, manualFilters: ManualFilter[], limit: number, transaction?: Transaction) {
+export async function manualQuery(baseQuery: Query, manualFilters: ManualFilter[], operation: 'and' | 'or', limit: number, transaction?: Transaction) {
 
-
+  let cursor: DocumentSnapshot | undefined
   let docs: QueryDocumentSnapshot[] = [];
   while (docs.length < limit) {
     if (limit) {
       baseQuery = baseQuery.limit(limit);
     }
-    if (docs.length) {
-      baseQuery = baseQuery.startAfter(docs[docs.length - 1]);
+    if (cursor) {
+      baseQuery = baseQuery.startAfter(cursor);
     }
 
     const result = await (transaction ? transaction.get(baseQuery) : baseQuery.get());
@@ -25,8 +25,13 @@ export async function manualQuery(baseQuery: Query, manualFilters: ManualFilter[
     }
 
     let resultDocs = result.docs;
+    cursor = resultDocs[resultDocs.length - 1];
     if (manualFilters.length) {
-      resultDocs = resultDocs.filter((doc) => manualFilters.every(op => op(doc.data())));
+      if (operation === 'or') {
+        resultDocs = resultDocs.filter((doc) => manualFilters.some(op => op(doc.data())));
+      } else {
+        resultDocs = resultDocs.filter((doc) => manualFilters.every(op => op(doc.data())));
+      }
     }
 
     if ((docs.length + resultDocs.length) > limit) {

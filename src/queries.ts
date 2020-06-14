@@ -134,7 +134,7 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
         case 'email':
         case 'enumeration':
         case 'uid':
-          const regex = new RegExp(field, 'i');
+          const regex = new RegExp(value, 'i');
           manualFilters.push(manualWhere(field, (val) => regex.test(val)));
       }
     });
@@ -143,8 +143,11 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
   };
 
   async function buildFirestoreQuery(params, searchQuery?: string, transaction?: Transaction) {
-    const filters: StrapiFilter = convertRestQueryParams(params);
+    // Remove any search query
+    // because we extract and handle it separately
+    delete params._q;
 
+    const filters: StrapiFilter = convertRestQueryParams(params);
     let query: Query = model;
     let manualFilters: ManualFilter[] = [];
 
@@ -152,26 +155,23 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
       const q = buildSearchQuery(searchQuery);
       manualFilters = manualFilters.concat(q.manualFilters);
       query = q.query;
+    } else {
+      (filters.where || []).forEach((filter) => {
+        const { field, operator, value } = convertWhere(filter);
+        if (typeof operator === 'function') {
+          manualFilters.push(operator);
+        } else {
+          query = query.where(field, operator, value);
+        }
+      });
     }
-
-    (filters.where || []).forEach((filter) => {
-      const { field, operator, value } = convertWhere(filter);
-      if (typeof operator === 'function') {
-        manualFilters.push(operator);
-      } else {
-        query = query.where(field, operator, value);
-      }
-    });
+    
 
     (filters.sort || []).forEach(({ field, order }) => {
       if (_.includes(metaKeys, field)) {
         // Can't support sorting by document ID (it is not part
         // of the document's fields)
         // Sort fields also act as a filter so this would elminiate all results
-
-        // FIXME:
-        // Because of this implementation, sorting on _updateTime and _createTime
-        // is broken
         return;
       }
       query = query.orderBy(field, order);
@@ -182,7 +182,13 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
     }
 
     const limit = Math.max(0, filters.limit || 0);
-    return await manualQuery(query, manualFilters, limit);
+    return await manualQuery(
+      query, 
+      manualFilters,
+      searchQuery ? 'or' : 'and', 
+      limit, 
+      transaction
+    );
   }
 
 
@@ -246,7 +252,8 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
         [model.primaryKey]: ref.id,
         values: relations,
         data,
-        entry
+        entry,
+        ref
       }, trans);
 
       trans.create(ref, data);
@@ -266,7 +273,11 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
 
     // Add timestamp data
     if (_.isArray(model.options.timestamps)) {
-      const [, updatedAtKey] = model.options.timestamps;
+      const [createdAtKey, updatedAtKey] = model.options.timestamps;
+
+      // Prevent creation timestamp from being overwritten
+      delete data[createdAtKey];
+
       data[updatedAtKey] = FieldValue.serverTimestamp();
     }
 
@@ -295,12 +306,13 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
         [model.primaryKey]: snap.id,
         values: relations,
         data,
-        entry
+        entry,
+        ref: snap.ref
       }, trans);
 
 
       // Update entry without relational data.
-      trans.set(snap.ref, data);
+      trans.set(snap.ref, data, { merge: true });
 
       return entry;
 
@@ -332,7 +344,7 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
 
       const docs = await populateDocs(model, [snap], defaultPopulate, trans);
 
-      await deleteRelations(model, { data: entry }, trans);
+      await deleteRelations(model, { entry, ref }, trans);
 
       trans.delete(ref);
 

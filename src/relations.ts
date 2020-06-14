@@ -71,12 +71,9 @@ const setMerge = (ref: DocumentReference, data: any, transaction?: Transaction) 
 }
 
 
-export async function updateRelations(model: FirestoreConnectorModel, params: any, transaction?: Transaction) {
-  const primaryKeyValue = getValuePrimaryKey(params, model.primaryKey);
+export async function updateRelations(model: FirestoreConnectorModel, params: { entry, data, values, ref: DocumentReference }, transaction?: Transaction) {
 
-  const ref = model.doc(primaryKeyValue);
-  const { entry, data } = params;
-
+  const { entry, data, ref } = params;
   const relationUpdates: Promise<any>[] = [];
   const writes: (() => void)[] = [];
 
@@ -283,11 +280,9 @@ export async function updateRelations(model: FirestoreConnectorModel, params: an
   return { ...data, ...values };
 }
 
-export async function deleteRelations(model: FirestoreConnectorModel, params: any, transaction?: Transaction) {
-  const { data: entry } = params;
-
-  const primaryKeyValue = entry[model.primaryKey];
-  const ref = model.doc(primaryKeyValue);
+export async function deleteRelations(model: FirestoreConnectorModel, params: { entry: any, ref: DocumentReference}, transaction?: Transaction) {
+  const { entry, ref } = params;
+  const primaryKeyValue = ref.id;
 
   const writes: (() => void)[] = [];
   await Promise.all(
