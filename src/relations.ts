@@ -256,7 +256,6 @@ export async function updateRelations(model: FirestoreConnectorModel, params: { 
 
 export async function deleteRelations(model: FirestoreConnectorModel, params: { entry: any, ref: DocumentReference}, transaction: TransactionWrapper | undefined) {
   const { entry, ref } = params;
-  const primaryKeyValue = ref.id;
 
   await Promise.all(
     model.associations.map(async association => {
@@ -316,7 +315,7 @@ export async function deleteRelations(model: FirestoreConnectorModel, params: { 
           if (!targetModel) return;
 
           const element = {
-            ref: primaryKeyValue,
+            ref,
             kind: model.globalId,
             [association.filter]: association.alias,
           };

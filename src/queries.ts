@@ -364,14 +364,14 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
         throw new StatusError('entry.notFound', 404);
       }
 
-      const docs = await populateDocs(model, [snap], model.defaultPopulate, trans);
+      const [doc] = await populateDocs(model, [snap], model.defaultPopulate, trans);
 
-      await deleteRelations(model, { entry, ref }, wrapper);
+      await deleteRelations(model, { entry: doc, ref }, wrapper);
 
       wrapper.doWrites();
       trans.delete(ref);
 
-      return docs[0];
+      return doc;
     });
   }
 
