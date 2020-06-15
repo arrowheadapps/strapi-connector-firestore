@@ -33,24 +33,21 @@ export function mountModels(models: Record<string, StrapiModel>, target: Record<
       _.set(definition, 'options.timestamps', false);
     }
 
-    // TODO
-    // ORM lifecycle hooks
-
-
     // Expose ORM functions through the `target` object.
     target[modelKey] = _.assign(
       collection, 
       target[modelKey],
       { _attributes: definition.attributes }
     );
+    const model = target[modelKey] as FirestoreConnectorModel;
 
 
-    // HACK:
-    // For strapi-plugin-content-manager which accesses 
-    // the raw ORM layer and only knows about mongoose and bookshelf connectors
-    // See: strapi-plugin-content-manager/services/utils/store.js L53
+    /** 
+      TODO: FIXME: HACK:
+      For `strapi-plugin-content-manager` which accesses the raw 
+      ORM layer and only knows about mongoose and bookshelf connectors.
+      See: strapi-plugin-content-manager/services/utils/store.js L53
 
-    /**
       return model
         .query(qb => {
           qb.where('key', 'like', `${key}%`);
@@ -63,7 +60,7 @@ export function mountModels(models: Record<string, StrapiModel>, target: Record<
     // It seems that the aim here is to emulate searching for a prefix
     // in the key field
     // @ts-ignore
-    target[modelKey].query = (init) => {
+    model.query = (init) => {
       let field!: string, value!: string;
       const qb = {
         where: (f: string, op: string, v: string) => {
@@ -106,6 +103,31 @@ export function mountModels(models: Record<string, StrapiModel>, target: Record<
       // Build associations key
       utils.models.defineAssociations(modelKey.toLowerCase(), definition, definition.attributes[name], name);
     });
+
+
+    model.assocKeys = model.associations.map(ast => ast.alias);
+    model.componentKeys = Object.keys(model.attributes).filter(key =>
+      ['component', 'dynamiczone'].includes(model.attributes[key].type)
+    );
+    model.idKeys = ['id', model.primaryKey];
+    model.excludedKeys = model.assocKeys.concat(model.idKeys);
+    model.defaultPopulate = model.associations
+      .filter(ast => ast.autoPopulate !== false)
+      .map(ast => ast.alias);
+    
+
+    model.hasPK = (obj: any) => _.has(obj, model.primaryKey) || _.has(obj, 'id');
+    model.getPK = (obj: any) => (_.has(obj, model.primaryKey) ? obj[model.primaryKey] : obj.id);
+
+    model.pickRelations = values => {
+      return _.pick(values, model.assocKeys);
+    };
+
+    model.omitExernalValues = values => {
+      return _.omit(values, model.excludedKeys);
+    };
+
+
   }
 
   // Parse every authenticated model.

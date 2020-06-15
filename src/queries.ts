@@ -12,33 +12,12 @@ import { deleteRelations, updateRelations } from './relations';
 import { WhereFilterOp, DocumentData, Transaction, Query, DocumentSnapshot, FieldValue } from '@google-cloud/firestore';
 import { validateComponents } from './utils/validate-components';
 import { ManualFilter, manualQuery } from './utils/manual-query';
+import { TransactionWrapper } from './utils/transaction-wrapper';
 
 
 
 export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
-  const assocKeys = model.associations.map(ast => ast.alias);
-  const componentKeys = Object.keys(model.attributes).filter(key =>
-    ['component', 'dynamiczone'].includes(model.attributes[key].type)
-  );
-  const metaKeys = ['id', model.primaryKey];
-
-  const excludedKeys = assocKeys.concat(metaKeys);
-
-  const defaultPopulate = model.associations
-    .filter(ast => ast.autoPopulate !== false)
-    .map(ast => ast.alias);
   
-
-  const hasPK = (obj: any) => _.has(obj, model.primaryKey) || _.has(obj, 'id');
-  const getPK = (obj: any) => (_.has(obj, model.primaryKey) ? obj[model.primaryKey] : obj.id);
-
-  const pickRelations = values => {
-    return _.pick(values, assocKeys);
-  };
-
-  const omitExernalValues = values => {
-    return _.omit(values, excludedKeys);
-  };
 
 
   function manualWhere(field: string, predicate: (fieldValue: any) => boolean) {
@@ -165,16 +144,19 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
         }
       });
     }
-    
+
+    let idSortOrder: 'asc' | 'desc' | undefined
 
     (filters.sort || []).forEach(({ field, order }) => {
-      if (_.includes(metaKeys, field)) {
-        // Can't support sorting by document ID (it is not part
-        // of the document's fields)
-        // Sort fields also act as a filter so this would elminiate all results
+      if (_.includes(model.idKeys, field)) {
+        // While it is possible to order by `FieldPath.documentId()`
+        // that will do a case sensitive sort, and it also only supports ascending sort
+        // So we will manually order by ID once we get the results
+        idSortOrder = order;
         return;
+      } else {
+        query = query.orderBy(field, order);
       }
-      query = query.orderBy(field, order);
     });
 
     if (filters.start && (filters.start > 0)) {
@@ -182,23 +164,32 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
     }
 
     const limit = Math.max(0, filters.limit || 0);
-    return await manualQuery(
+    const results = await manualQuery(
       query, 
       manualFilters,
       searchQuery ? 'or' : 'and', 
       limit, 
       transaction
     );
+
+    if (idSortOrder) {
+      const sorted = _.sortBy(results, r => _.toLower(r.id));
+      return idSortOrder === 'desc'
+        ? _.reverse(sorted)
+        : sorted;
+    } else {
+      return results;
+    }
   }
 
 
   async function find(params: any, populate?: string[]) {
-    const populateOpt = populate || defaultPopulate;
+    const populateOpt = populate || model.defaultPopulate;
 
     return await model.firestore.runTransaction(async trans => {
       let docs: DocumentSnapshot[];
-      if (hasPK(params)) {
-        const ref = model.doc(getPK(params));
+      if (model.hasPK(params)) {
+        const ref = model.doc(model.getPK(params));
         const snap = await trans.get(ref);
         if (!snap.exists) {
           docs = [];
@@ -227,11 +218,11 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
   async function create(values: any) {
 
     // Validate components dynamiczone
-    validateComponents(values, model, componentKeys);
+    const components = validateComponents(values, model);
 
     // Extract values related to relational data.
-    const relations = pickRelations(values);
-    let data = omitExernalValues(values);
+    const relations = model.pickRelations(values);
+    const data = model.omitExernalValues(values);
 
     // Add timestamp data
     if (_.isArray(model.options.timestamps)) {
@@ -241,21 +232,35 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
     }
 
     // Create entry without relational data.
-    const id = getPK(values);
+    const id = model.getPK(values);
     const ref = id ? model.doc(id) : model.doc();
 
     return await model.firestore.runTransaction(async trans => {
+      const wrapper = new TransactionWrapper(trans);
       
-      // Create relational data and return the entry.
-      const [entry] = await populateDocs(model, [{ id: ref.id, ref, data: () => data }], defaultPopulate, trans);
-      data = await updateRelations(model, {
-        [model.primaryKey]: ref.id,
+      // Populate relations
+      // TODO: does this need to be done after relations are updated?
+      const [entry] = await populateDocs(model, [{ id: ref.id, ref, data: () => data }], model.defaultPopulate, trans);
+      
+      // Update components
+      await Promise.all(components.map(async ({ model, value }) => {
+        await updateRelations(model, {
+          values: model.pickRelations(value),
+          data: value,
+          entry: {},
+          ref
+        }, wrapper);
+      }));
+      
+      // Update relations
+      await updateRelations(model, {
         values: relations,
         data,
         entry,
         ref
-      }, trans);
+      }, wrapper);
 
+      wrapper.doWrites();
       trans.create(ref, data);
 
       return entry;
@@ -265,11 +270,11 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
   async function update(params: any, values: any) {
 
     // Validate components dynamiczone
-    validateComponents(values, model, componentKeys);
+    const components = validateComponents(values, model);
 
     // Extract values related to relational data.
-    const relations = pickRelations(values);
-    let data = omitExernalValues(values);
+    const relations = model.pickRelations(values);
+    const data = model.omitExernalValues(values);
 
     // Add timestamp data
     if (_.isArray(model.options.timestamps)) {
@@ -283,9 +288,11 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
 
     // Run the transaction
     return await model.firestore.runTransaction(async trans => {
+      const wrapper = new TransactionWrapper(trans);
+
       let snap: DocumentSnapshot | null;
-      if (hasPK(params)) {
-        const ref = model.doc(getPK(params));
+      if (model.hasPK(params)) {
+        const ref = model.doc(model.getPK(params));
         snap = await trans.get(ref);
         if (!snap.exists) {
           snap = null;
@@ -300,18 +307,31 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
       }
 
 
-      // Update relational data
-      const [entry] = await populateDocs(model, [snap], defaultPopulate, trans);
-      data = await updateRelations(model, {
-        [model.primaryKey]: snap.id,
+      // Populate relations
+      // TODO: does this need to be done after relations are updated?
+      const [entry] = await populateDocs(model, [snap], model.defaultPopulate, trans);
+
+      // Update components
+      await Promise.all(components.map(async ({ model, value }) => {
+        await updateRelations(model, {
+          values: model.pickRelations(value),
+          data: value,
+          entry: {},
+          ref: snap!.ref
+        }, wrapper);
+      }));
+
+      // Update relations
+      await updateRelations(model, {
         values: relations,
         data,
         entry,
         ref: snap.ref
-      }, trans);
+      }, wrapper);
 
 
       // Update entry without relational data.
+      wrapper.doWrites();
       trans.set(snap.ref, data, { merge: true });
 
       return entry;
@@ -320,10 +340,10 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
   }
 
   async function deleteMany(params: any) {
-    if (hasPK(params)) {
-      return await deleteOne(getPK(params))
+    if (model.hasPK(params)) {
+      return await deleteOne(model.getPK(params))
     } else {
-      // FIXME: Running multiple deletes at the same time
+      // TODO: FIXME: Running multiple deletes at the same time
       // Deletes may affect many relations
       // All are transacted so they all may interfere with eachother
       // Should run in the same transaction
@@ -335,6 +355,8 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
   async function deleteOne(id: string) {
     
     return await model.firestore.runTransaction(async trans => {
+      const wrapper = new TransactionWrapper(trans);
+
       const ref = model.doc(id);
       const snap = await trans.get(ref);
       const entry = snap.data();
@@ -342,10 +364,11 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
         throw new StatusError('entry.notFound', 404);
       }
 
-      const docs = await populateDocs(model, [snap], defaultPopulate, trans);
+      const docs = await populateDocs(model, [snap], model.defaultPopulate, trans);
 
-      await deleteRelations(model, { entry, ref }, trans);
+      await deleteRelations(model, { entry, ref }, wrapper);
 
+      wrapper.doWrites();
       trans.delete(ref);
 
       return docs[0];
@@ -353,12 +376,12 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
   }
 
   async function search(params: any, populate?: string[]) {
-    const populateOpt = populate || defaultPopulate;
+    const populateOpt = populate || model.defaultPopulate;
 
     return await model.firestore.runTransaction(async trans => {
       let docs: DocumentSnapshot[];
-      if (hasPK(params)) {
-        const ref = model.doc(getPK(params));
+      if (model.hasPK(params)) {
+        const ref = model.doc(model.getPK(params));
         const snap = await trans.get(ref);
         if (!snap.exists) {
           docs = [];

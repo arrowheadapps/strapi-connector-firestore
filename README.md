@@ -1,12 +1,9 @@
-## ⚠️⚠️ Warning: help needed ⚠️⚠️
+## ⚠️⚠️ Warning: pre-release ⚠️⚠️
 
-This package is in a very early state. Simple database operations and simple relations *seem* to be working, but most functions have either been only lightly tested or not tested at all.
-
-This is package is not suitable for production in it's current state.
+This is package an early work in progress an is not suitable for production in it's current state. Feel free to use it an feedback any issues here:
+https://github.com/arrowheadapps/strapi-connector-firestore/issues
 
 Known issues/not implemented
-- ORM lifecycle hooks
-- Sorting by ID
 - Higher complexity relations such as many-many, components, and polymorphism are untested
 
 I welcome contributors to help get this package to a production ready state and maintain it.

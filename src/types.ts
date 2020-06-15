@@ -89,4 +89,16 @@ export interface FirestoreConnectorContext {
 
 export type FirestoreConnectorModel = CollectionReference & StrapiModel & {
   _attributes: Record<string, any>
+
+
+  assocKeys: string[];
+  componentKeys: string[];
+  idKeys: string[];
+  excludedKeys: string[];
+  defaultPopulate: string[];
+  
+  hasPK: (obj: any) => boolean;
+  getPK: (obj: any) => string;
+  pickRelations: (obj: any) => any;
+  omitExernalValues: (obj: any) => any;
 }

@@ -2,9 +2,14 @@ import * as _ from 'lodash';
 import { FirestoreConnectorModel } from "../types";
 import { StatusError } from "./status-error";
 
+export interface Component {
+  value: any
+  model: FirestoreConnectorModel
+}
 
-export function validateComponents(values, model: FirestoreConnectorModel, componentKeys: string[]) {
-  for (const key of componentKeys) {
+export function validateComponents(values, model: FirestoreConnectorModel): Component[] {
+  const components: any[] = [];
+  for (const key of model.componentKeys) {
     const attr = model.attributes[key];
     const { type } = attr;
 
@@ -19,8 +24,10 @@ export function validateComponents(values, model: FirestoreConnectorModel, compo
 
       if (repeatable === true) {
         validateRepeatableInput(componentValue, { key, ...attr });
+        components.push(...(componentValue as any[]));
       } else {
         validateNonRepeatableInput(componentValue, { key, ...attr });
+        components.push(componentValue);
       }
       continue;
     }
@@ -35,9 +42,16 @@ export function validateComponents(values, model: FirestoreConnectorModel, compo
       const dynamiczoneValues = values[key];
 
       validateDynamiczoneInput(dynamiczoneValues, { key, ...attr });
+      components.push(...(dynamiczoneValues as any[]));
+
       continue;
     }
   }
+
+  return components.map(value => ({
+    value,
+    model: strapi.components[value.__component]
+  }));
 }
 
 

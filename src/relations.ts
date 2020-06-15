@@ -1,84 +1,75 @@
 import * as _ from 'lodash';
-import { FieldValue, Transaction, DocumentReference } from '@google-cloud/firestore';
+import { FieldValue, DocumentReference } from '@google-cloud/firestore';
 import { getDocRef, getModel } from './utils/get-doc-ref';
 import { FirestoreConnectorModel } from './types';
-const { models: { getValuePrimaryKey } } = require('strapi-utils');
+import { TransactionWrapper } from './utils/transaction-wrapper';
 
-function transformToArrayID(array: any, pk?: string): string[] {
-  if (_.isArray(array)) {
-    return array
-      .map(value => value && (getValuePrimaryKey(value, pk) || value))
-      .filter(n => n)
-      .map(val => _.toString(val));
-  }
+interface MorphDef {
+  id?: DocumentReference
+  alias: string
+  refId: DocumentReference
+  ref: string
+  field: string
+  filter: string
+}
 
-  return transformToArrayID([array]);
-};
+const removeUndefinedKeys = (obj: any) => _.pickBy(obj, _.negate(_.isUndefined));
 
-const removeUndefinedKeys = (obj = {}) => _.pickBy(obj, _.negate(_.isUndefined));
-
-const addRelationMorph = (model: FirestoreConnectorModel, params: any, transaction?: Transaction) => {
+const addRelationMorph = (params: MorphDef, transaction: TransactionWrapper | undefined) => {
   const { id, alias, refId, ref, field, filter } = params;
 
   setMerge(
-    model.doc(id), 
-    FieldValue.arrayUnion({
-      [alias]: {
+    id!, 
+    {
+      [alias]: FieldValue.arrayUnion({
         ref: refId,
         kind: ref,
         [filter]: field,
-      },
-    }),
+      })
+    },
     transaction
   );
 };
 
-const removeRelationMorph = async (model: FirestoreConnectorModel, params: any, transaction?: Transaction) => {
-  const { alias } = params;
+const removeRelationMorph = async (model: FirestoreConnectorModel, params: MorphDef, transaction: TransactionWrapper | undefined) => {
+  const { id, alias, filter, field, ref, refId } = params;
 
   const value = {
-    [alias]: {
-      ref: params.refId,
-      kind: params.ref,
-      [params.filter]: params.field,
-    },
+    [alias]: FieldValue.arrayRemove({
+      ref: refId,
+      kind: ref,
+      [filter]: field,
+    }),
   };
 
-  // if entry id is provided simply query it
-  if (params.id) {
-    return () => {
-      setMerge(model.doc(params.id), FieldValue.arrayRemove(value));
-    };
+  if (id) {
+    setMerge(id, value, transaction);
 
   } else {
 
     const q = model.where(alias, 'array-contains', value);
     const docs = (await (transaction ? transaction.get(q) : q.get())).docs;
-
-    return () => {
-      docs.forEach(d => {
-        setMerge(d.ref, FieldValue.arrayRemove(value), transaction);
-      });
-    };
+    docs.forEach(d => {
+      setMerge(d.ref, value, transaction);
+    });
   }
 };
 
 
-const setMerge = (ref: DocumentReference, data: any, transaction?: Transaction) => {
+const setMerge = (ref: DocumentReference, data: any, transaction: TransactionWrapper | undefined) => {
   transaction
-    ? transaction.set(ref, data, { merge: true })
+    ? transaction.addWrite((trans)  => trans.set(ref, data, { merge: true }))
     : ref.set(data, { merge: true });
 }
 
 
-export async function updateRelations(model: FirestoreConnectorModel, params: { entry, data, values, ref: DocumentReference }, transaction?: Transaction) {
+export async function updateRelations(model: FirestoreConnectorModel, params: { entry, data, values, ref: DocumentReference }, transaction?: TransactionWrapper) {
 
   const { entry, data, ref } = params;
   const relationUpdates: Promise<any>[] = [];
-  const writes: (() => void)[] = [];
 
   // Only update fields which are on this document.
-  const values = Object.keys(removeUndefinedKeys(params.values)).reduce((acc, attribute) => {
+  Object.keys(removeUndefinedKeys(params.values)).forEach((attribute) => {
     const details = model._attributes[attribute];
     const association = model.associations.find(x => x.alias === attribute)!;
 
@@ -95,7 +86,7 @@ export async function updateRelations(model: FirestoreConnectorModel, params: { 
         if (_.isArray(newRef)) {
           throw new Error('oneWay relation cannot be an array');
         }
-        return _.set(acc, attribute, newRef);
+        return _.set(data, attribute, newRef);
       }
 
       case 'oneToOne': {
@@ -104,14 +95,14 @@ export async function updateRelations(model: FirestoreConnectorModel, params: { 
         }
 
         // if value is the same don't do anything
-        if (newRef?.id === currentRef?.id) return acc;
+        if (newRef?.id === currentRef?.id) return;
 
         // if the value is null, set field to null on both sides
         if (!newRef) {
           if (currentRef) {
-            writes.push(() => setMerge(currentRef, { [details.via]: null }, transaction));
+            setMerge(currentRef, { [details.via]: null }, transaction);
           }
-          return _.set(acc, attribute, null);
+          return _.set(data, attribute, null);
         }
 
         // set old relations to null
@@ -120,15 +111,15 @@ export async function updateRelations(model: FirestoreConnectorModel, params: { 
           if (d && d[details.via]) {
             const oldLink = getDocRef(d[details.via], assocModel);
             if (oldLink) {
-              writes.push(() => setMerge(oldLink as DocumentReference, { [attribute]: null }));
+              setMerge(oldLink as DocumentReference, { [attribute]: null }, transaction);
             }
           }
 
           // set new relation
-          writes.push(() => setMerge(newRef, { [details.via]: ref }));
+          setMerge(newRef, { [details.via]: ref }, transaction);
 
         }));
-        return _.set(acc, attribute, newRef);
+        return _.set(data, attribute, newRef);
       }
 
       case 'oneToMany': {
@@ -136,42 +127,38 @@ export async function updateRelations(model: FirestoreConnectorModel, params: { 
         const currentArray = currentRef ? _.castArray(currentRef): [];
         const newArray = newRef ? _.castArray(newRef) : [];
         const toRemove = _.differenceWith(currentArray, newArray, (a, b) => a.id === b.id);
-
-        writes.push(() => {
-          toRemove.forEach(r => {
-            setMerge(r, { [details.via]: null });
-          });
-          newArray.map(r => {
-            setMerge(r, { [details.via]: ref });
-          });
+        
+        toRemove.forEach(r => {
+          setMerge(r, { [details.via]: null }, transaction);
+        });
+        newArray.map(r => {
+          setMerge(r, { [details.via]: ref }, transaction);
         });
         
-        return acc;
+        return;
       }
       
       case 'manyToOne': {
-        return _.set(acc, attribute, newRef);
+        return _.set(data, attribute, newRef);
       }
 
       case 'manyWay':
       case 'manyToMany': {
         if (association.dominant) {
-          return _.set(acc, attribute, newRef);
+          return _.set(data, attribute, newRef);
         }
         if (!_.isArray(currentRef) || !_.isArray(newRef)) {
           throw new Error('manyToMany relation must be an array');
         }
 
-        writes.push(() => {
-          currentRef.map(v => {
-            setMerge(v, { [association.via]: FieldValue.arrayRemove(ref) });
-          });
-          newRef.map(v => {
-            setMerge(v, { [association.via]: FieldValue.arrayUnion(ref) });
-          });
+        currentRef.map(v => {
+          setMerge(v, { [association.via]: FieldValue.arrayRemove(ref) }, transaction);
+        });
+        newRef.map(v => {
+          setMerge(v, { [association.via]: FieldValue.arrayUnion(ref) }, transaction);
         });
 
-        return acc;
+        return;
       }
 
       // media -> model
@@ -187,8 +174,8 @@ export async function updateRelations(model: FirestoreConnectorModel, params: { 
           const refModel = strapi.getModel(obj.ref, obj.source);
 
           const createRelation = () => {
-            return addRelationMorph(model, {
-              id: entry[model.primaryKey],
+            return addRelationMorph({
+              id: ref,
               alias: association.alias,
               ref: obj.kind || refModel.globalId,
               refId: model.doc(obj.refId),
@@ -200,24 +187,20 @@ export async function updateRelations(model: FirestoreConnectorModel, params: { 
           // Clear relations to refModel
           const reverseAssoc = refModel.associations.find(assoc => assoc.alias === obj.field);
           if (reverseAssoc && reverseAssoc.nature === 'oneToManyMorph') {
-            writes.push(await removeRelationMorph(model, {
+            await removeRelationMorph(model, {
               alias: association.alias,
               ref: obj.kind || refModel.globalId,
               refId: model.doc(obj.refId),
               field: obj.field,
               filter: association.filter,
-            }));
-            writes.push(() => {
-              createRelation();
-              setMerge(refModel.doc(obj.refId), {
-                [obj.field]: ref
-              }, transaction);
-            });
+            }, transaction);
+            createRelation();
+            setMerge(refModel.doc(obj.refId), {
+              [obj.field]: ref
+            }, transaction);
           } else {
-            writes.push(() => {
-              createRelation();
-              setMerge(refModel.doc(obj.refId), FieldValue.arrayUnion(ref), transaction);
-            });
+            createRelation();
+            setMerge(refModel.doc(obj.refId), FieldValue.arrayUnion(ref), transaction);
           }
         })));
         break;
@@ -226,41 +209,37 @@ export async function updateRelations(model: FirestoreConnectorModel, params: { 
       // model -> media
       case 'oneToManyMorph':
       case 'manyToManyMorph': {
-        const currentValue = entry[attribute];
-        const newValue = params.values[attribute];
+        const newIds = newRef ? _.castArray(newRef) : [];
+        const currentIds = currentRef ? _.castArray(currentRef) : [];
 
         // Compare array of ID to find deleted files.
-        const currentIds = transformToArrayID(currentValue, model.primaryKey);
-        const newIds = transformToArrayID(newValue, model.primaryKey);
-        const toAdd = _.difference(newIds, currentIds);
-        const toRemove = _.difference(currentIds, newIds);
+        const toAdd = _.differenceWith(newIds, currentIds, (a, b) => a.id === b.id);
+        const toRemove = _.differenceWith(currentIds, currentIds, (a, b) => a.id === b.id);
 
         const morphModel = getModel(details.model || details.collection, details.plugin);
 
-        _.set(acc, attribute, _.castArray(newIds));
+        _.set(data, attribute, newIds);
 
-        relationUpdates.push(Promise.all(toRemove.map(id => {
-          return removeRelationMorph(morphModel!, {
+        toRemove.map(id => {
+          relationUpdates.push(removeRelationMorph(morphModel!, {
             id,
             alias: association.via,
             ref: model.globalId,
             refId: ref,
             field: association.alias,
             filter: association.filter,
-          });
-        })).then(w => writes.push(...w)));
+          }, transaction));
+        });
 
-        writes.push(() => {
-          toAdd.forEach(id => {
-            return addRelationMorph(morphModel!, {
-              id,
-              alias: association.via,
-              ref: model.globalId,
-              refId: ref,
-              field: association.alias,
-              filter: association.filter,
-            }, transaction);
-          })
+        toAdd.forEach(id => {
+          addRelationMorph({
+            id,
+            alias: association.via,
+            ref: model.globalId,
+            refId: ref,
+            field: association.alias,
+            filter: association.filter,
+          }, transaction);
         });
 
         break;
@@ -270,21 +249,15 @@ export async function updateRelations(model: FirestoreConnectorModel, params: { 
         break;
       default:
     }
-
-    return acc;
-  }, {});
+  });
 
   await Promise.all(relationUpdates);
-  writes.forEach(write => write());
-
-  return { ...data, ...values };
 }
 
-export async function deleteRelations(model: FirestoreConnectorModel, params: { entry: any, ref: DocumentReference}, transaction?: Transaction) {
+export async function deleteRelations(model: FirestoreConnectorModel, params: { entry: any, ref: DocumentReference}, transaction: TransactionWrapper | undefined) {
   const { entry, ref } = params;
   const primaryKeyValue = ref.id;
 
-  const writes: (() => void)[] = [];
   await Promise.all(
     model.associations.map(async association => {
       const { nature, via, dominant, alias } = association;
@@ -312,7 +285,7 @@ export async function deleteRelations(model: FirestoreConnectorModel, params: { 
           if (_.isArray(currentValue)) {
             throw new Error('oneToMany or oneToOne relation must not be an array');
           }
-          writes.push(() => setMerge(currentValue, { [via]: null }, transaction));
+          setMerge(currentValue, { [via]: null }, transaction);
           return;
         }
 
@@ -322,11 +295,11 @@ export async function deleteRelations(model: FirestoreConnectorModel, params: { 
             return;
           }
           if (_.isArray(currentValue)) {
-            writes.push(() => currentValue.forEach(v => {
-              setMerge(v, { [via]: FieldValue.arrayRemove(ref) });
-            }));
+            currentValue.forEach(v => {
+              setMerge(v, { [via]: FieldValue.arrayRemove(ref) }, transaction);
+            });
           } else {
-            writes.push(() => setMerge(currentValue, { [via]: FieldValue.arrayRemove(ref) }));
+            setMerge(currentValue, { [via]: FieldValue.arrayRemove(ref) }, transaction);
           }
           return;
         }
@@ -373,13 +346,13 @@ export async function deleteRelations(model: FirestoreConnectorModel, params: { 
                 const docs = (await (transaction ? transaction.get(q) : q.get())).docs;
 
                 if (reverseAssoc && reverseAssoc.nature === 'oneToManyMorph') {
-                  writes.push(() => docs.forEach(d => {
-                    setMerge(d, { [field]: null });
-                  }));
+                  docs.forEach(d => {
+                    setMerge(d, { [field]: null }, transaction);
+                  });
                 } else {
-                  writes.push(() => docs.forEach(d => {
-                    setMerge(d, { [field]: FieldValue.arrayRemove(ref) });
-                  }));
+                  docs.forEach(d => {
+                    setMerge(d, { [field]: FieldValue.arrayRemove(ref) }, transaction);
+                  });
                 }
               })
             );
@@ -398,7 +371,5 @@ export async function deleteRelations(model: FirestoreConnectorModel, params: { 
       }
     })
   );
-
-  writes.forEach(write => write());
 }
   
