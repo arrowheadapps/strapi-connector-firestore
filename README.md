@@ -39,6 +39,10 @@ module.exports = ({ env }) => ({
   connections: {
     default: {
       connector: 'firestore',
+      // `settings` can be omitted in environments that support
+      // application default credentials (e.g. App Engine, Cloud Run, etc)
+      // Or provide any Firestore options as specified here:
+      // https://googleapis.dev/nodejs/firestore/latest/Firestore.html#Firestore
       settings: {
         projectId: '{YOUR_PROJECT_ID}'
       },
