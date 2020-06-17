@@ -39,7 +39,7 @@ Install the NPM package:
 $ npm install --save strapi-connector-firestore
 ```
 
-Configure Strapi (`^3.0.0`) to use the Firestore database connector:
+Configure Strapi (`^3.0.0`) to use the Firestore database connector in `./config/database.js`:
 
 ```javascript
 module.exports = ({ env }) => ({
