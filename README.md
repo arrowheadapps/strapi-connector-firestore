@@ -57,7 +57,7 @@ module.exports = ({ env }) => ({
       options: {
         // Connect to a local running Firestore emulator
         // when running in development mode
-        useEmulator: env.NODE_ENV == 'development'
+        useEmulator: process.env.NODE_ENV == 'development'
       }
     }
   },
