@@ -1,5 +1,10 @@
 import type { Firestore, CollectionReference } from '@google-cloud/firestore';
 
+export interface Options {
+  useEmulator: boolean
+  singleId: string,
+}
+
 declare global {
   const strapi: Strapi
 }
@@ -45,6 +50,7 @@ export interface StrapiModel {
   primaryKeyType: string
   attributes: Record<string, any>
   collectionName: string
+  kind: 'collectionType' | 'singleType'
   globalId: string
   orm: string
   options: {
@@ -84,7 +90,8 @@ export interface StrapiWhereFilter {
 export interface FirestoreConnectorContext {
   instance: Firestore
   strapi: Strapi
-  connection: StrapiModel
+  connection: StrapiModel,
+  options: Options
 }
 
 export type FirestoreConnectorModel = CollectionReference & StrapiModel & {

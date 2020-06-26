@@ -115,9 +115,9 @@ export function mountModels(models: Record<string, StrapiModel>, target: Record<
       .filter(ast => ast.autoPopulate !== false)
       .map(ast => ast.alias);
     
-
-    model.hasPK = (obj: any) => _.has(obj, model.primaryKey) || _.has(obj, 'id');
-    model.getPK = (obj: any) => (_.has(obj, model.primaryKey) ? obj[model.primaryKey] : obj.id);
+    const singleKey = model.kind === 'singleType' ? ctx.options.singleId : '';
+    model.hasPK = (obj: any) => _.has(obj, model.primaryKey) || _.has(obj, 'id') || Boolean(singleKey);
+    model.getPK = (obj: any) => singleKey || ((_.has(obj, model.primaryKey) ? obj[model.primaryKey] : obj.id));
 
     model.pickRelations = values => {
       return _.pick(values, model.assocKeys);

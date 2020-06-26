@@ -5,7 +5,7 @@ import { Firestore, Settings } from '@google-cloud/firestore';
 
 import { mountModels, DEFAULT_CREATE_TIME_KEY, DEFAULT_UPDATE_TIME_KEY } from './mount-models';
 import { queries } from './queries';
-import { Strapi, FirestoreConnectorContext, StrapiModel } from './types';
+import { Strapi, FirestoreConnectorContext, StrapiModel, Options } from './types';
 
 /**
  * Firestore hook
@@ -14,6 +14,11 @@ import { Strapi, FirestoreConnectorContext, StrapiModel } from './types';
 const defaults = {
   defaultConnection: 'default',
 };
+
+const defaultOptions: Options = {
+  useEmulator: false,
+  singleId: 'default',
+}
 
 const isFirestoreConnection = ({ connector }: StrapiModel) => connector === 'firestore';
 
@@ -27,13 +32,14 @@ module.exports = function(strapi: Strapi) {
         const connection = connections[connectionName];
 
         _.defaults(connection.settings, strapi.config.hook.settings.firestore);
+        const options: Options = _.defaults(connection.options, defaultOptions);
 
         const settings: Settings = {
           ignoreUndefinedProperties: true,
           ...connection.settings,
         };
 
-        if (connection.options.useEmulator) {
+        if (options.useEmulator) {
           // Direct the Firestore instance to connect to a local emulator
           Object.assign(settings, {
             port: 8080,
@@ -61,7 +67,8 @@ module.exports = function(strapi: Strapi) {
         const ctx: FirestoreConnectorContext = {
           instance,
           connection,
-          strapi
+          strapi,
+          options
         };
 
         _.set(strapi, `connections.${connectionName}`, instance);

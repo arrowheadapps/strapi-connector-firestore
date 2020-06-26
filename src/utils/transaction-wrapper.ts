@@ -14,7 +14,7 @@ export class TransactionWrapper {
     return this.transaction.get(val)
   }
 
-  getAll<T>(...documentRefsOrReadOptions: (DocumentReference | ReadOptions)[]): Promise<DocumentSnapshot<T>[]> {
+  getAll<T>(...documentRefsOrReadOptions: (DocumentReference<T> | ReadOptions)[]): Promise<DocumentSnapshot<T>[]> {
     return this.transaction.getAll<T>(...documentRefsOrReadOptions);
   }
 

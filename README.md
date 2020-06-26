@@ -58,6 +58,11 @@ module.exports = ({ env }) => ({
         // Connect to a local running Firestore emulator
         // when running in development mode
         useEmulator: process.env.NODE_ENV == 'development'
+
+        // The document ID to use for `singleType` models
+        // The document will be located at `"${collectionName}/${singleId}"`
+        // Defaults to `"default"`
+        singleId: 'default'
       }
     }
   },
