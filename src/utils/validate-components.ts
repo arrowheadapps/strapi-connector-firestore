@@ -1,5 +1,5 @@
 import * as _ from 'lodash';
-import { FirestoreConnectorModel } from "../types";
+import type { FirestoreConnectorModel } from "../types";
 import { StatusError } from "./status-error";
 
 export interface Component {
@@ -7,8 +7,13 @@ export interface Component {
   model: FirestoreConnectorModel
 }
 
+export function getComponentModel(hostModel: FirestoreConnectorModel, key: string, value: any): FirestoreConnectorModel {
+  const modelName = value.__component || hostModel.attributes[key].component;
+  return strapi.components[modelName];
+}
+
 export function validateComponents(values, model: FirestoreConnectorModel): Component[] {
-  const components: any[] = [];
+  const components: { value: any, key: string }[] = [];
   for (const key of model.componentKeys) {
     const attr = model.attributes[key];
     const { type } = attr;
@@ -24,10 +29,10 @@ export function validateComponents(values, model: FirestoreConnectorModel): Comp
 
       if (repeatable === true) {
         validateRepeatableInput(componentValue, { key, ...attr });
-        components.push(...(componentValue as any[]));
+        components.push(...(componentValue as any[]).map(value => ({ value, key })));
       } else {
         validateNonRepeatableInput(componentValue, { key, ...attr });
-        components.push(componentValue);
+        components.push({ value: componentValue, key });
       }
       continue;
     }
@@ -42,15 +47,15 @@ export function validateComponents(values, model: FirestoreConnectorModel): Comp
       const dynamiczoneValues = values[key];
 
       validateDynamiczoneInput(dynamiczoneValues, { key, ...attr });
-      components.push(...(dynamiczoneValues as any[]));
+      components.push(...(dynamiczoneValues as any[]).map(value => ({ value, key })));
 
       continue;
     }
   }
 
-  return components.map(value => ({
-    value,
-    model: strapi.components[value.__component]
+  return components.map(c => ({
+    value: c.value,
+    model: getComponentModel(model, c.key, c.value)
   }));
 }
 

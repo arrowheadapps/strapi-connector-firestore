@@ -2,6 +2,7 @@ import * as _ from 'lodash';
 import { getDocRef, getModel } from './utils/get-doc-ref';
 import { FirestoreConnectorModel } from './types';
 import type { DocumentSnapshot, DocumentReference, DocumentData, Transaction, Query } from '@google-cloud/firestore';
+import { getComponentModel } from './utils/validate-components';
 
 function convertTimestampToDate(data: any, key: string) {
   const value = data[key];
@@ -118,7 +119,7 @@ export async function populateDocs(model: FirestoreConnectorModel, docs: { id: s
       const component = data[componentKey];
       if (component) {
         await Promise.all(_.castArray(component).map(async c => {
-          const componentModel = strapi.components[c.__component];
+          const componentModel = getComponentModel(model, componentKey, c);
           await Promise.all(componentModel.defaultPopulate.map(async field => {
             await populateData(componentModel, field, c);
           }));
