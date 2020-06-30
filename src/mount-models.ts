@@ -43,10 +43,13 @@ export function mountModels(models: Record<string, StrapiModel>, target: Record<
 
 
     /** 
-      TODO: FIXME: HACK:
+      HACK:
       For `strapi-plugin-content-manager` which accesses the raw 
       ORM layer and only knows about mongoose and bookshelf connectors.
       See: https://github.com/strapi/strapi/blob/535fa25311a2caa469a13d173d710a7eba6d5ecc/packages/strapi-plugin-content-manager/services/utils/store.js#L52-L68
+
+      It seems that the aim here is to emulate searching for 
+      a prefix in the `key` field.
 
       return model
         .query(qb => {
@@ -57,16 +60,15 @@ export function mountModels(models: Record<string, StrapiModel>, target: Record<
         .then(results => results.map(({ value }) => JSON.parse(value)));  
      */
 
-    // It seems that the aim here is to emulate searching for a prefix
-    // in the key field
-    // @ts-ignore
+    
+    // @ts-expect-error
     model.query = (init) => {
-      let field!: string, value!: string;
+      let field!: string;
+      let value!: string;
+      let operator!: string;
       const qb = {
         where: (f: string, op: string, v: string) => {
-          if (op !== 'like') {
-            throw new Error('Not implemented!');
-          }
+          operator = op;
           field = f;
           value = v;
         }
@@ -74,9 +76,14 @@ export function mountModels(models: Record<string, StrapiModel>, target: Record<
       init(qb);
 
 
-      if (value.endsWith('%')) {
-        value = value.slice(0, -1);
+      if ((operator !== 'like') || !/^\w+%$/.test(value)) {
+        throw new Error('An update to Strapi has broken `strapi-connector-firestore`. '
+          + 'Please create an issue at https://github.com/arrowheadapps/strapi-connector-firestore/issues, '
+          + 'or in the meantime, revert Strapi your version to the last working version.');
       }
+
+      // Remove '%' character from the end
+      value = value.slice(0, -1);
 
       return {
         fetchAll: async () => {
