@@ -46,7 +46,7 @@ export function mountModels(models: Record<string, StrapiModel>, target: Record<
       TODO: FIXME: HACK:
       For `strapi-plugin-content-manager` which accesses the raw 
       ORM layer and only knows about mongoose and bookshelf connectors.
-      See: strapi-plugin-content-manager/services/utils/store.js L53
+      See: https://github.com/strapi/strapi/blob/535fa25311a2caa469a13d173d710a7eba6d5ecc/packages/strapi-plugin-content-manager/services/utils/store.js#L52-L68
 
       return model
         .query(qb => {
