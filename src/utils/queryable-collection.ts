@@ -72,13 +72,7 @@ export class FlatCollection implements QueryableCollection {
     const snap = await (trans ? trans.get(this.doc) : this.doc.get());
 
     let docs: Snapshot[] = [];
-    const entries = Object.entries(snap.data() || {});
-    for (let i = 0; i < entries.length; i++) {
-      if (this._offset && (i < this._offset)) {
-        continue;
-      }
-
-      const [id, data] = entries[i];
+    for (const [id, data] of Object.entries(snap.data() || {})) {
       if (this._filters.every(f => f(data))) {
         docs.push({
           id,
@@ -86,10 +80,6 @@ export class FlatCollection implements QueryableCollection {
           ref: path.posix.join(this.doc.path, id),
           exists: true
         });
-      }
-
-      if ((this._limit) && (docs.length === this._limit)) {
-        break;
       }
     };
 
@@ -99,6 +89,11 @@ export class FlatCollection implements QueryableCollection {
         docs = _.reverse(docs);
       }
     }
+    
+    // Offset and limit after sorting
+    const offset = Math.max(this._offset || 0, 0);
+    const limit = Math.max(this._limit || 0, 0) || docs.length;
+    docs = docs.slice(offset, offset + limit);
 
     return {
       docs,
