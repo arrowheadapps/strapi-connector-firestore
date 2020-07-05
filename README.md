@@ -3,6 +3,8 @@
 This is package an early work in progress an is not suitable for production in it's current state. Feel free to use it an feedback any issues here:
 https://github.com/arrowheadapps/strapi-connector-firestore/issues
 
+The shape of the generated database output may break compatibility often while in "alpha" state.
+
 Known issues/not implemented
 - Higher complexity relations such as many-many, components, and polymorphism are untested
 
@@ -52,17 +54,21 @@ module.exports = ({ env }) => ({
       // Or provide any Firestore options as specified here:
       // https://googleapis.dev/nodejs/firestore/latest/Firestore.html#Firestore
       settings: {
-        projectId: '{YOUR_PROJECT_ID}'
+        projectId: '{YOUR_PROJECT_ID}',
       },
       options: {
         // Connect to a local running Firestore emulator
         // when running in development mode
-        useEmulator: process.env.NODE_ENV == 'development'
+        useEmulator: process.env.NODE_ENV == 'development',
 
         // The document ID to use for `singleType` models
         // The document will be located at `"${collectionName}/${singleId}"`
         // Defaults to `"default"`
-        singleId: 'default'
+        singleId: 'default',
+
+        // Configure whether to flatten the core Strapi models
+        // Defaults to `true`.
+        flattenCore: true,
       }
     }
   },

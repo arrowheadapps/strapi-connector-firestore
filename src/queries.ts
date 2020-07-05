@@ -6,13 +6,14 @@ import * as _ from 'lodash';
 import { populateDocs } from './populate';
 import { getDocRef, getModel } from './utils/get-doc-ref';
 import { convertRestQueryParams } from 'strapi-utils';
-import { StrapiQueryParams, StrapiFilter, StrapiWhereFilter } from './types';
+import type { StrapiQueryParams, StrapiFilter, StrapiWhereFilter } from './types';
 import { StatusError } from './utils/status-error';
 import { deleteRelations, updateRelations } from './relations';
-import { WhereFilterOp, DocumentData, Transaction, Query, DocumentSnapshot, FieldValue } from '@google-cloud/firestore';
+import { WhereFilterOp, DocumentData, FieldValue } from '@google-cloud/firestore';
 import { validateComponents } from './utils/validate-components';
 import { ManualFilter, manualQuery } from './utils/manual-query';
 import { TransactionWrapper } from './utils/transaction-wrapper';
+import type { Snapshot } from './utils/queryable-collection';
 
 
 
@@ -30,7 +31,7 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
 
   function convertWhere({ field, value, operator }: StrapiWhereFilter) {
     
-    const details = model._attributes[field];
+    const details = model.attributes[field];
     const assocModel = getModel(details.model || details.collection, details.plugin);
 
     if (assocModel) {
@@ -94,7 +95,7 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
   }
 
   function buildSearchQuery(value: any) {
-    let query: Query = model;
+    let query = model.db;
     const manualFilters: ManualFilter[] = [];
   
     Object.keys(model.attributes).forEach((field) => {
@@ -121,13 +122,13 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
     return { query, manualFilters };
   };
 
-  async function buildFirestoreQuery(params, searchQuery?: string, transaction?: Transaction) {
+  async function buildFirestoreQuery(params, searchQuery: string | undefined, transaction: TransactionWrapper | undefined) {
     // Remove any search query
     // because we extract and handle it separately
     delete params._q;
 
     const filters: StrapiFilter = convertRestQueryParams(params);
-    let query: Query = model;
+    let query = model.db;
     let manualFilters: ManualFilter[] = [];
 
     if (searchQuery) {
@@ -187,20 +188,21 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
     const populateOpt = populate || model.defaultPopulate;
 
     return await model.firestore.runTransaction(async trans => {
-      let docs: DocumentSnapshot[];
+      const wrapper = new TransactionWrapper(trans, model.firestore);
+      let docs: Snapshot[];
       if (model.hasPK(params)) {
         const ref = model.doc(model.getPK(params));
-        const snap = await trans.get(ref);
+        const snap = await wrapper.get(ref);
         if (!snap.exists) {
           docs = [];
         } else {
           docs = [snap];
         }
       } else {
-        docs = await buildFirestoreQuery(params, undefined, trans);
+        docs = await buildFirestoreQuery(params, undefined, wrapper);
       }
 
-      return await populateDocs(model, docs, populateOpt, trans);
+      return await populateDocs(model, docs, populateOpt, wrapper);
     });
   }
 
@@ -211,7 +213,7 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
 
   async function count(params: any) {
     // Don't populate any fields, we are just counting
-    const docs = await buildFirestoreQuery(params);
+    const docs = await buildFirestoreQuery(params, undefined, undefined);
     return docs.length;
   }
 
@@ -231,23 +233,18 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
       data[updatedAtKey] = FieldValue.serverTimestamp();
     }
 
-    // Create entry without relational data.
+    // Create entry without relational data
     const id = model.getPK(values);
     const ref = id ? model.doc(id) : model.doc();
 
     return await model.firestore.runTransaction(async trans => {
-      const wrapper = new TransactionWrapper(trans);
-      
-      // Populate relations
-      // TODO: does this need to be done after relations are updated?
-      const [entry] = await populateDocs(model, [{ id: ref.id, ref, data: () => data }], model.defaultPopulate, trans);
+      const wrapper = new TransactionWrapper(trans, model.firestore);
       
       // Update components
       await Promise.all(components.map(async ({ model, value }) => {
         await updateRelations(model, {
           values: model.pickRelations(value),
           data: value,
-          entry: {},
           ref
         }, wrapper);
       }));
@@ -256,12 +253,14 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
       await updateRelations(model, {
         values: relations,
         data,
-        entry,
         ref
       }, wrapper);
+      
+      // Populate relations
+      const [entry] = await populateDocs(model, [{ ref, data: () => data }], model.defaultPopulate, wrapper);
 
       wrapper.doWrites();
-      trans.create(ref, data);
+      model.create(ref, data, wrapper);
 
       return entry;
     });
@@ -288,17 +287,17 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
 
     // Run the transaction
     return await model.firestore.runTransaction(async trans => {
-      const wrapper = new TransactionWrapper(trans);
+      const wrapper = new TransactionWrapper(trans, model.firestore);
 
-      let snap: DocumentSnapshot | null;
+      let snap: Snapshot | null;
       if (model.hasPK(params)) {
         const ref = model.doc(model.getPK(params));
-        snap = await trans.get(ref);
+        snap = await wrapper.get(ref);
         if (!snap.exists) {
           snap = null;
         }
       } else {
-        const docs = await buildFirestoreQuery({ ...params, _limit: 1 }, undefined, trans);
+        const docs = await buildFirestoreQuery({ ...params, _limit: 1 }, undefined, wrapper);
         snap = docs[0] || null;
       }
 
@@ -307,16 +306,11 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
       }
 
 
-      // Populate relations
-      // TODO: does this need to be done after relations are updated?
-      const [entry] = await populateDocs(model, [snap], model.defaultPopulate, trans);
-
       // Update components
       await Promise.all(components.map(async ({ model, value }) => {
         await updateRelations(model, {
           values: model.pickRelations(value),
           data: value,
-          entry: {},
           ref: snap!.ref
         }, wrapper);
       }));
@@ -325,14 +319,15 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
       await updateRelations(model, {
         values: relations,
         data,
-        entry,
         ref: snap.ref
       }, wrapper);
 
+      // Populate relations
+      const [entry] = await populateDocs(model, [snap], model.defaultPopulate, wrapper);
 
       // Update entry without relational data.
       wrapper.doWrites();
-      trans.set(snap.ref, data, { merge: true });
+      model.setMerge(snap.ref, data, wrapper);
 
       return entry;
 
@@ -355,21 +350,21 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
   async function deleteOne(id: string) {
     
     return await model.firestore.runTransaction(async trans => {
-      const wrapper = new TransactionWrapper(trans);
+      const wrapper = new TransactionWrapper(trans, model.firestore);
 
       const ref = model.doc(id);
-      const snap = await trans.get(ref);
+      const snap = await wrapper.get(ref);
       const entry = snap.data();
       if (!entry) {
         throw new StatusError('entry.notFound', 404);
       }
 
-      const [doc] = await populateDocs(model, [snap], model.defaultPopulate, trans);
+      const [doc] = await populateDocs(model, [snap], model.defaultPopulate, wrapper);
 
       await deleteRelations(model, { entry: doc, ref }, wrapper);
 
       wrapper.doWrites();
-      trans.delete(ref);
+      model.delete(ref, wrapper);
 
       return doc;
     });
@@ -379,26 +374,27 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
     const populateOpt = populate || model.defaultPopulate;
 
     return await model.firestore.runTransaction(async trans => {
-      let docs: DocumentSnapshot[];
+      const wrapper = new TransactionWrapper(trans, model.firestore);
+      let docs: Snapshot[];
       if (model.hasPK(params)) {
         const ref = model.doc(model.getPK(params));
-        const snap = await trans.get(ref);
+        const snap = await wrapper.get(ref);
         if (!snap.exists) {
           docs = [];
         } else {
           docs = [snap];
         }
       } else {
-        docs = await buildFirestoreQuery(params, params._q, trans);
+        docs = await buildFirestoreQuery(params, params._q, wrapper);
       }
 
-      return await populateDocs(model, docs, populateOpt, trans);
+      return await populateDocs(model, docs, populateOpt, wrapper);
     });
   }
 
   async function countSearch(params: any) {
     // Don't populate any fields, we are just counting
-    const docs = await buildFirestoreQuery(params, params._q);
+    const docs = await buildFirestoreQuery(params, params._q, undefined);
     return docs.length;
   }
 

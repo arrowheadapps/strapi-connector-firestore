@@ -1,4 +1,6 @@
-import { Query, Transaction, DocumentData, QueryDocumentSnapshot, DocumentSnapshot } from '@google-cloud/firestore';
+import type { DocumentData } from '@google-cloud/firestore';
+import type { QueryableCollection, Snapshot } from './queryable-collection';
+import type { TransactionWrapper } from './transaction-wrapper';
 
 export type ManualFilter = ((data: DocumentData) => boolean);
 
@@ -7,10 +9,10 @@ export type ManualFilter = ((data: DocumentData) => boolean);
  * the query and applies the manual filters, performing multiple queries
  * if necessary to fulfil the given limit. 
  */
-export async function manualQuery(baseQuery: Query, manualFilters: ManualFilter[], operation: 'and' | 'or', limit: number, transaction?: Transaction) {
+export async function manualQuery(baseQuery: QueryableCollection, manualFilters: ManualFilter[], operation: 'and' | 'or', limit: number, transaction: TransactionWrapper | undefined) {
 
-  let cursor: DocumentSnapshot | undefined
-  let docs: QueryDocumentSnapshot[] = [];
+  let cursor: Snapshot | undefined
+  let docs: Snapshot[] = [];
   while (docs.length < limit) {
     if (limit) {
       baseQuery = baseQuery.limit(limit);

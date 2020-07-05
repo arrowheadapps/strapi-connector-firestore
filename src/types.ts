@@ -1,8 +1,15 @@
-import type { Firestore, CollectionReference } from '@google-cloud/firestore';
+import type { Firestore, DocumentData } from '@google-cloud/firestore';
+import type { QueryableCollection, Reference } from './utils/queryable-collection';
+import type { TransactionWrapper } from './utils/transaction-wrapper';
 
 export interface Options {
   useEmulator: boolean
-  singleId: string,
+  singleId: string
+
+  /**
+   * Flatten core Strapi models.
+   */
+  flattenCore: boolean
 }
 
 declare global {
@@ -10,7 +17,11 @@ declare global {
 }
 
 export interface Strapi {
-  config: any
+  config: {
+    connections: Record<string, any>
+    hook: any
+    appPath: string
+  }
   components: Record<string, FirestoreConnectorModel>
   models: Record<string, FirestoreConnectorModel>
   admin: StrapiPlugin
@@ -48,30 +59,40 @@ export interface StrapiModel {
   connection: string
   primaryKey: string
   primaryKeyType: string
-  attributes: Record<string, any>
+  attributes: Record<string, StrapiRelation>
   collectionName: string
   kind: 'collectionType' | 'singleType'
   globalId: string
   orm: string
   options: {
     timestamps: boolean | [string, string]
+    flatten?: boolean
   }
   associations: StrapiAssociation[]
 }
 
-export type StrapiRelation = 'oneWay' | 'manyWay' | 'oneToMany' | 'oneToOne' | 'manyToMany' | 'manyToOne' | 'oneToManyMorph' | 'manyToManyMorph' | 'manyMorphToMany' | 'manyMorphToOne' | 'oneMorphToOne' | 'oneMorphToMany';
+export type StrapiRelationType = 'oneWay' | 'manyWay' | 'oneToMany' | 'oneToOne' | 'manyToMany' | 'manyToOne' | 'oneToManyMorph' | 'manyToManyMorph' | 'manyMorphToMany' | 'manyMorphToOne' | 'oneMorphToOne' | 'oneMorphToMany';
 
-export interface StrapiAssociation {
-  alias: string
-  autoPopulate: boolean
-  collection: string
+export interface StrapiRelation {
   dominant: boolean
-  filter: string
-  nature: StrapiRelation
-  plugin: string
-  type: string
   via: string
   model: string
+  collection: string
+  filter: string
+  plugin: string
+  autoPopulate: boolean
+  type: string
+  required: boolean
+  component: string
+  components: string[]
+  repeatable: boolean
+  min: number
+  max: number
+}
+
+export interface StrapiAssociation extends StrapiRelation {
+  alias: string
+  nature: StrapiRelationType
 }
 
 export interface StrapiFilter {
@@ -91,18 +112,34 @@ export interface FirestoreConnectorContext {
   instance: Firestore
   strapi: Strapi
   connection: StrapiModel,
+  modelKey: string
   options: Options
+  isComponent?: boolean
 }
 
-export type FirestoreConnectorModel = CollectionReference & StrapiModel & {
-  _attributes: Record<string, any>
+export interface FirestoreConnectorModel extends StrapiModel {
+  firestore: Firestore;
+  db: QueryableCollection;
 
+  doc(): Reference;
+  doc(id: string): Reference;
+  setMerge(ref: Reference, data: DocumentData, transaction: TransactionWrapper | undefined): Promise<void>;
+  delete(ref: Reference, transaction: TransactionWrapper): Promise<void>;
+  create(ref: Reference, data: DocumentData, transaction: TransactionWrapper | undefined): Promise<void>;
 
   assocKeys: string[];
   componentKeys: string[];
   idKeys: string[];
   excludedKeys: string[];
   defaultPopulate: string[];
+
+  /**
+   * Set of relations on other models that relate to this
+   * model with `oneWay` and `manyWay` relations.
+   * We take note of them here because we will need to search and update
+   * these relations when items in this model are deleted.
+   */
+  relatedNonDominantAttrs: { key: string, attr: StrapiRelation, modelKey: string }[]
   
   hasPK: (obj: any) => boolean;
   getPK: (obj: any) => string;

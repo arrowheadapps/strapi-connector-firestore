@@ -1,6 +1,7 @@
 import * as _ from 'lodash';
-import { DocumentReference } from '@google-cloud/firestore';
-import { FirestoreConnectorModel } from '../types';
+import { DocumentReference, Firestore } from '@google-cloud/firestore';
+import type { FirestoreConnectorModel } from '../types';
+import { Reference, parseDeepReference } from './queryable-collection';
 
 
 export function getModel(model: string, plugin: string): FirestoreConnectorModel | undefined {
@@ -11,13 +12,40 @@ export function getModel(model: string, plugin: string): FirestoreConnectorModel
   );
 };
 
+export function refEquals(a: Reference | null, b: Reference | null): boolean {
+  if (typeof a === 'string') {
+    return a === b;
+  } else if (a) {
+    return a.id === ((b as any) || {}).id;
+  }
+  return false;
+}
 
-export function getDocRef(value: any, model: FirestoreConnectorModel): DocumentReference | DocumentReference[] | null {
-  return value = value instanceof DocumentReference
-    ? value
-    : value 
-      ? _.isArray(value) 
-        ? value.map(v => getDocRef(v, model)).filter(ref => ref) as DocumentReference[]
-        : model.doc(_.get(value, model.primaryKey, value))
-      : null;
+export function parseRef(ref: Reference, instance: Firestore) {
+  if (typeof ref === 'string') {
+    return parseDeepReference(ref, instance);
+  } else {
+    return ref;
+  }
+}
+
+export function getDocRef(value: any, model: FirestoreConnectorModel): Reference | Reference[] | null {
+  if (_.isArray(value)) {
+    return value.map(v => singleDocRef(v, model)!).filter(Boolean);
+  } else {
+    return singleDocRef(value, model);
+  }
+}
+
+function singleDocRef(value: any, model: FirestoreConnectorModel): Reference | null {
+  if (value instanceof DocumentReference) {
+    return value;
+  }
+
+  const id = (typeof value === 'string') ? value : _.get(value, model.primaryKey);
+  if (id) {
+    model.doc(id);
+  }
+  
+  return null;
 }

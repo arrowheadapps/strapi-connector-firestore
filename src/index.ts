@@ -18,6 +18,7 @@ const defaults = {
 const defaultOptions: Options = {
   useEmulator: false,
   singleId: 'default',
+  flattenCore: true
 }
 
 const isFirestoreConnection = ({ connector }: StrapiModel) => connector === 'firestore';
@@ -26,12 +27,12 @@ module.exports = function(strapi: Strapi) {
   function initialize() {
     const { connections } = strapi.config;
 
-    const connectionsPromises = Object.keys(connections)
-      .filter(key => isFirestoreConnection(connections[key]))
-      .map(async connectionName => {
-        const connection = connections[connectionName];
+    for (const [connectionName, connection] of Object.entries(connections)) {
+      if (!isFirestoreConnection(connection)) {
+        continue;
+      }
 
-        _.defaults(connection.settings, strapi.config.hook.settings.firestore);
+      _.defaults(connection.settings, strapi.config.hook.settings.firestore);
         const options: Options = _.defaults(connection.options, defaultOptions);
 
         const settings: Settings = {
@@ -64,61 +65,34 @@ module.exports = function(strapi: Strapi) {
           require(initFunctionPath)(instance, connection);
         }
 
-        const ctx: FirestoreConnectorContext = {
+        _.set(strapi, `connections.${connectionName}`, instance);
+
+
+        const ctx = {
           instance,
           connection,
           strapi,
           options
         };
+        
+        function parseModels(models: Record<string, StrapiModel>, opts?: Partial<FirestoreConnectorContext>): FirestoreConnectorContext[] {
+          return Object.entries(models).map(([modelKey, connection]) => ({ ...ctx, modelKey, connection, ...opts }));
+        }
 
-        _.set(strapi, `connections.${connectionName}`, instance);
+        const allModels: FirestoreConnectorContext[] = [
+          ...parseModels(strapi.components, { isComponent: true }),
+          ...parseModels(strapi.models),
+          ...Object.values(strapi.plugins).flatMap(({ models }) => parseModels(models)),
+          ...parseModels(strapi.admin.models).map(model => {
+            if (options.flattenCore) {
+              _.set(model, 'connection.options.flatten', true);
+            } 
+            return model;
+          })
+        ];
 
-        return Promise.all([
-          mountComponents(connectionName, ctx),
-          mountApis(connectionName, ctx),
-          mountAdmin(connectionName, ctx),
-          mountPlugins(connectionName, ctx),
-        ]);
-      });
-
-    return Promise.all(connectionsPromises);
-  }
-
-  function mountComponents(connectionName: string, ctx: FirestoreConnectorContext) {
-    return mountModels(
-      _.pickBy(strapi.components, ({ connection }) => connection === connectionName), 
-      strapi.components, 
-      ctx
-    );
-  }
-
-  function mountApis(connectionName: string, ctx: FirestoreConnectorContext) {
-    return mountModels(
-      _.pickBy(strapi.models, ({ connection }) => connection === connectionName),
-      strapi.models,
-      ctx
-    );
-  }
-
-  function mountAdmin(connectionName: string, ctx: FirestoreConnectorContext) {
-    return mountModels(
-      _.pickBy(strapi.admin.models, ({ connection }) => connection === connectionName),
-      strapi.admin.models,
-      ctx
-    );
-  }
-
-  function mountPlugins(connectionName: string, ctx: FirestoreConnectorContext) {
-    return Promise.all(
-      Object.keys(strapi.plugins).map(name => {
-        const plugin = strapi.plugins[name];
-        return mountModels(
-          _.pickBy(plugin.models, ({ connection }) => connection === connectionName),
-          plugin.models,
-          ctx
-        );
-      })
-    );
+        mountModels(allModels);
+    }
   }
 
   return {
