@@ -44,15 +44,76 @@ $ npm install --save strapi-connector-firestore
 Configure Strapi (`^3.0.0`) to use the Firestore database connector in `./config/database.js`:
 
 ```javascript
+// ./config/database.js
 module.exports = ({ env }) => ({
   defaultConnection: 'default',
   connections: {
     default: {
       connector: 'firestore',
-      // `settings` can be omitted in environments that support
-      // application default credentials (e.g. App Engine, Cloud Run, etc)
-      // Or provide any Firestore options as specified here:
-      // https://googleapis.dev/nodejs/firestore/latest/Firestore.html#Firestore
+      settings: {
+        projectId: '{YOUR_PROJECT_ID}',
+      },
+      options: {
+        // Connect to a local running Firestore emulator
+        // when running in development mode
+        useEmulator: process.env.NODE_ENV == 'development'
+      }
+    }
+  },
+});
+```
+
+## Usage Instructions
+
+### Configuration options
+
+These are the available options to be specified in the Strapi database configuration file: `./config/database.js`.
+
+| Name                  | Type        | Default     | Description                     |
+|-----------------------|-------------|-------------|---------------------------------|
+| `settings`            | `Object`    | `undefined` | Passed directly to the Firestore constructor. Specify any options described here: https://googleapis.dev/nodejs/firestore/latest/Firestore.html#Firestore. You can omit this completely on platforms that support [Application Default Credentials](https://cloud.google.com/docs/authentication/production#finding_credentials_automatically) such as Cloud Run, and App Engine. If you want to test locally using a local emulator, you need to at least specify the `projectId`. |
+| `options.useEmulator` | `string`    | `false`     | Connect to a local Firestore emulator instead of the production database. You must start a local emulator yourself using `firebase emulators:start --only firestore` before you start Strapi. See https://firebase.google.com/docs/emulator-suite/install_and_configure. |
+| `options.singleId`    | `string`    | `"default"` | The document ID to used for `singleType` models and flattened models. |
+| `options.flattenCore` | `boolean`   | `true`      | Configure whether to flatten the core Strapi models. See section on flattening below. |
+
+### Collection flattening
+
+You can choose to "flatten" a collection of Firestore documents down to fields within a single Firestore document. Considering that Firestore charges for document read and write operations, you may choose to flatten a collection to reduce usage costs and/or improve performance, however it may increase bandwidth costs as the collection will always be retrieved in it's entirety. Flattening may be especially beneficial for collections that are often queried in their entirety anyway.
+
+Before choosing to flatten a collection, consider the following:
+
+- The collection should be bounded (i.e. you can guarantee that there will only be a finite number of entries). For example, a collection of users would be unbounded, but Strapi configurations and permissions/roles would be bounded.
+- The number of entries and size of the entries must fit within a single Firestore document. The size limit for a Firestore document is 1MiB ([see limits](https://firebase.google.com/docs/firestore/quotas#limits)).
+
+### Minimal example
+
+This is the minimum possible configuration, which will only work for GCP platforms that support Application Default Credentials.
+
+```javascript
+// ./config/database.js
+module.exports = ({ env }) => ({
+  defaultConnection: 'default',
+  connections: {
+    default: {
+      connector: 'firestore',
+    }
+  },
+});
+```
+
+### Full example
+
+This configuration will work for production deployments and also local development using an emulator (when `process.env.NODE_ENV == 'development'`). For production deployments on non-GCP platforms (not supporting Application Default Credentials), make sure to download a service account key file, and set an environment variable `GOOGLE_APPLICATION_CREDENTIALS` pointing to the file.
+
+See https://cloud.google.com/docs/authentication/production#obtaining_and_providing_service_account_credentials_manually.
+
+```javascript
+// ./config/database.js
+module.exports = ({ env }) => ({
+  defaultConnection: 'default',
+  connections: {
+    default: {
+      connector: 'firestore',
       settings: {
         projectId: '{YOUR_PROJECT_ID}',
       },
@@ -60,14 +121,7 @@ module.exports = ({ env }) => ({
         // Connect to a local running Firestore emulator
         // when running in development mode
         useEmulator: process.env.NODE_ENV == 'development',
-
-        // The document ID to use for `singleType` models
-        // The document will be located at `"${collectionName}/${singleId}"`
-        // Defaults to `"default"`
         singleId: 'default',
-
-        // Configure whether to flatten the core Strapi models
-        // Defaults to `true`.
         flattenCore: true,
       }
     }
