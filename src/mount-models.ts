@@ -5,6 +5,8 @@ import { DocumentReference, FieldValue, DocumentData } from '@google-cloud/fires
 import { parseDeepReference } from './utils/queryable-collection';
 import { FieldTransform } from '@google-cloud/firestore/build/src/field-value';
 import type { FirestoreConnectorContext, FirestoreConnectorModel } from './types';
+import { QueryableFirestoreCollection } from './utils/queryable-firestore-collection';
+import { QueryableFlatCollection } from './utils/queryable-flat-collection';
 
 export const DEFAULT_CREATE_TIME_KEY = 'createdAt';
 export const DEFAULT_UPDATE_TIME_KEY = 'updatedAt';
@@ -42,13 +44,13 @@ export function mountModels(models: FirestoreConnectorContext[]) {
     if (!isComponent) {
       const collection = instance.collection(model.collectionName || model.globalId);
 
-      model.db = collection;
       model.firestore = instance;
 
       if (flattenedKey) {
 
         const flatDoc = collection.doc(flattenedKey);
 
+        model.db = new QueryableFlatCollection(flatDoc);
         model.doc = (id?: string) => {
           return path.posix.join(flatDoc.path, id || collection.doc().id)
         };
@@ -106,6 +108,7 @@ export function mountModels(models: FirestoreConnectorContext[]) {
 
       } else {
 
+        model.db = new QueryableFirestoreCollection(collection);
         model.doc = (id?: string) => id ? collection.doc(id) : collection.doc();
 
         model.delete = async (ref, trans) => {
