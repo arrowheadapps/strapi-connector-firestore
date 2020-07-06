@@ -1,5 +1,5 @@
-import { DocumentReference, DocumentSnapshot, Transaction, ReadOptions, DocumentData, Firestore } from '@google-cloud/firestore';
-import { QueryableCollection, Snapshot, QuerySnapshot, Reference, FlatCollection, parseDeepReference } from './queryable-collection';
+import { DocumentReference, DocumentSnapshot, Transaction, ReadOptions, DocumentData, Firestore, Query } from '@google-cloud/firestore';
+import { QueryableCollection, Snapshot, QuerySnapshot, Reference, parseDeepReference } from './queryable-collection';
 
 export class TransactionWrapper {
   private readonly transaction: Transaction
@@ -7,16 +7,14 @@ export class TransactionWrapper {
 
   private readonly keyedContext: Record<string, DocumentData> = {};
 
-  constructor(transaction: Transaction, readonly instance: Firestore) {
+  constructor(transaction: Transaction, private readonly instance: Firestore) {
     this.transaction = transaction;
     this.instance = instance;
   }
 
   get(documentRef: Reference): Promise<Snapshot>;
   get(query: QueryableCollection): Promise<QuerySnapshot>;
-
-
-  async get(val): Promise<any> {
+  async get(val: Reference | QueryableCollection): Promise<any> {
     // Deep reference to flat collection
     if (typeof val === 'string') {
       const { doc, id } = parseDeepReference(val, this.instance);
@@ -30,15 +28,18 @@ export class TransactionWrapper {
       };
       return snap;
     }
-    
-    // Query on a flat collection
-    if (val instanceof FlatCollection) {
-      // TODO
-      return;
+
+    if (val instanceof DocumentReference) {
+      return await this.transaction.get(val);
     }
 
-    // Native Firestore query or reference
-    return await this.transaction.get(val)
+    if (val instanceof Query) {
+      return await this.transaction.get(val);
+    }
+    
+    // Queryable collection
+    return await val.get(this.transaction);
+
   }
 
   getAll<T>(...documentRefsOrReadOptions: (DocumentReference<T> | ReadOptions)[]): Promise<DocumentSnapshot<T>[]> {

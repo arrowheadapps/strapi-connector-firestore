@@ -6,97 +6,20 @@ import * as _ from 'lodash';
 import { populateDocs } from './populate';
 import { getDocRef, getModel } from './utils/get-doc-ref';
 import { convertRestQueryParams } from 'strapi-utils';
-import type { StrapiQueryParams, StrapiFilter, StrapiWhereFilter } from './types';
+import type { StrapiQueryParams, StrapiFilter } from './types';
 import { StatusError } from './utils/status-error';
 import { deleteRelations, updateRelations } from './relations';
-import { WhereFilterOp, DocumentData, FieldValue } from '@google-cloud/firestore';
+import { FieldValue, FieldPath } from '@google-cloud/firestore';
 import { validateComponents } from './utils/validate-components';
-import { ManualFilter, manualQuery } from './utils/manual-query';
 import { TransactionWrapper } from './utils/transaction-wrapper';
-import type { Snapshot } from './utils/queryable-collection';
+import type { Snapshot, QueryableCollection } from './utils/queryable-collection';
 
 
 
 export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
   
 
-
-  function manualWhere(field: string, predicate: (fieldValue: any) => boolean) {
-    return (docData: DocumentData) => {
-      const value = _.get(docData, field, undefined);
-      return predicate(value);
-    };
-  }
-  
-
-  function convertWhere({ field, value, operator }: StrapiWhereFilter) {
-    
-    const details = model.attributes[field];
-    const assocModel = getModel(details.model || details.collection, details.plugin);
-
-    if (assocModel) {
-      // Convert reference ID to document reference
-      value = getDocRef(value, assocModel);
-    }
-
-    let op: WhereFilterOp | ((data: DocumentData) => boolean);
-    switch (operator) {
-      case 'eq':
-        op = '==';
-        break;
-      case 'ne':
-        op = manualWhere(field, (val) => val != value);
-        break;
-      case 'in':
-        op = 'in';
-        break;
-      case 'nin':
-        op = manualWhere(field, (val) => !_.includes(val, value));
-        break;
-      case 'contains':
-        op = manualWhere(field, (val) => _.includes(val, value));
-        break;
-      case 'ncontains':
-        op = manualWhere(field, (val) => !_.includes(val, value));
-        break;
-      case 'containss':
-        op = manualWhere(field, (val) => _.includes(_.toLower(val), _.toLower(value)));
-        break;
-      case 'ncontainss':
-        op = manualWhere(field, (val) => !_.includes(_.toLower(val), _.toLower(value)));
-        break;
-      case 'lt':
-        op = '<';
-        break;
-      case 'lte':
-        op = '<=';
-        break;
-      case 'gt':
-        op = '>';
-        break;
-      case 'gte':
-        op = '>=';
-        break;
-      case 'null':
-        if (value) {
-          op = '==';
-          value = null;
-        } else {
-          op = manualWhere(field, (val) => val != null);
-        }
-        break;
-    }
-
-    return {
-      field,
-      operator: op,
-      value
-    };
-  }
-
-  function buildSearchQuery(value: any) {
-    let query = model.db;
-    const manualFilters: ManualFilter[] = [];
+  function buildSearchQuery(value: any, query: QueryableCollection) {
   
     Object.keys(model.attributes).forEach((field) => {
       switch (model.attributes[field].type) {
@@ -106,7 +29,7 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
         case 'decimal':
           const number = _.toNumber(value);
           if (!_.isNaN(number)) {
-            query = query.where(field, '==', number);
+            query = query.where(field, 'eq', number, 'or');
           }
         case 'string':
         case 'text':
@@ -114,47 +37,40 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
         case 'email':
         case 'enumeration':
         case 'uid':
-          const regex = new RegExp(value, 'i');
-          manualFilters.push(manualWhere(field, (val) => regex.test(val)));
+          query = query.where(field, new RegExp(value, 'i'), 'or');
       }
     });
   
-    return { query, manualFilters };
+    return query;
   };
 
-  async function buildFirestoreQuery(params, searchQuery: string | undefined, transaction: TransactionWrapper | undefined) {
+  function buildFirestoreQuery(params, searchQuery: string | null, query: QueryableCollection) {
     // Remove any search query
     // because we extract and handle it separately
+    // Otherwise `convertRestQueryParams` will also handle it
     delete params._q;
-
     const filters: StrapiFilter = convertRestQueryParams(params);
-    let query = model.db;
-    let manualFilters: ManualFilter[] = [];
 
     if (searchQuery) {
-      const q = buildSearchQuery(searchQuery);
-      manualFilters = manualFilters.concat(q.manualFilters);
-      query = q.query;
+      query = buildSearchQuery(searchQuery, query);
     } else {
-      (filters.where || []).forEach((filter) => {
-        const { field, operator, value } = convertWhere(filter);
-        if (typeof operator === 'function') {
-          manualFilters.push(operator);
-        } else {
-          query = query.where(field, operator, value);
+      (filters.where || []).forEach(({ field, operator, value }) => {
+
+        // Convert reference ID to document reference
+        const details = model.attributes[field];
+        const assocModel = getModel(details.model || details.collection, details.plugin);
+        if (assocModel) {
+          value = getDocRef(value, assocModel);
         }
+
+        query = query.where(field, operator, value);
       });
     }
 
-    let idSortOrder: 'asc' | 'desc' | undefined
 
     (filters.sort || []).forEach(({ field, order }) => {
       if (_.includes(model.idKeys, field)) {
-        // While it is possible to order by `FieldPath.documentId()`
-        // that will do a case sensitive sort, and it also only supports ascending sort
-        // So we will manually order by ID once we get the results
-        idSortOrder = order;
-        return;
+        query = query.orderBy(FieldPath.documentId() as any, order);
       } else {
         query = query.orderBy(field, order);
       }
@@ -165,23 +81,18 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
     }
 
     const limit = Math.max(0, filters.limit || 0);
-    const results = await manualQuery(
-      query, 
-      manualFilters,
-      searchQuery ? 'or' : 'and', 
-      limit, 
-      transaction
-    );
+    query = query.limit(limit);
 
-    if (idSortOrder) {
-      const sorted = _.sortBy(results, r => _.toLower(r.id));
-      return idSortOrder === 'desc'
-        ? _.reverse(sorted)
-        : sorted;
-    } else {
-      return results;
-    }
+    return query;
   }
+
+  async function runFirestoreQuery(params, searchQuery: string | null, transaction: TransactionWrapper | undefined) {
+    const query = buildFirestoreQuery(params, searchQuery, model.db);
+    const result = await (transaction ? transaction.get(query) : query.get());
+    return result.docs;
+  }
+
+
 
 
   async function find(params: any, populate?: string[]) {
@@ -199,7 +110,7 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
           docs = [snap];
         }
       } else {
-        docs = await buildFirestoreQuery(params, undefined, wrapper);
+        docs = await runFirestoreQuery(params, null, wrapper);
       }
 
       return await populateDocs(model, docs, populateOpt, wrapper);
@@ -213,7 +124,7 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
 
   async function count(params: any) {
     // Don't populate any fields, we are just counting
-    const docs = await buildFirestoreQuery(params, undefined, undefined);
+    const docs = await runFirestoreQuery(params, null, undefined);
     return docs.length;
   }
 
@@ -297,7 +208,7 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
           snap = null;
         }
       } else {
-        const docs = await buildFirestoreQuery({ ...params, _limit: 1 }, undefined, wrapper);
+        const docs = await runFirestoreQuery({ ...params, _limit: 1 }, null, wrapper);
         snap = docs[0] || null;
       }
 
@@ -385,7 +296,7 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
           docs = [snap];
         }
       } else {
-        docs = await buildFirestoreQuery(params, params._q, wrapper);
+        docs = await runFirestoreQuery(params, params._q, wrapper);
       }
 
       return await populateDocs(model, docs, populateOpt, wrapper);
@@ -394,7 +305,7 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
 
   async function countSearch(params: any) {
     // Don't populate any fields, we are just counting
-    const docs = await buildFirestoreQuery(params, params._q, undefined);
+    const docs = await runFirestoreQuery(params, params._q, undefined);
     return docs.length;
   }
 

@@ -1,21 +1,28 @@
 import * as _ from 'lodash';
 import * as path from 'path';
-import { QueryableCollection, QuerySnapshot, Snapshot } from "./queryable-collection";
-import type { DocumentReference, DocumentData, OrderByDirection, Transaction, WhereFilterOp } from "@google-cloud/firestore";
+import { QueryableCollection, QuerySnapshot, Snapshot } from './queryable-collection';
+import { getFieldPath, convertWhereManual, ManualFilter } from './convert-where';
+import type { DocumentReference, OrderByDirection, Transaction, FieldPath, WhereFilterOp } from '@google-cloud/firestore';
+import type { StrapiWhereOperator } from '../types';
 
 
 export class QueryableFlatCollection implements QueryableCollection {
 
   private readonly doc: DocumentReference
-  private _filters: ((data: DocumentData) => boolean)[] = [];
-  private _orderBy?: { fieldPath: string, directionStr: OrderByDirection }
+  private _filters: ManualFilter[] = [];
+  private _orFilters: ManualFilter[] = [];
+  private _orderBy?: { field: string | FieldPath, directionStr: OrderByDirection }
   private _limit?: number
   private _offset?: number
 
   constructor(other: DocumentReference | QueryableFlatCollection) {
     if (other instanceof QueryableFlatCollection) {
       this.doc = other.doc;
-      this._filters = other._filters;
+      // Copy the values
+      this._filters = other._filters.slice();
+      this._orderBy = Object.assign({}, other._orderBy);
+      this._limit = other._limit;
+      this._offset = other._offset;
     } else {
       this.doc = other;
     }
@@ -26,7 +33,9 @@ export class QueryableFlatCollection implements QueryableCollection {
 
     let docs: Snapshot[] = [];
     for (const [id, data] of Object.entries(snap.data() || {})) {
-      if (this._filters.every(f => f(data))) {
+      // Must match every 'AND' filter (if any exist)
+      // and at least one 'OR' filter (if any exists)
+      if ((!this._filters.length || this._filters.every(f => f(data))) && (!this._orFilters || this._orFilters.some(f => f(data)))) {
         docs.push({
           id,
           data: () => data,
@@ -37,7 +46,7 @@ export class QueryableFlatCollection implements QueryableCollection {
     };
 
     if (this._orderBy) {
-      docs = _.sortBy(docs, d => _.get(d, this._orderBy!.fieldPath));
+      docs = _.sortBy(docs, d => getFieldPath(this._orderBy!.field, d));
       if (this._orderBy!.directionStr === 'desc') {
         docs = _.reverse(docs);
       }
@@ -54,16 +63,22 @@ export class QueryableFlatCollection implements QueryableCollection {
     };
   }
 
-  where(fieldPath: string, opStr: WhereFilterOp, value: any): QueryableCollection {
+  where(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator | RegExp, value: any, combinator: 'and' | 'or' = 'and'): QueryableCollection {
     const other = new QueryableFlatCollection(this);
-    other._filters.push();
 
-    throw new Error("Method not implemented.");
+    const { operator: op } = convertWhereManual(field, operator, value);
+    if (combinator === 'or') {
+      other._orFilters.push(op);
+    } else {
+      other._filters.push(op);
+    }
+
+    return other;
   }
 
-  orderBy(fieldPath: string, directionStr: OrderByDirection = 'asc'): QueryableCollection {
+  orderBy(field: string | FieldPath, directionStr: OrderByDirection = 'asc'): QueryableCollection {
     const other = new QueryableFlatCollection(this);
-    other._orderBy = { fieldPath, directionStr };
+    other._orderBy = { field, directionStr };
     return other;
   }
 
@@ -78,10 +93,4 @@ export class QueryableFlatCollection implements QueryableCollection {
     other._offset = offset;
     return other;
   }
-
-  search(query: string): QueryableCollection {
-    throw new Error("Method not implemented.");
-  }
-
-
 }

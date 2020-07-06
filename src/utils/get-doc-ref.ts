@@ -42,6 +42,8 @@ function singleDocRef(value: any, model: FirestoreConnectorModel): Reference | n
     return value;
   }
 
+  // FIXME:
+  // Parse references to flattened documents
   const id = (typeof value === 'string') ? value : _.get(value, model.primaryKey);
   if (id) {
     model.doc(id);

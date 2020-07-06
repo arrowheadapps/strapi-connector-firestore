@@ -102,9 +102,11 @@ export interface StrapiFilter {
   where?: StrapiWhereFilter[]
 }
 
+export type StrapiWhereOperator = 'eq' | 'ne' | 'in' | 'nin' | 'contains' | 'ncontains' | 'containss' | 'ncontainss' | 'lt' | 'lte' | 'gt' | 'gte' | 'null';
+
 export interface StrapiWhereFilter {
   field: string
-  operator: 'eq' | 'ne' | 'in' | 'nin' | 'contains' | 'ncontains' | 'containss' | 'ncontainss' | 'lt' | 'lte' | 'gt' | 'gte' | 'null'
+  operator: StrapiWhereOperator
   value: any
 }
 
