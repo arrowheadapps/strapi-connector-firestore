@@ -19,7 +19,7 @@ jobs:
           java-version: 1.8
 
       - name: Install root package
-        run: npm install --only=dev
+        run: npm install
 
       - name: Install test package
         run: npm install --prefix test
