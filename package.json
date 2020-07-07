@@ -22,7 +22,9 @@
   ],
   "scripts": {
     "build": "rm -rf lib && tsc",
-    "prepare": "tsc --skipLibCheck"
+    "prepare": "tsc --skipLibCheck",
+    "test": "tsc --skipLibCheck && node test/e2e.js",
+    "test:e2e": "jest --config jest.config.e2e.js --runInBand --verbose --forceExit --detectOpenHandles"
   },
   "dependencies": {
     "@google-cloud/firestore": "^4.0.0",
