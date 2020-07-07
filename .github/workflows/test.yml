@@ -23,6 +23,7 @@ jobs:
           java-version: 1.8
 
 
+      - name: Cache NPM packages
       - uses: actions/cache@v2
         with:
           path: ~/.npm
@@ -33,7 +34,7 @@ jobs:
         run: npm install
       - name: Install test package
         run: npm install --prefix test
-        
+
       - name: Cache emulators
         uses: actions/cache@v2.0.0
         with:

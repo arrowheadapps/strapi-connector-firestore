@@ -13,7 +13,7 @@ const test = async () => {
   });
 };
 
-const main = async (args = '') => {
+const main = async () => {
   let firestoreProcess;
   let testAppProcess;
   let err;
@@ -27,7 +27,7 @@ const main = async (args = '') => {
     testAppProcess = startTestApp({ appName });
     await Promise.race([testAppProcess, waitOn({ resources: ['http://localhost:1337'], timeout: 30_000, })]);
 
-    await test(args);
+    await test();
 
   } catch (error) {
     console.log(error);
@@ -35,14 +35,16 @@ const main = async (args = '') => {
   } finally {
     if (firestoreProcess) {
       try {
-        firestoreProcess.kill('SIGINT');
+        console.log('Killing Firestore...');
+        firestoreProcess.kill('SIGINT', { forceKillAfterTimeout: 5000 });
         await firestoreProcess;
       } catch {
       }
     }
     if (testAppProcess) {
       try {
-        testAppProcess.kill('SIGINT');
+        console.log('Killing Strapi...');
+        testAppProcess.kill('SIGINT', { forceKillAfterTimeout: 5000 });
         await testAppProcess;
       } catch {
       }
