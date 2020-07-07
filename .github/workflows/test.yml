@@ -1,0 +1,30 @@
+name: Run tests
+on:
+  push:
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v2
+      - name: Setup Node.js
+        uses: actions/setup-node@v2
+      - name: Install package
+        run: npm install
+      - name: Setup Java JDK
+        uses: actions/setup-java@v1
+        with:
+          java-version: 1.8
+      - name: Cache emulators
+        uses: actions/cache@v2.0.0
+        with:
+          path: ~/.cache/firebase/emulators
+          key: ${{ runner.os }}
+      - name: Install emulators
+        run: firebase setup:emulators:firestore 
+      - name: Run tests
+        run: npm test

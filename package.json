@@ -23,24 +23,16 @@
   "scripts": {
     "build": "rm -rf lib && tsc",
     "prepare": "tsc --skipLibCheck",
-    "test": "tsc --skipLibCheck && node test/e2e.js",
-    "test:e2e": "jest --config jest.config.e2e.js --runInBand --verbose --forceExit --detectOpenHandles"
+    "test": "tsc --skipLibCheck && cd test && node e2e.js"
   },
   "dependencies": {
     "@google-cloud/firestore": "^4.0.0",
     "lodash": "^4.17.15",
-    "strapi-utils": "3.0.5"
+    "strapi-utils": "^3.0.5"
   },
   "devDependencies": {
     "@types/lodash": "^4.14.157",
     "@types/node": "^14.0.14",
-    "execa": "^4.0.2",
-    "jest": "^26.1.0",
-    "request-promise-native": "^1.0.8",
-    "rimraf": "^3.0.2",
-    "strapi": "^3.0.5",
-    "strapi-generate-new": "^3.0.5",
-    "typescript": "^3.9.5",
-    "wait-on": "^5.0.1"
+    "typescript": "^3.9.5"
   }
 }

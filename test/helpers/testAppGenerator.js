@@ -1,62 +1,28 @@
 const path = require('path');
 const rimraf = require('rimraf');
 const execa = require('execa');
-const generateNew = require('strapi-generate-new/lib/generate-new');
+const fs = require('fs-extra');
+const { promisify } = require('util');
+
+const rm = promisify(rimraf);
 
 /**
  * Delete the testApp folder
  * @param {string} appName - name of the app / folder where the app is located
  */
-const cleanTestApp = appName => {
-  return new Promise((resolve, reject) => {
-    rimraf(path.resolve(appName), err => {
-      if (err) reject(err);
-      resolve();
-    });
-  });
-};
+const cleanTestApp = async appName => {
+  await Promise.all([
+    rm(path.resolve(appName, '.cache')),
+    rm(path.resolve(appName, '.temp')),
+    rm(path.resolve(appName, 'public')),
+    rm(path.resolve(appName, 'build')),
+    rm(path.resolve(appName, 'api')),
+    rm(path.resolve(appName, 'extensions')),
+    rm(path.resolve(appName, 'components')),
+  ]);
 
-/**
- * Runs strapi generate new
- * @param {Object} options - Options
- * @param {string} options.appName - Name of the app that will be created (also the name of the folder)
- * @param {database} options.database - Arguments to create the testApp with the provided database params
- */
-const generateTestApp = async ({ appName, database }) => {
-  const scope = {
-    database: {
-      settings: database,
-      options: {},
-    },
-    rootPath: path.resolve(appName),
-    name: appName,
-    // disable quickstart run app after creation
-    runQuickstartApp: false,
-    // use pacakge version as strapiVersion (all packages have the same version);
-    strapiVersion: require('strapi/package.json').version,
-    debug: false,
-    quick: false,
-    uuid: undefined,
-    deviceId: null,
-    // use yarn if available and --use-npm isn't true
-    useYarn: true,
-    installDependencies: false,
-    strapiDependencies: [
-      'strapi',
-      'strapi-admin',
-      'strapi-utils',
-      'strapi-plugin-content-type-builder',
-      'strapi-plugin-content-manager',
-      'strapi-plugin-users-permissions',
-      'strapi-plugin-email',
-      'strapi-plugin-upload',
-      'strapi-plugin-graphql',
-      'strapi-plugin-documentation',
-    ],
-    additionalsDependencies: {},
-  };
-
-  await generateNew(scope);
+  await fs.mkdir('api');
+  await fs.mkdir('extensions');
 };
 
 /**
@@ -65,14 +31,14 @@ const generateTestApp = async ({ appName, database }) => {
  * @param {string} options.appName - Name of the app / folder in which run the start script
  */
 const startTestApp = ({ appName }) => {
-  return execa.shell('BROWSER=none strapi develop --no-build', {
+  return execa('BROWSER=none node_modules/.bin/strapi start', {
     stdio: 'inherit',
     cwd: path.resolve(appName),
+    shell: true,
   });
 };
 
 module.exports = {
   cleanTestApp,
-  generateTestApp,
   startTestApp,
 };

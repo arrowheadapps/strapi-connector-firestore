@@ -1,0 +1,23 @@
+{
+  "private": true,
+  "scripts": {
+    "test:e2e": "jest --config ../jest.config.e2e.js --runInBand --verbose --forceExit --detectOpenHandles"
+  },
+  "dependencies": {
+    "execa": "^4.0.2",
+    "firebase-tools": "^8.4.3",
+    "fs-extra": "^9.0.1",
+    "jest": "^26.1.0",
+    "request-promise-native": "^1.0.8",
+    "rimraf": "^3.0.2",
+    "strapi": "^3.0.5",
+    "strapi-admin": "^3.0.5",
+    "strapi-connector-firestore": "file:..",
+    "strapi-plugin-content-manager": "^3.0.5",
+    "strapi-plugin-content-type-builder": "^3.0.5",
+    "strapi-plugin-upload": "^3.0.5",
+    "strapi-plugin-users-permissions": "^3.0.5",
+    "strapi-utils": "^3.0.5",
+    "wait-on": "^5.0.1"
+  }
+}

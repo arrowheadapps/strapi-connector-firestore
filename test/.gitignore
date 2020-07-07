@@ -1,0 +1,8 @@
+.cache/
+.temp/
+api/
+components/
+extensions/
+public/
+build/
+node_modules/
