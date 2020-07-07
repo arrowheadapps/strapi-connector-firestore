@@ -25,6 +25,6 @@ jobs:
           path: ~/.cache/firebase/emulators
           key: ${{ runner.os }}
       - name: Install emulators
-        run: firebase setup:emulators:firestore 
+        run: node_modules/.bin/firebase setup:emulators:firestore 
       - name: Run tests
         run: npm test
