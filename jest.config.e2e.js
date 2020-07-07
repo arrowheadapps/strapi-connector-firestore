@@ -1,11 +1,11 @@
 module.exports = {
   name: 'API integration tests',
-  testMatch: ['**/?(*.)+(spec|test).e2e.js'],
+  testMatch: ['<rootDir>/node_modules/strapi/**/?(*.)+(spec|test).e2e.js'],
   testEnvironment: 'node',
   coveragePathIgnorePatterns: [
-    '<rootDir>/dist/',
     '<rootDir>/node_modules/',
-    '<rootDir>/out-tsc/',
+    '<rootDir>/lib/',
+    '<rootDir>/src/',
     '<rootDir>/test/',
   ],
   transform: {},

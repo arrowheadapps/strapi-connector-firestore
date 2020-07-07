@@ -34,6 +34,13 @@
   "devDependencies": {
     "@types/lodash": "^4.14.157",
     "@types/node": "^14.0.14",
-    "typescript": "^3.9.5"
+    "execa": "^4.0.2",
+    "jest": "^26.1.0",
+    "request-promise-native": "^1.0.8",
+    "rimraf": "^3.0.2",
+    "strapi": "^3.0.5",
+    "strapi-generate-new": "^3.0.5",
+    "typescript": "^3.9.5",
+    "wait-on": "^5.0.1"
   }
 }
