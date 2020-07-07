@@ -22,7 +22,7 @@ const main = async (args = '') => {
     await cleanTestApp(appName);
 
     firestoreProcess = startFirestore();
-    await Promise.race([firestoreProcess, await waitOn({ resources: ['http-get://localhost:8080'], timeout: 15_000, })]);
+    await Promise.race([firestoreProcess, waitOn({ resources: ['http-get://localhost:8080'], timeout: 15_000, })]);
 
     testAppProcess = startTestApp({ appName });
     await Promise.race([testAppProcess, waitOn({ resources: ['http://localhost:1337'], timeout: 30_000, })]);
