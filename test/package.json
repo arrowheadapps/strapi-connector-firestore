@@ -1,6 +1,7 @@
 {
   "private": true,
   "scripts": {
+    "setup": "firebase setup:emulators:firestore",
     "test:e2e": "jest --config ../jest.config.e2e.js --runInBand --verbose --forceExit --detectOpenHandles"
   },
   "dependencies": {

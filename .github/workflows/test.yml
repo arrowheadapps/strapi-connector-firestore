@@ -13,18 +13,23 @@ jobs:
         uses: actions/checkout@v2
       - name: Setup Node.js
         uses: actions/setup-node@v1
-      - name: Install package
-        run: npm install
       - name: Setup Java JDK
         uses: actions/setup-java@v1
         with:
           java-version: 1.8
+
+      - name: Install root package
+        run: npm install --only=dev
+
+      - name: Install test package
+        run: npm install --prefix test
       - name: Cache emulators
         uses: actions/cache@v2.0.0
         with:
           path: ~/.cache/firebase/emulators
           key: ${{ runner.os }}
       - name: Install emulators
-        run: firebase setup:emulators:firestore 
+        run: npm run setup --prefix test 
+
       - name: Run tests
         run: npm test
