@@ -22,11 +22,18 @@ jobs:
         with:
           java-version: 1.8
 
+
+      - uses: actions/cache@v2
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
       - name: Install root package
         run: npm install
-
       - name: Install test package
         run: npm install --prefix test
+        
       - name: Cache emulators
         uses: actions/cache@v2.0.0
         with:
