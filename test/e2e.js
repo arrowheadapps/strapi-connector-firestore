@@ -37,21 +37,30 @@ const main = async () => {
     console.log(error);
     err = true;
   } finally {
-    if (firestoreProcess) {
-      try {
-        console.log('Killing Firestore...');
-        firestoreProcess.kill('SIGINT', { forceKillAfterTimeout: 5000 });
-        await firestoreProcess;
-      } catch {
-      }
-    }
     if (testAppProcess) {
       try {
         console.log('Killing Strapi...');
-        testAppProcess.kill('SIGINT', { forceKillAfterTimeout: 5000 });
-        await testAppProcess;
+        testAppProcess.kill('SIGINT', { forceKillAfterTimeout: 3000 });
+
       } catch {
       }
+    }
+    if (firestoreProcess) {
+      try {
+        console.log('Killing Firestore...');
+        firestoreProcess.kill('SIGINT', { forceKillAfterTimeout: 3000 });
+
+      } catch {
+      }
+    }
+
+    
+    try {
+      await Promise.race([
+        Promise.all([testAppProcess, firestoreProcess]),
+        new Promise(r => setTimeout(r, 5000)),
+      ]);
+    } catch {
     }
   }
 
