@@ -3,7 +3,6 @@ import * as utils from 'strapi-utils';
 import * as path from 'path';
 import { DocumentReference, FieldValue, DocumentData } from '@google-cloud/firestore';
 import { parseDeepReference } from './utils/queryable-collection';
-import { FieldTransform } from '@google-cloud/firestore/build/src/field-value';
 import type { FirestoreConnectorContext, FirestoreConnectorModel } from './types';
 import { QueryableFirestoreCollection } from './utils/queryable-firestore-collection';
 import { QueryableFlatCollection } from './utils/queryable-flat-collection';
@@ -79,9 +78,9 @@ export function mountModels(models: FirestoreConnectorContext[]) {
           // Allow merging of fields within the document field
           const pairs = _.toPairs(data);
           let dataFields: DocumentData;
-          if (!pairs.length || (data instanceof FieldTransform)) {
+          if (!pairs.length || FieldValue.delete().isEqual(data as any)) {
             // If there are no fields, then just use the original instance
-            // This applies for `null` `FieldValue.delete()` etc
+            // This applies for `null` `FieldValue.delete()`
             dataFields = data;
           } else {
             dataFields = {};
