@@ -1,0 +1,9 @@
+.cache/
+.temp/
+api/
+components/
+extensions/
+public/
+build/
+node_modules/
+__tests__/

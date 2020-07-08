@@ -22,12 +22,13 @@
   ],
   "scripts": {
     "build": "rm -rf lib && tsc",
-    "prepare": "tsc --skipLibCheck"
+    "prepare": "tsc --skipLibCheck",
+    "test": "npm test --prefix test"
   },
   "dependencies": {
     "@google-cloud/firestore": "^4.0.0",
     "lodash": "^4.17.15",
-    "strapi-utils": "3.0.5"
+    "strapi-utils": "^3.0.5"
   },
   "devDependencies": {
     "@types/lodash": "^4.14.157",
