@@ -23,7 +23,7 @@
   "scripts": {
     "build": "rm -rf lib && tsc",
     "prepare": "tsc --skipLibCheck",
-    "test": "tsc --skipLibCheck && cd test && node e2e.js"
+    "test": "npm test --prefix test"
   },
   "dependencies": {
     "@google-cloud/firestore": "^4.0.0",

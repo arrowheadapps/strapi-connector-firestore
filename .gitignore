@@ -94,4 +94,4 @@ results
 build
 node_modules
 .node_history
-
+coverage

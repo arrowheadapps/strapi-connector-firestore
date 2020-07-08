@@ -1,7 +1,7 @@
 const path = require('path');
 const execa = require('execa');
 const waitOn = require('wait-on');
-const { cleanTestApp, startTestApp } = require('./helpers/testAppGenerator');
+const { cleanTestApp, startTestApp, copyTests } = require('./helpers/testAppGenerator');
 const { startFirestore } = require('./helpers/firestore');
 
 const appName = '.';
@@ -20,6 +20,10 @@ const main = async () => {
 
   try {
     await cleanTestApp(appName);
+
+    // Required because Jest seemingly refuses to run 
+    // tests located underneath node_modules
+    await copyTests(appName);
 
     firestoreProcess = startFirestore();
     await Promise.race([firestoreProcess, waitOn({ resources: ['http-get://localhost:8080'], timeout: 15_000, })]);

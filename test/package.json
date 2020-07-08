@@ -1,11 +1,13 @@
 {
   "private": true,
   "scripts": {
-    "setup": "firebase setup:emulators:firestore",
-    "test:e2e": "jest --config ../jest.config.e2e.js --runInBand --verbose --forceExit --detectOpenHandles"
+    "test": "node e2e.js",
+    "test:e2e": "jest --config jest.config.e2e.js --runInBand --verbose --forceExit --detectOpenHandles",
+    "clean": "node -e \"require('./helpers/testAppGenerator').cleanTestApp('.')\" && rm -rf __tests__"
   },
   "dependencies": {
-    "execa": "^4.0.2",
+    "codecov": "^3.7.0",
+    "execa": "^4.0.3",
     "firebase-tools": "^8.4.3",
     "fs-extra": "^9.0.1",
     "jest": "^26.1.0",
@@ -19,6 +21,7 @@
     "strapi-plugin-upload": "^3.0.5",
     "strapi-plugin-users-permissions": "^3.0.5",
     "strapi-utils": "^3.0.5",
+    "typescript": "^3.9.6",
     "wait-on": "^5.0.1"
   }
 }

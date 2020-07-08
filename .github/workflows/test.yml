@@ -1,4 +1,4 @@
-name: Run tests
+name: Tests
 on:
   push:
     branches:
@@ -41,7 +41,11 @@ jobs:
           path: ~/.cache/firebase/emulators
           key: ${{ runner.os }}
       - name: Install emulators
-        run: npm run setup --prefix test 
+        run: test/node_modules/.bin/firebase setup:emulators:firestore 
 
       - name: Run tests
         run: npm test
+
+      - name: Upload coverage to Codecov
+        run: |
+          ./node_modules/.bin/codecov --token=${{ secrets.CODECOV_TOKEN }}
