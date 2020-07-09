@@ -50,6 +50,15 @@ jobs:
       # Upload coverage regardless if test failed or not
       - name: Run tests
         run: npm test
-      - name: Upload coverage
+      - name: Codecov
+        uses: codecov/codecov-action@v1
         if: ${{ always() }}
-        run: test/node_modules/.bin/codecov --token=${{ secrets.CODECOV_TOKEN }}
+        with:
+          fail_ci_if_error: true        
+      - name: Store coverage report
+        uses: actions/upload-artifact@v2
+        if: ${{ always() }}
+        with:
+          name: coverage
+          path: coverage/clover.xml
+
