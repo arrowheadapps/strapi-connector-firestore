@@ -5,6 +5,7 @@ https://github.com/arrowheadapps/strapi-connector-firestore/issues
 
 Known issues/not implemented
 - Higher complexity relations such as many-many, components, and polymorphism are untested
+- Deep filtering in API queries
 
 I welcome contributors to help get this package to a production ready state and maintain it.
 
