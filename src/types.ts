@@ -63,6 +63,7 @@ export interface StrapiModel {
   collectionName: string
   kind: 'collectionType' | 'singleType'
   globalId: string
+  uid: string
   orm: string
   options: {
     timestamps: boolean | [string, string]

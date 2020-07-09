@@ -35,13 +35,14 @@ export class QueryableFlatCollection implements QueryableCollection {
     for (const [id, data] of Object.entries(snap.data() || {})) {
       // Must match every 'AND' filter (if any exist)
       // and at least one 'OR' filter (if any exists)
-      if ((!this._filters.length || this._filters.every(f => f(data))) && (!this._orFilters || this._orFilters.some(f => f(data)))) {
-        docs.push({
-          id,
-          data: () => data,
-          ref: path.posix.join(this.doc.path, id),
-          exists: true
-        });
+      const snap: Snapshot = {
+        id,
+        ref: path.posix.join(this.doc.path, id),
+        exists: data != null,
+        data: () => data,
+      };
+      if ((!this._filters.length || this._filters.every(f => f(snap))) && (!this._orFilters.length || this._orFilters.some(f => f(snap)))) {
+        docs.push(snap);
       }
     };
 

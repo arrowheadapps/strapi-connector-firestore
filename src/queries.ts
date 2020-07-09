@@ -170,8 +170,8 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
       // Populate relations
       const [entry] = await populateDocs(model, [{ ref, data: () => data }], model.defaultPopulate, wrapper);
 
-      wrapper.doWrites();
       model.create(ref, data, wrapper);
+      wrapper.doWrites();
 
       return entry;
     });
@@ -237,8 +237,8 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
       const [entry] = await populateDocs(model, [snap], model.defaultPopulate, wrapper);
 
       // Update entry without relational data.
-      wrapper.doWrites();
       model.setMerge(snap.ref, data, wrapper);
+      wrapper.doWrites();
 
       return entry;
 
@@ -274,8 +274,8 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
 
       await deleteRelations(model, { entry: doc, ref }, wrapper);
 
-      wrapper.doWrites();
       model.delete(ref, wrapper);
+      wrapper.doWrites();
 
       return doc;
     });

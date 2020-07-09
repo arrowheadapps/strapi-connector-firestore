@@ -48,6 +48,7 @@ function convertWhereImpl(field: string | FieldPath, operator: WhereFilterOp | S
       op = manualWhere(field, val => val != value);
       break;
     case 'in':
+      // FIXME:
       op = manualOnly ? manualWhere(field, val => _.includes(val, value)) : 'in';
       break;
     case 'nin':
@@ -90,10 +91,43 @@ function convertWhereImpl(field: string | FieldPath, operator: WhereFilterOp | S
         op = manualWhere(field, val => operator.test(val));
         value = undefined;
       } else {
-        // If Strapi adds other operators in the future
-        // then we will end up passing it directly to Firestore
-        // which will likely throw an error
-        op = operator;
+        if (manualOnly) {
+          switch (operator) {
+            case '==':
+              op = manualWhere(field, val => val == value);
+              break;
+            case '<':
+              op = manualWhere(field, val => val < value);
+              break;
+            case '<=':
+              op = manualWhere(field, val => val <= value);
+              break;
+            case '>':
+              op = manualWhere(field, val => val > value);
+              break;
+            case '>=':
+              op = manualWhere(field, val => val >= value);
+              break;
+            case 'array-contains':
+              // FIXME:
+              // How are we measuring equality
+              op = manualWhere(field, val => _.includes(val, value));
+              break;
+            case 'array-contains-any':
+              // FIXME:
+              // How are we measuring equality
+              op = manualWhere(field, val => _.intersection(val, value).length > 0);
+              break;
+            default:
+              // FIXME: how to handle?
+              op = operator;
+          }
+        } else {
+          // If Strapi adds other operators in the future
+          // then we will end up passing it directly to Firestore
+          // which will likely throw an error
+          op = operator;
+        }
       }
   }
 

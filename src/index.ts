@@ -75,20 +75,20 @@ module.exports = function(strapi: Strapi) {
           options
         };
         
-        function parseModels(models: Record<string, StrapiModel>, opts?: Partial<FirestoreConnectorContext>): FirestoreConnectorContext[] {
+        function parseModels(models: Record<string, StrapiModel>, opts?: Partial<FirestoreConnectorContext>): ( FirestoreConnectorContext)[] {
           return Object.entries(models).map(([modelKey, connection]) => ({ ...ctx, modelKey, connection, ...opts }));
         }
 
         const allModels: FirestoreConnectorContext[] = [
           ...parseModels(strapi.components, { isComponent: true }),
-          ...parseModels(strapi.models),
-          ...Object.values(strapi.plugins).flatMap(({ models }) => parseModels(models)),
-          ...parseModels(strapi.admin.models).map(model => {
-            if (options.flattenCore) {
+          ...parseModels(strapi.models).map(model => {
+            if (options.flattenCore && model.connection.uid.startsWith('strapi::')) {
               _.set(model, 'connection.options.flatten', true);
             } 
             return model;
-          })
+          }),
+          ...Object.values(strapi.plugins).flatMap(({ models }) => parseModels(models)),
+          ...parseModels(strapi.admin.models)
         ];
 
         mountModels(allModels);

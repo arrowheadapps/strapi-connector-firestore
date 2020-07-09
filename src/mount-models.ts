@@ -1,7 +1,7 @@
 import * as _ from 'lodash';
 import * as utils from 'strapi-utils';
 import * as path from 'path';
-import { DocumentReference, FieldValue, DocumentData } from '@google-cloud/firestore';
+import { DocumentReference, FieldValue } from '@google-cloud/firestore';
 import { parseDeepReference } from './utils/queryable-collection';
 import type { FirestoreConnectorContext, FirestoreConnectorModel } from './types';
 import { QueryableFirestoreCollection } from './utils/queryable-firestore-collection';
@@ -74,34 +74,23 @@ export function mountModels(models: FirestoreConnectorContext[]) {
           if (!doc.isEqual(flatDoc)) {
             throw new Error('Reference points to a different model');
           }
-
-          // Allow merging of fields within the document field
-          const pairs = _.toPairs(data);
-          let dataFields: DocumentData;
-          if (!pairs.length || FieldValue.delete().isEqual(data as any)) {
-            // If there are no fields, then just use the original instance
-            // This applies for `null` `FieldValue.delete()`
-            dataFields = data;
-          } else {
-            dataFields = {};
-            pairs.forEach(([path, val]) => {
-              dataFields[`${id}.${path}`] = val;
-            });
-          }
           
+          if (!data) {
+            data = FieldValue.delete();
+          }
 
           if (trans) {
             // Batch all writes to documents in this flattened
             // collection and do it only once
             trans.addKeyedWrite(doc.path, 
-              (ctx) => Object.assign(ctx || {}, dataFields),
+              (ctx) => Object.assign(ctx || {}, { [id]: data }),
               (trans, ctx) => {
                 trans.set(doc, ctx, { merge: true });
               }
             );
           } else {
             // Do the write immediately
-            await doc.set(dataFields, { merge: true })
+            await doc.set({ [id]: data }, { merge: true });
           }
         };
 
