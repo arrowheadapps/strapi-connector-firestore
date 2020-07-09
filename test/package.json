@@ -11,6 +11,7 @@
     "firebase-tools": "^8.4.3",
     "fs-extra": "^9.0.1",
     "jest": "^26.1.0",
+    "patch-package": "^6.2.2",
     "request-promise-native": "^1.0.8",
     "rimraf": "^3.0.2",
     "strapi": "^3.0.5",
