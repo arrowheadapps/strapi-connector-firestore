@@ -9,9 +9,9 @@
 # > docker system prune -f -a
 
 
-# Use the official lightweight Node.js 12 image.
+# Use the official lightweight LTS Node.js image.
 # https://hub.docker.com/_/node
-FROM node:12-alpine
+FROM node:lts-alpine
 
 # Create and change to the app directory.
 WORKDIR /usr/src/app
