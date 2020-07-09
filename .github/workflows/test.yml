@@ -47,10 +47,9 @@ jobs:
         run: test/node_modules/.bin/firebase setup:emulators:firestore 
 
       # Run tests
-      # Upload coverage regardless if test failed or not, so long as it was processed
+      # Upload coverage regardless if test failed or not
       - name: Run tests
-        id: npmtest
         run: npm test
       - name: Upload coverage
-        if: ${{ steps.npmtest.outcome != 'skipped' }}
+        if: ${{ always() }}
         run: test/node_modules/.bin/codecov --token=${{ secrets.CODECOV_TOKEN }}
