@@ -48,4 +48,4 @@ jobs:
 
       # Run tests
       - name: Run tests
-        run: npm test; ./node_modules/.bin/codecov --token=${{ secrets.CODECOV_TOKEN }}
+        run: npm test; ./test/node_modules/.bin/codecov --token=${{ secrets.CODECOV_TOKEN }}
