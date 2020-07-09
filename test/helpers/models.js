@@ -1,4 +1,5 @@
 const waitRestart = require('./waitRestart');
+const { stopStrapi } = require('./strapi');
 
 module.exports = ({ rq }) => {
   async function createComponent(data) {

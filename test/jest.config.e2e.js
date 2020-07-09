@@ -4,13 +4,12 @@ module.exports = {
   collectCoverage: true,
   testEnvironment: 'node',
   testMatch: ['<rootDir>/test/**/?(*.)+(spec|test).e2e.js'],
+  globalSetup: '<rootDir>/test/setup.js',
+  globalTeardown: '<rootDir>/test/teardown.js',
+  setupFilesAfterEnv: ['<rootDir>/test/setup-test.js'],
 
   collectCoverageFrom: [
-    // FIXME:
-    // Collect coverage from the compiled source in the installed module
-    // Currently the coverage is not collected because the connector code 
-    // is run by Strapi in a separate process from Jest
-    '<rootDir>/lib/**/*.js'
+    '<rootDir>/lib/**/*.js',
   ],
   coveragePathIgnorePatterns: [],
   moduleNameMapper: {

@@ -1,6 +1,7 @@
 const request = require('request-promise-native');
+const { reloadStrapi } = require('./strapi');
 
-module.exports = function(initTime = 200) {
+module.exports = async function(initTime = 200, triggerRestart = true) {
   const ping = async () => {
     return new Promise((resolve, reject) => {
       // ping _health
@@ -19,5 +20,13 @@ module.exports = function(initTime = 200) {
     });
   };
 
-  return new Promise(resolve => setTimeout(resolve, initTime)).then(ping);
+  if (triggerRestart) {
+    // Trigger reload
+    await reloadStrapi();
+  }
+
+  // Wait for Strapi to come back online
+  process.stdout.write('Waiting for Strapi to come online...\n');
+  await new Promise(resolve => setTimeout(resolve, initTime)).then(ping);
+  process.stdout.write('Strapi online!\n');
 };

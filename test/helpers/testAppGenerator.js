@@ -1,10 +1,11 @@
 const path = require('path');
 const rimraf = require('rimraf');
-const execa = require('execa');
 const fs = require('fs-extra');
 const { promisify } = require('util');
 
 const rm = promisify(rimraf);
+
+const testsDir = '__tests__';
 
 /**
  * Delete the testApp folder
@@ -19,29 +20,16 @@ const cleanTestApp = async appName => {
     rm(path.resolve(appName, 'api')),
     rm(path.resolve(appName, 'extensions')),
     rm(path.resolve(appName, 'components')),
+    rm(path.resolve(appName, testsDir)),
   ]);
 
   await fs.mkdir('api');
   await fs.mkdir('extensions');
 };
 
-/**
- * Starts the test App in the appName folder
- * @param {Object} options - Options
- * @param {string} options.appName - Name of the app / folder in which run the start script
- */
-const startTestApp = ({ appName }) => {
-  return execa('BROWSER=none node_modules/.bin/strapi develop --no-build', {
-    stdio: 'inherit',
-    cwd: path.resolve(appName),
-    shell: true,
-  });
-};
-
 const copyTests = async appName => {
   const strapiDir = path.dirname(require.resolve('strapi/package.json'));
   const rootDir = path.resolve(appName);
-  const testsDir = '__tests__';
   const dest = path.join(rootDir, testsDir);
 
   await fs.emptyDir(dest);
@@ -50,6 +38,5 @@ const copyTests = async appName => {
 
 module.exports = {
   cleanTestApp,
-  startTestApp,
   copyTests
 };

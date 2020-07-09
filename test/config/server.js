@@ -4,7 +4,7 @@ module.exports = ({ env }) => ({
   admin: {
     watchIgnoreFiles: [
       // Prevent Firestore log file from triggering Strapi restart
-      '*.log'
+      '*-debug.log'
     ],
   },
 });
