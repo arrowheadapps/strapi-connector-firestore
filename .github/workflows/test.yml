@@ -17,12 +17,6 @@ jobs:
         uses: actions/setup-node@v1
         with:
           node-version: '12'
-      - name: Setup Java JDK
-        uses: actions/setup-java@v1
-        with:
-          java-version: 1.8
-
-
       - name: Cache NPM packages
         uses: actions/cache@v2
         with:
@@ -30,11 +24,20 @@ jobs:
           key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-node-
+      
+      # Install and build the package
       - name: Install root package
         run: npm install
+      - name: Build
+        run: npm run build
+
+      # Setup and install the test environment
+      - name: Setup Java JDK
+        uses: actions/setup-java@v1
+        with:
+          java-version: 1.8
       - name: Install test package
         run: npm install --prefix test
-
       - name: Cache emulators
         uses: actions/cache@v2.0.0
         with:
@@ -43,9 +46,6 @@ jobs:
       - name: Install emulators
         run: test/node_modules/.bin/firebase setup:emulators:firestore 
 
+      # Run tests
       - name: Run tests
-        run: npm test
-
-      - name: Upload coverage to Codecov
-        run: |
-          ./node_modules/.bin/codecov --token=${{ secrets.CODECOV_TOKEN }}
+        run: npm test; ./test/node_modules/.bin/codecov --token=${{ secrets.CODECOV_TOKEN }}

@@ -3,13 +3,13 @@
   "scripts": {
     "postinstall": "patch-package",
     "test": "node e2e.js",
-    "test:e2e": "jest --config jest.config.e2e.js --runInBand --verbose --forceExit --detectOpenHandles",
+    "test:e2e": "jest --config jest.config.e2e.js --runInBand --verbose --forceExit --detectOpenHandles --silent",
     "clean": "node -e \"require('./helpers/testAppGenerator').cleanTestApp('.')\" && rm -rf __tests__"
   },
   "dependencies": {
     "codecov": "^3.7.0",
     "execa": "^4.0.3",
-    "firebase-tools": "^8.4.3",
+    "firebase-tools": "^8.5.0",
     "fs-extra": "^9.0.1",
     "jest": "^26.1.0",
     "patch-package": "^6.2.2",
@@ -23,7 +23,6 @@
     "strapi-plugin-upload": "^3.0.5",
     "strapi-plugin-users-permissions": "^3.0.5",
     "strapi-utils": "^3.0.5",
-    "typescript": "^3.9.6",
-    "wait-on": "^5.0.1"
+    "wait-on": "^5.0.3"
   }
 }
