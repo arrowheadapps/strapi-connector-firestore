@@ -1,6 +1,7 @@
 {
   "private": true,
   "scripts": {
+    "postinstall": "patch-package",
     "test": "node e2e.js",
     "test:e2e": "jest --config jest.config.e2e.js --runInBand --verbose --forceExit --detectOpenHandles",
     "clean": "node -e \"require('./helpers/testAppGenerator').cleanTestApp('.')\" && rm -rf __tests__"
