@@ -51,6 +51,7 @@ jobs:
       - name: Run tests
         run: npm test
       - name: Remap
+        if: ${{ always() }}
         run: npm run remap --prefix test
       - name: Codecov
         uses: codecov/codecov-action@v1

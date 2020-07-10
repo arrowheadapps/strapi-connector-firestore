@@ -10,9 +10,8 @@ const startFirestore = async () => {
 
   try {
     process.stdout.write('\nStarting Firestore...\n');
-    proc = execa('node_modules/.bin/firebase emulators:start --only firestore', {
+    proc = execa.command('node_modules/.bin/firebase emulators:start --only firestore', {
       stdio: ['pipe', 'inherit', 'inherit'],
-      shell: true,
     });
 
     // Wait for Firestore to come online or for the process to end or crash
