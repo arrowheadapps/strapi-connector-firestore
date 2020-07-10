@@ -26,7 +26,7 @@ module.exports = async function(initTime = 200, triggerRestart = true) {
   }
 
   // Wait for Strapi to come back online
-  process.stdout.write('Waiting for Strapi to come online...\n');
+  process.stdout.write('Waiting for Strapi to come online... ');
   await new Promise(resolve => setTimeout(resolve, initTime)).then(ping);
   process.stdout.write('Strapi online!\n');
 };

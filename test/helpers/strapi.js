@@ -4,7 +4,7 @@ let instance;
 
 async function startStrapi() {
   if (!instance) {
-    process.stdout.write('Starting Strapi...\n');
+    process.stdout.write('Starting Strapi... ');
     process.env.BROWSER = 'none';
 
     /** the following code in copied from `./node_modules/strapi/lib/Strapi.js` */
@@ -30,7 +30,7 @@ async function stopStrapi() {
   if (instance) {
     // The instance.stop() function causes the process to exit
     // So we stop the server etc without exiting the entire process
-    process.stdout.write('Stopping Strapi...\n');
+    process.stdout.write('Stopping Strapi... ');
     if (instance.server) {
       await new Promise(r => instance.server.close(r));
       instance.server.destroy();

@@ -2,6 +2,7 @@
   "private": true,
   "scripts": {
     "postinstall": "patch-package",
+    "remap": "remap-istanbul --input ../coverage/coverage-final.json --output ../coverage/coverage-final.json",
     "test": "node e2e.js",
     "test:e2e": "jest --config jest.config.e2e.js --runInBand --verbose --forceExit --detectOpenHandles --silent",
     "clean": "node -e \"require('./helpers/testAppGenerator').cleanTestApp('.')\" && rm -rf __tests__"
@@ -13,6 +14,7 @@
     "fs-extra": "^9.0.1",
     "jest": "^26.1.0",
     "patch-package": "^6.2.2",
+    "remap-istanbul": "^0.13.0",
     "request-promise-native": "^1.0.8",
     "rimraf": "^3.0.2",
     "strapi": "^3.0.5",

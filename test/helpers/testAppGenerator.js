@@ -20,11 +20,14 @@ const cleanTestApp = async appName => {
     rm(path.resolve(appName, 'api')),
     rm(path.resolve(appName, 'extensions')),
     rm(path.resolve(appName, 'components')),
-    rm(path.resolve(appName, testsDir)),
   ]);
 
   await fs.mkdir('api');
   await fs.mkdir('extensions');
+};
+
+const cleanTests = async appName => {
+  await rm(path.resolve(appName, testsDir));
 };
 
 const copyTests = async appName => {
@@ -38,5 +41,6 @@ const copyTests = async appName => {
 
 module.exports = {
   cleanTestApp,
-  copyTests
+  copyTests,
+  cleanTests
 };

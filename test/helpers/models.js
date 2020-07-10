@@ -1,5 +1,6 @@
 const waitRestart = require('./waitRestart');
 const { stopStrapi } = require('./strapi');
+const { cleanTestApp } = require('./testAppGenerator');
 
 module.exports = ({ rq }) => {
   async function createComponent(data) {
@@ -41,7 +42,7 @@ module.exports = ({ rq }) => {
     });
   }
 
-  async function createContentType(data) {
+  async function createContentType(data, restart = true) {
     await rq({
       url: '/content-type-builder/content-types',
       method: 'POST',
@@ -53,28 +54,39 @@ module.exports = ({ rq }) => {
       },
     });
 
-    await waitRestart();
+    if (restart) {
+      await waitRestart();
+    }
   }
 
   async function createContentTypes(models) {
     for (let model of models) {
-      await createContentType(model);
+      await createContentType(model, false);
     }
-  }
-
-  async function deleteContentType(model) {
-    await rq({
-      url: `/content-type-builder/content-types/application::${model}.${model}`,
-      method: 'DELETE',
-    });
 
     await waitRestart();
   }
 
+  async function deleteContentType(model) {
+    // Just stop Strapi and clean the entire config
+    // Don't bother to manually remove each content type
+    await stopStrapi();
+    await cleanTestApp();
+
+    // await rq({
+    //   url: `/content-type-builder/content-types/application::${model}.${model}`,
+    //   method: 'DELETE',
+    // });
+
+    // await waitRestart();
+  }
+
   async function deleteContentTypes(models) {
-    for (let model of models) {
-      await deleteContentType(model);
-    }
+    await deleteContentType();
+
+    // for (let model of models) {
+    //   await deleteContentType(model);
+    // }
   }
 
   return {

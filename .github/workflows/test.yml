@@ -50,15 +50,10 @@ jobs:
       # Upload coverage regardless if test failed or not
       - name: Run tests
         run: npm test
+      - name: Remap
+        run: npm run remap --prefix test
       - name: Codecov
         uses: codecov/codecov-action@v1
         if: ${{ always() }}
         with:
-          fail_ci_if_error: true        
-      - name: Store coverage report
-        uses: actions/upload-artifact@v2
-        if: ${{ always() }}
-        with:
-          name: coverage
-          path: coverage/clover.xml
-
+          fail_ci_if_error: true
