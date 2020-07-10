@@ -69,12 +69,12 @@ module.exports = ({ env }) => ({
 
 These are the available options to be specified in the Strapi database configuration file: `./config/database.js`.
 
-| Name                  | Type        | Default     | Description                     |
-|-----------------------|-------------|-------------|---------------------------------|
-| `settings`            | `Object`    | `undefined` | Passed directly to the Firestore constructor. Specify any options described here: https://googleapis.dev/nodejs/firestore/latest/Firestore.html#Firestore. You can omit this completely on platforms that support [Application Default Credentials](https://cloud.google.com/docs/authentication/production#finding_credentials_automatically) such as Cloud Run, and App Engine. If you want to test locally using a local emulator, you need to at least specify the `projectId`. |
-| `options.useEmulator` | `string`    | `false`     | Connect to a local Firestore emulator instead of the production database. You must start a local emulator yourself using `firebase emulators:start --only firestore` before you start Strapi. See https://firebase.google.com/docs/emulator-suite/install_and_configure. |
-| `options.singleId`    | `string`    | `"default"` | The document ID to used for `singleType` models and flattened models. |
-| `options.flattenCore` | `boolean`   | `true`      | Configure whether to flatten the core Strapi models. See section on flattening below. |
+| Name                    | Type        | Default     | Description                     |
+|-------------------------|-------------|-------------|---------------------------------|
+| `settings`              | `Object`    | `undefined` | Passed directly to the Firestore constructor. Specify any options described here: https://googleapis.dev/nodejs/firestore/latest/Firestore.html#Firestore. You can omit this completely on platforms that support [Application Default Credentials](https://cloud.google.com/docs/authentication/production#finding_credentials_automatically) such as Cloud Run, and App Engine. If you want to test locally using a local emulator, you need to at least specify the `projectId`. |
+| `options.useEmulator`   | `string`    | `false`     | Connect to a local Firestore emulator instead of the production database. You must start a local emulator yourself using `firebase emulators:start --only firestore` before you start Strapi. See https://firebase.google.com/docs/emulator-suite/install_and_configure. |
+| `options.singleId`      | `string`    | `"default"` | The document ID to used for `singleType` models and flattened models. |
+| `options.flattenModels` | `(string | RegExp | { test: string | RegExp, doc: (model: StrapiModel) => string })[]`   | `true` | An array of `RegExp`'s that are matched against the `uid` property of each model to determine if it should be flattened (see below). Alternatively, and array of objects with `test` and `doc` properties, where `test` is the aforementioned `RegExp` and `doc` is a function taking the model and returning a document path where the collection should be stored.<br><br>Defaults to `[{ test: /^strapi::/, doc: ({ uid }) => uid.replace('::', '/') }]` such that core Strapi models will be flattened to a `"strapi/*"` document by default.<br><br>The `doc` function takes the model instance as the only argument. |
 
 ### Collection flattening
 
@@ -122,12 +122,44 @@ module.exports = ({ env }) => ({
         // when running in development mode
         useEmulator: process.env.NODE_ENV == 'development',
         singleId: 'default',
-        flattenCore: true,
+        flattenCore: [
+          {
+            test: /^strapi::/,
+            doc: ({ uid }) => uid.replace('::', '/')
+          }
+        ],
       }
     }
   },
 });
 ```
+
+You can also configure each model individually in it's JSON file `./api/{model-name}/models/{model-name}.settings.json`. This overrides any match from the connector's `flattenModels` option.
+
+The `singleId` option will be used as the document name, with the collection name being `collectionName`  or `glabalId` (in this example, `"myCollection/default"`):
+
+```json
+{
+  "kind": "collectionType",
+  "collectioName": "myCollection",
+  "options": {
+    "flatten": true
+  }
+}
+```
+
+The document name can also be specified explicity (in this case `"myCollection/myDoc"`):
+
+```json
+{
+  "kind": "collectionType",
+  "collectioName": "myCollection",
+  "options": {
+    "flatten": "myDoc"
+  }
+}
+```
+
 
 ## Considerations
 

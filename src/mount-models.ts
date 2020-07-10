@@ -17,8 +17,11 @@ export function mountModels(models: FirestoreConnectorContext[]) {
     const model: FirestoreConnectorModel = connection;
 
 
+    const collectionName = model.collectionName || model.globalId;
     const singleKey = model.kind === 'singleType' ? options.singleId : '';
-    const flattenedKey = _.get(model, 'options.flatten', false) ? options.singleId : '';
+
+    const flatten = _.get(model, 'options.flatten', false);
+    const flattenedKey = flatten === true ? path.posix.join(collectionName, options.singleId) : flatten;
 
     model.orm = 'firestore'; 
     model.associations = [];
@@ -41,13 +44,13 @@ export function mountModels(models: FirestoreConnectorContext[]) {
 
     // Expose ORM functions
     if (!isComponent) {
-      const collection = instance.collection(model.collectionName || model.globalId);
 
       model.firestore = instance;
 
       if (flattenedKey) {
 
-        const flatDoc = collection.doc(flattenedKey);
+        const flatDoc = instance.doc(flattenedKey);
+        const collection = flatDoc.parent;
 
         model.db = new QueryableFlatCollection(flatDoc);
         model.doc = (id?: string) => {
@@ -96,6 +99,7 @@ export function mountModels(models: FirestoreConnectorContext[]) {
 
       } else {
 
+        const collection = instance.collection(collectionName);
         model.db = new QueryableFirestoreCollection(collection);
         model.doc = (id?: string) => id ? collection.doc(id) : collection.doc();
 

@@ -18,7 +18,12 @@ const defaults = {
 const defaultOptions: Options = {
   useEmulator: false,
   singleId: 'default',
-  flattenCore: true
+  flattenModels: [
+    {
+      test: /^strapi::/,
+      doc: ({ uid }) => uid.replace('::', '/')
+    }
+  ]
 }
 
 const isFirestoreConnection = ({ connector }: StrapiModel) => connector === 'firestore';
@@ -81,15 +86,31 @@ module.exports = function(strapi: Strapi) {
 
         const allModels: FirestoreConnectorContext[] = [
           ...parseModels(strapi.components, { isComponent: true }),
-          ...parseModels(strapi.models).map(model => {
-            if (options.flattenCore && model.connection.uid.startsWith('strapi::')) {
-              _.set(model, 'connection.options.flatten', true);
-            } 
-            return model;
-          }),
+          ...parseModels(strapi.models),
           ...Object.values(strapi.plugins).flatMap(({ models }) => parseModels(models)),
           ...parseModels(strapi.admin.models)
         ];
+
+        allModels.forEach(({ connection, options }) => {
+          if (!connection.options) {
+            connection.options = {};
+          }
+          if (connection.options.flatten === undefined) {
+            const match = options.flattenModels.find((test => {
+              const regexRaw = ((typeof test === 'string') || (test instanceof RegExp))
+                ? test
+                : test.test;
+              const regexp = typeof regexRaw === 'string'
+                ? new RegExp(regexRaw)
+                : regexRaw;
+              
+              return regexp.test(connection.uid);
+            }));
+            if (match) {
+              connection.options.flatten = ((match as any).doc || (() => options.singleId))(connection);
+            }
+          }
+        });
 
         mountModels(allModels);
     }

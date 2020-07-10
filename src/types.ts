@@ -7,9 +7,13 @@ export interface Options {
   singleId: string
 
   /**
-   * Flatten core Strapi models.
+   * Indicate which models to flatten by RegEx. Matches against the
+   * model's `uid` property.
+   * 
+   * Defaults to `[{ test: /^strapi::/, doc: ({ uid }) => uid.replace('::', '/') }]` so that internal Strapi models
+   * are flattened into a single collection called `"strapi"`.
    */
-  flattenCore: boolean
+  flattenModels: (string | RegExp | { test: string | RegExp, doc?: (model: StrapiModel) => string })[]
 }
 
 declare global {
@@ -66,8 +70,8 @@ export interface StrapiModel {
   uid: string
   orm: string
   options: {
-    timestamps: boolean | [string, string]
-    flatten?: boolean
+    timestamps?: boolean | [string, string]
+    flatten?: boolean | string
   }
   associations: StrapiAssociation[]
 }

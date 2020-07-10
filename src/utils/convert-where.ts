@@ -37,55 +37,100 @@ export function manualWhere(field: string | FieldPath, predicate: (fieldValue: a
   };
 }
 
+/**
+ * Convert a Strapi or Firestore query operator to a Firestore operator
+ * or a manual function.
+ */
 function convertWhereImpl(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator | RegExp, value: any, manualOnly: boolean) {
-  
+  const eq = val => v => _.isEqual(val, v);
+  const ne = val => v => !_.isEqual(val, v);
+
   let op: WhereFilterOp | ((data: Snapshot) => boolean);
   switch (operator) {
+    case '==':
     case 'eq':
-      op = manualOnly ?  manualWhere(field, val => val == value) : '==';
+      // Equals
+      op = manualOnly ?  manualWhere(field, eq(value)) : '==';
       break;
+
     case 'ne':
-      op = manualWhere(field, val => val != value);
+      // Not equal
+      op = manualWhere(field, ne(value));
       break;
+
     case 'in':
-      // FIXME:
-      op = manualOnly ? manualWhere(field, val => _.includes(val, value)) : 'in';
+      // Included in an array of values
+      // `value` must be an array
+      if (!_.isArray(value)) {
+        throw new Error(`"in" operator requires an array value (got "${typeof value}")`);
+      }
+      op = manualOnly ? manualWhere(field, v => _.some(value, eq(v))) : 'in';
       break;
+
     case 'nin':
-      op = manualWhere(field, val => !_.includes(val, value));
+      // Included in an array of values
+      // `value` must be an array
+      if (!_.isArray(value)) {
+        throw new Error(`"nin" operator requires an array value (got "${typeof value}")`);
+      }
+      op = manualWhere(field, v => _.every(value, ne(v)));
       break;
+
     case 'contains':
-      op = manualWhere(field, val => _.includes(val, value));
+      // String includes value
+      op = manualWhere(field, v => _.includes(v, value));
       break;
+
     case 'ncontains':
-      op = manualWhere(field, val => !_.includes(val, value));
+      // String doesn't include value
+      op = manualWhere(field, v => !_.includes(v, value));
       break;
+
     case 'containss':
-      op = manualWhere(field, val => _.includes(_.toLower(val), _.toLower(value)));
+      // String includes value case insensitive
+      op = manualWhere(field, v => _.includes(_.toLower(v), _.toLower(value)));
       break;
+
     case 'ncontainss':
-      op = manualWhere(field, val => !_.includes(_.toLower(val), _.toLower(value)));
+      // String doesn't value case insensitive
+      op = manualWhere(field, v => !_.includes(_.toLower(v), _.toLower(value)));
       break;
+
+    case '<':
     case 'lt':
-      op = manualOnly ? manualWhere(field, val => val < value) : '<';
+      // Less than
+      op = manualOnly ? manualWhere(field, v => v < value) : '<';
       break;
+
+    case '<=':
     case 'lte':
-      op = manualOnly ? manualWhere(field, val => val <= value) : '<=';
+      // Less than or equal
+      op = manualOnly ? manualWhere(field, v => v <= value) : '<=';
       break;
+
+    case '>':
     case 'gt':
-      op = manualOnly ? manualWhere(field, val => val > value) : '>';
+      // Greater than
+      op = manualOnly ? manualWhere(field, v => v > value) : '>';
       break;
+
+    case '>=':
     case 'gte':
-      op = manualOnly ? manualWhere(field, val => val >= value) : '>=';
+      // Greater than or equal
+      op = manualOnly ? manualWhere(field, v => v >= value) : '>=';
       break;
+
     case 'null':
       if (value) {
+        // Equal to null
         value = null;
-        op = manualOnly ? manualWhere(field, val => val == value) : '==';
+        op = manualOnly ? manualWhere(field, v => v == null) : '==';
       } else {
-        op = manualWhere(field, val => val != null);
+        // Not equal to null
+        op = manualWhere(field, v => v != null);
       }
       break;
+
     default:
       if (operator instanceof RegExp) {
         op = manualWhere(field, val => operator.test(val));
@@ -93,34 +138,36 @@ function convertWhereImpl(field: string | FieldPath, operator: WhereFilterOp | S
       } else {
         if (manualOnly) {
           switch (operator) {
-            case '==':
-              op = manualWhere(field, val => val == value);
-              break;
-            case '<':
-              op = manualWhere(field, val => val < value);
-              break;
-            case '<=':
-              op = manualWhere(field, val => val <= value);
-              break;
-            case '>':
-              op = manualWhere(field, val => val > value);
-              break;
-            case '>=':
-              op = manualWhere(field, val => val >= value);
-              break;
             case 'array-contains':
-              // FIXME:
-              // How are we measuring equality
-              op = manualWhere(field, val => _.includes(val, value));
+              // Array contains value
+              op = manualWhere(field, v => {
+                if (_.isArray(v)) {
+                  return _.some(v, eq(value));
+                } else {
+                  return false;
+                }
+              });
               break;
+
             case 'array-contains-any':
-              // FIXME:
-              // How are we measuring equality
-              op = manualWhere(field, val => _.intersection(val, value).length > 0);
+              // Array contans any values in array
+              // `value` must be an array
+              if (!_.isArray(value)) {
+                throw new Error(`"array-contains-any" operator requires an array value (got "${typeof value}")`);
+              }
+              op = manualWhere(field, v => {
+                if (_.isArray(v)) {
+                  return _.some(v, val => _.some(value, eq(val)));
+                } else {
+                  return false;
+                }
+              });
               break;
+
             default:
-              // FIXME: how to handle?
-              op = operator;
+              // Unknown operator cannot be converted to manual function
+              // TypeScript will help us here to detect unhandled cases
+              guardManual(operator);
           }
         } else {
           // If Strapi adds other operators in the future
@@ -131,9 +178,17 @@ function convertWhereImpl(field: string | FieldPath, operator: WhereFilterOp | S
       }
   }
 
+  if (manualOnly && (typeof op !== 'function')) {
+    throw new Error(`Unknown operator could not be converted to a function: "${operator}".`);
+  }
+
   return {
     field,
     operator: op,
     value
   };
+}
+
+function guardManual(op: never): never {
+  throw new Error(`Unsupported operator: "${op}"`);
 }
