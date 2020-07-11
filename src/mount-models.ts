@@ -3,44 +3,69 @@ import * as utils from 'strapi-utils';
 import * as path from 'path';
 import { DocumentReference, FieldValue } from '@google-cloud/firestore';
 import { parseDeepReference } from './utils/queryable-collection';
-import type { FirestoreConnectorContext, FirestoreConnectorModel } from './types';
+import type { FirestoreConnectorContext, FirestoreConnectorModel, ModelOptions } from './types';
 import { QueryableFirestoreCollection } from './utils/queryable-firestore-collection';
 import { QueryableFlatCollection } from './utils/queryable-flat-collection';
 
 export const DEFAULT_CREATE_TIME_KEY = 'createdAt';
 export const DEFAULT_UPDATE_TIME_KEY = 'updatedAt';
 
+const defaultOptions: ModelOptions = {
+  timestamps: false,
+  allowNonNativeQueries: undefined,
+  flatten: undefined
+};
+
 export function mountModels(models: FirestoreConnectorContext[]) {
 
   function mountModel({ instance, isComponent, connection, modelKey, strapi, options }: FirestoreConnectorContext) {
     // @ts-expect-error
     const model: FirestoreConnectorModel = connection;
-
-
     const collectionName = model.collectionName || model.globalId;
-    const singleKey = model.kind === 'singleType' ? options.singleId : '';
 
-    const flatten = _.get(model, 'options.flatten', false);
-    const flattenedKey = flatten === true ? path.posix.join(collectionName, options.singleId) : flatten;
-
-    model.orm = 'firestore'; 
-    model.associations = [];
-
-    // Set the default values to model settings.
+    // Set the default values to model settings
     _.defaults(model, {
       primaryKey: 'id',
       primaryKeyType: 'string',
     });
 
-    // Use default timestamp column names if value is `true`
-    if (_.get(model, 'options.timestamps', false) === true) {
-      _.set(model, 'options.timestamps', [DEFAULT_CREATE_TIME_KEY, DEFAULT_UPDATE_TIME_KEY]);
+    // Setup default options
+    if (!model.options) {
+      model.options = {};
     }
-    // Use false for values other than `Boolean` or `Array`
-    if (!_.isArray(_.get(model, 'options.timestamps')) && !_.isBoolean(_.get(model, 'options.timestamps'))) {
-      _.set(model, 'options.timestamps', false);
+    _.defaults(model.options, defaultOptions);
+    if (model.options.timestamps === true) {
+      model.options.timestamps = [DEFAULT_CREATE_TIME_KEY, DEFAULT_UPDATE_TIME_KEY];
+    }
+    if (model.options.flatten === undefined) {
+      const match = options.flattenModels.find(testOrRegEx => {
+        const regexRaw = ((typeof testOrRegEx === 'string') || (testOrRegEx instanceof RegExp))
+          ? testOrRegEx
+          : testOrRegEx.test;
+        const regex = typeof regexRaw === 'string'
+          ? new RegExp(regexRaw)
+          : regexRaw;
+        
+        return regex.test(connection.uid);
+      });
+      if (match) {
+        const doc = (match as any).doc?.(connection);
+        model.options.flatten = doc || true;
+      }
+    }
+    if (model.options.flatten === true) {
+      model.options.flatten = path.posix.join(collectionName, options.singleId);
+    }
+    if (model.options.allowNonNativeQueries === undefined) {
+      model.options.allowNonNativeQueries = options.allowNonNativeQueries;
     }
 
+
+    const singleKey = model.kind === 'singleType' ? options.singleId : '';
+    const flattenedKey = model.options.flatten;
+
+    model.orm = 'firestore'; 
+    model.associations = [];
 
     // Expose ORM functions
     if (!isComponent) {
@@ -100,7 +125,7 @@ export function mountModels(models: FirestoreConnectorContext[]) {
       } else {
 
         const collection = instance.collection(collectionName);
-        model.db = new QueryableFirestoreCollection(collection);
+        model.db = new QueryableFirestoreCollection(collection, model.options.allowNonNativeQueries);
         model.doc = (id?: string) => id ? collection.doc(id) : collection.doc();
 
         model.delete = async (ref, trans) => {

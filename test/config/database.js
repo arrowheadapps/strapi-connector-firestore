@@ -8,6 +8,7 @@ module.exports = ({ env }) => ({
       },
       options: {
         useEmulator: true,
+        allowNonNativeQueries: true,
       },
     }
   },

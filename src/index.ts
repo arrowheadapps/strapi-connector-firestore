@@ -5,7 +5,7 @@ import { Firestore, Settings } from '@google-cloud/firestore';
 
 import { mountModels, DEFAULT_CREATE_TIME_KEY, DEFAULT_UPDATE_TIME_KEY } from './mount-models';
 import { queries } from './queries';
-import { Strapi, FirestoreConnectorContext, StrapiModel, Options } from './types';
+import { Strapi, FirestoreConnectorContext, StrapiModel, ConnectorOptions } from './types';
 
 /**
  * Firestore hook
@@ -15,7 +15,7 @@ const defaults = {
   defaultConnection: 'default',
 };
 
-const defaultOptions: Options = {
+const defaultOptions: ConnectorOptions = {
   useEmulator: false,
   singleId: 'default',
   flattenModels: [
@@ -23,7 +23,8 @@ const defaultOptions: Options = {
       test: /^strapi::/,
       doc: ({ uid }) => uid.replace('::', '/')
     }
-  ]
+  ],
+  allowNonNativeQueries: false
 }
 
 const isFirestoreConnection = ({ connector }: StrapiModel) => connector === 'firestore';
@@ -38,7 +39,7 @@ module.exports = function(strapi: Strapi) {
       }
 
       _.defaults(connection.settings, strapi.config.hook.settings.firestore);
-        const options: Options = _.defaults(connection.options, defaultOptions);
+        const options: ConnectorOptions = _.defaults(connection.options, defaultOptions);
 
         const settings: Settings = {
           ignoreUndefinedProperties: true,
@@ -90,27 +91,6 @@ module.exports = function(strapi: Strapi) {
           ...Object.values(strapi.plugins).flatMap(({ models }) => parseModels(models)),
           ...parseModels(strapi.admin.models)
         ];
-
-        allModels.forEach(({ connection, options }) => {
-          if (!connection.options) {
-            connection.options = {};
-          }
-          if (connection.options.flatten === undefined) {
-            const match = options.flattenModels.find((test => {
-              const regexRaw = ((typeof test === 'string') || (test instanceof RegExp))
-                ? test
-                : test.test;
-              const regexp = typeof regexRaw === 'string'
-                ? new RegExp(regexRaw)
-                : regexRaw;
-              
-              return regexp.test(connection.uid);
-            }));
-            if (match) {
-              connection.options.flatten = ((match as any).doc || (() => options.singleId))(connection);
-            }
-          }
-        });
 
         mountModels(allModels);
     }

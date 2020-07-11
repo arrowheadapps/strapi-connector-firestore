@@ -2,8 +2,8 @@ import type { Firestore, DocumentData } from '@google-cloud/firestore';
 import type { QueryableCollection, Reference } from './utils/queryable-collection';
 import type { TransactionWrapper } from './utils/transaction-wrapper';
 
-export interface Options {
-  useEmulator: boolean
+export interface ConnectorOptions {
+  useEmulator?: boolean
   singleId: string
 
   /**
@@ -14,6 +14,36 @@ export interface Options {
    * are flattened into a single collection called `"strapi"`.
    */
   flattenModels: (string | RegExp | { test: string | RegExp, doc?: (model: StrapiModel) => string })[]
+
+  /**
+   * Globally allow queries that are not Firestore native.
+   * These are implemented manually and will have poor performance,
+   * and potentially expensive resource usage.
+   */
+  allowNonNativeQueries: boolean
+}
+
+export interface ModelOptions {
+  timestamps?: boolean | [string, string]
+
+  /**
+   * Override connector flattening options per model.
+   * `false` to disable.
+   * `true` to enable and use connector's `singleId` for the doucment ID.
+   * `string` to enable and customise the document ID.
+   * 
+   * Defaults to `undefined` (use connector setting).
+   */
+  flatten?: boolean | string
+
+
+  /**
+   * Override connector setting per model.
+   * 
+   * Defaults to `undefined` (use connector setting).
+   */
+  allowNonNativeQueries?: boolean
+
 }
 
 declare global {
@@ -71,7 +101,6 @@ export interface StrapiModel {
   orm: string
   options: {
     timestamps?: boolean | [string, string]
-    flatten?: boolean | string
   }
   associations: StrapiAssociation[]
 }
@@ -120,7 +149,7 @@ export interface FirestoreConnectorContext {
   strapi: Strapi
   connection: StrapiModel,
   modelKey: string
-  options: Options
+  options: ConnectorOptions
   isComponent?: boolean
 }
 
@@ -139,6 +168,7 @@ export interface FirestoreConnectorModel extends StrapiModel {
   idKeys: string[];
   excludedKeys: string[];
   defaultPopulate: string[];
+  options: ModelOptions
 
   /**
    * Set of relations on other models that relate to this

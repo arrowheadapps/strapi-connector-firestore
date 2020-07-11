@@ -9,10 +9,11 @@ import { convertRestQueryParams } from 'strapi-utils';
 import type { StrapiQueryParams, StrapiFilter } from './types';
 import { StatusError } from './utils/status-error';
 import { deleteRelations, updateRelations } from './relations';
-import { FieldValue, FieldPath } from '@google-cloud/firestore';
+import { FieldPath } from '@google-cloud/firestore';
 import { validateComponents } from './utils/validate-components';
 import { TransactionWrapper } from './utils/transaction-wrapper';
-import type { Snapshot, QueryableCollection } from './utils/queryable-collection';
+import type { Snapshot, QueryableCollection, Reference } from './utils/queryable-collection';
+import { ManualFilter, convertWhereManual } from './utils/convert-where';
 
 
 
@@ -20,6 +21,10 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
   
 
   function buildSearchQuery(value: any, query: QueryableCollection) {
+
+    const filters: ManualFilter[] = [
+      convertWhereManual(model.primaryKey, 'contains', value).operator
+    ];
   
     Object.keys(model.attributes).forEach((field) => {
       switch (model.attributes[field].type) {
@@ -29,19 +34,26 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
         case 'decimal':
           const number = _.toNumber(value);
           if (!_.isNaN(number)) {
-            query = query.where(field, 'eq', number, 'or');
+            filters.push(convertWhereManual(field, 'eq', number).operator);
           }
+          break;
+
         case 'string':
         case 'text':
         case 'richtext':
         case 'email':
         case 'enumeration':
         case 'uid':
-          query = query.where(field, new RegExp(value, 'i'), 'or');
+          filters.push(convertWhereManual(field, 'contains', value).operator);
+          break;
+          
+        default:
+          // Unsupported field type for search
+          // Just ignore
       }
     });
   
-    return query;
+    return query.whereAny(filters);
   };
 
   function buildFirestoreQuery(params, searchQuery: string | null, query: QueryableCollection) {
@@ -139,9 +151,10 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
 
     // Add timestamp data
     if (_.isArray(model.options.timestamps)) {
+      const now = new Date();
       const [createdAtKey, updatedAtKey] = model.options.timestamps;
-      data[createdAtKey] = FieldValue.serverTimestamp();
-      data[updatedAtKey] = FieldValue.serverTimestamp();
+      data[createdAtKey] = now;
+      data[updatedAtKey] = now;
     }
 
     // Create entry without relational data
@@ -188,32 +201,28 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
 
     // Add timestamp data
     if (_.isArray(model.options.timestamps)) {
+      const now = new Date();
       const [createdAtKey, updatedAtKey] = model.options.timestamps;
 
       // Prevent creation timestamp from being overwritten
       delete data[createdAtKey];
-
-      data[updatedAtKey] = FieldValue.serverTimestamp();
+      data[updatedAtKey] = now;
     }
 
     // Run the transaction
     return await model.firestore.runTransaction(async trans => {
       const wrapper = new TransactionWrapper(trans, model.firestore);
 
-      let snap: Snapshot | null;
+      let ref: Reference;
       if (model.hasPK(params)) {
-        const ref = model.doc(model.getPK(params));
-        snap = await wrapper.get(ref);
-        if (!snap.exists) {
-          snap = null;
-        }
+        ref = model.doc(model.getPK(params));
       } else {
         const docs = await runFirestoreQuery({ ...params, _limit: 1 }, null, wrapper);
-        snap = docs[0] || null;
-      }
+        if (!docs.length) {
+          throw new StatusError('entry.notFound', 404);
+        }
 
-      if (!snap) {
-        throw new StatusError('entry.notFound', 404);
+        ref = docs[0].ref;
       }
 
 
@@ -222,7 +231,7 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
         await updateRelations(model, {
           values: model.pickRelations(value),
           data: value,
-          ref: snap!.ref
+          ref
         }, wrapper);
       }));
 
@@ -230,14 +239,14 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
       await updateRelations(model, {
         values: relations,
         data,
-        ref: snap.ref
+        ref
       }, wrapper);
 
       // Populate relations
-      const [entry] = await populateDocs(model, [snap], model.defaultPopulate, wrapper);
+      const [entry] = await populateDocs(model, [{ ref, data: () => data }], model.defaultPopulate, wrapper);
 
       // Update entry without relational data.
-      model.setMerge(snap.ref, data, wrapper);
+      model.setMerge(ref, data, wrapper);
       wrapper.doWrites();
 
       return entry;

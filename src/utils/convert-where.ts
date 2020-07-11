@@ -11,12 +11,14 @@ export interface WhereFilter<T> {
   value: any
 }
 
-export function convertWhere(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator | RegExp, value: any): WhereFilter<WhereFilterOp | ManualFilter> {
-  return convertWhereImpl(field, operator, value, false);
+export function convertWhere(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator | RegExp, value: any, allowNonNativeQueries: false): WhereFilter<WhereFilterOp>
+export function convertWhere(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator | RegExp, value: any, allowNonNativeQueries: boolean): WhereFilter<WhereFilterOp | ManualFilter>
+export function convertWhere(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator | RegExp, value: any, allowNonNativeQueries: boolean): WhereFilter<WhereFilterOp | ManualFilter> {
+  return convertWhereImpl(field, operator, value, allowNonNativeQueries ? 'preferNative' : 'nativeOnly');
 }
 
 export function convertWhereManual(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator | RegExp, value: any): WhereFilter<ManualFilter> {
-  return convertWhereImpl(field, operator, value, true) as WhereFilter<ManualFilter>;
+  return convertWhereImpl(field, operator, value, 'manualOnly') as WhereFilter<ManualFilter>;
 }
 
 export function getFieldPath(field: string | FieldPath, data: Snapshot): any {
@@ -33,6 +35,7 @@ export function getFieldPath(field: string | FieldPath, data: Snapshot): any {
 export function manualWhere(field: string | FieldPath, predicate: (fieldValue: any) => boolean) {
   return (docData: Snapshot) => {
     const value = getFieldPath(field, docData);
+    
     return predicate(value);
   };
 }
@@ -41,93 +44,148 @@ export function manualWhere(field: string | FieldPath, predicate: (fieldValue: a
  * Convert a Strapi or Firestore query operator to a Firestore operator
  * or a manual function.
  */
-function convertWhereImpl(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator | RegExp, value: any, manualOnly: boolean) {
-  const eq = val => v => _.isEqual(val, v);
-  const ne = val => v => !_.isEqual(val, v);
+function convertWhereImpl(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator | RegExp, value: any, mode: 'manualOnly' | 'nativeOnly' | 'preferNative') {
+  // We use both the _.isEqual (to handle objects etc)
+  // and the standard operator (because _.isEqual considers '42' == 42)
+  // whereas we need them to equal 
+  // Numbers received via querystring will be strings
+  const eq = val => v => ((val == v) || _.isEqual(val, v));
+  const ne = val => v => ((val != v) && !_.isEqual(val, v));
 
   let op: WhereFilterOp | ((data: Snapshot) => boolean);
   switch (operator) {
     case '==':
     case 'eq':
-      // Equals
-      op = manualOnly ?  manualWhere(field, eq(value)) : '==';
-      break;
+      if (_.isArray(value)) {
+        // Equals any (OR)
+        // I.e. "in"
+        return convertWhereImpl(field, 'in', value, mode);
+      } else {
+        // Equals
+        op = (mode === 'manualOnly') ?  manualWhere(field, eq(value)) : '==';
+        break;
+      }
 
     case 'ne':
-      // Not equal
-      op = manualWhere(field, ne(value));
-      break;
+      if (_.isArray(value)) {
+        // Not equals any (OR)
+        // I.e. "nin"
+        return convertWhereImpl(field, 'nin', value, mode);
+      } else {
+        // NO NATIVE SUPPORT
+        // Not equal
+
+        // TODO: 
+        // Can we improve performance and support 'nativeOnly'
+        // by combining native '<' and '>' queries?
+        op = manualWhere(field, ne(value));
+        break;
+      }
 
     case 'in':
       // Included in an array of values
       // `value` must be an array
-      if (!_.isArray(value)) {
-        throw new Error(`"in" operator requires an array value (got "${typeof value}")`);
-      }
-      op = manualOnly ? manualWhere(field, v => _.some(value, eq(v))) : 'in';
+      value = _.castArray(value);
+      op = (mode === 'manualOnly') ? manualWhere(field, v => value.some(eq(v))) : 'in';
       break;
 
     case 'nin':
+      // NO NATIVE SUPPORT
       // Included in an array of values
       // `value` must be an array
-      if (!_.isArray(value)) {
-        throw new Error(`"nin" operator requires an array value (got "${typeof value}")`);
-      }
-      op = manualWhere(field, v => _.every(value, ne(v)));
+      value = _.castArray(value);
+      op = manualWhere(field, v => value.every(ne(v)));
       break;
 
     case 'contains':
-      // String includes value
-      op = manualWhere(field, v => _.includes(v, value));
+      // NO NATIVE SUPPORT
+      // String includes value case insensitive
+      // Inherently handle 'OR' case (when value is an array)
+      value = _.castArray(value).map(v => _.toLower(v));
+      op = manualWhere(field, v => {
+        const lv = _.toLower(v);
+        return value.some(val => _.includes(lv, val));
+      });
       break;
 
     case 'ncontains':
-      // String doesn't include value
-      op = manualWhere(field, v => !_.includes(v, value));
+      // NO NATIVE SUPPORT
+      // String doesn't value case insensitive
+      // Inherently handle 'OR' case (when value is an array)
+      value = _.castArray(value).map(v => _.toLower(v));
+      op = manualWhere(field, v => {
+        const lv = _.toLower(v);
+        return value.some(val => !_.includes(lv, val));
+      });
       break;
 
     case 'containss':
-      // String includes value case insensitive
-      op = manualWhere(field, v => _.includes(_.toLower(v), _.toLower(value)));
+      // NO NATIVE SUPPORT
+      // String includes value
+      // Inherently handle 'OR' case (when value is an array)
+      value = _.castArray(value);
+      op = manualWhere(field, v => value.some(val => _.includes(v, val)));
       break;
 
     case 'ncontainss':
-      // String doesn't value case insensitive
-      op = manualWhere(field, v => !_.includes(_.toLower(v), _.toLower(value)));
+      // NO NATIVE SUPPORT
+      // String doesn't include value
+      // Inherently handle 'OR' case (when value is an array)
+      value = _.castArray(value);
+      op = manualWhere(field, v => value.some(val => !_.includes(v, val)));
       break;
 
     case '<':
     case 'lt':
+      if (_.isArray(value)) {
+        // Less than any (OR)
+        // Just take the maximum
+        value = _.max(value);
+      }
       // Less than
-      op = manualOnly ? manualWhere(field, v => v < value) : '<';
+      op = (mode === 'manualOnly') ? manualWhere(field, v => v < value) : '<';
       break;
 
     case '<=':
     case 'lte':
+      if (_.isArray(value)) {
+        // Less than any (OR)
+        // Just take the maximum
+        value = _.max(value);
+      }
       // Less than or equal
-      op = manualOnly ? manualWhere(field, v => v <= value) : '<=';
+      op = (mode === 'manualOnly') ? manualWhere(field, v => v <= value) : '<=';
       break;
 
     case '>':
     case 'gt':
+      if (_.isArray(value)) {
+        // Greater than any (OR)
+        // Just take the minimum
+        value = _.min(value);
+      }
       // Greater than
-      op = manualOnly ? manualWhere(field, v => v > value) : '>';
+      op = (mode === 'manualOnly') ? manualWhere(field, v => v > value) : '>';
       break;
 
     case '>=':
     case 'gte':
+      if (_.isArray(value)) {
+        // Greater than any (OR)
+        // Just take the minimum
+        value = _.min(value);
+      }
       // Greater than or equal
-      op = manualOnly ? manualWhere(field, v => v >= value) : '>=';
+      op = (mode === 'manualOnly') ? manualWhere(field, v => v >= value) : '>=';
       break;
 
     case 'null':
       if (value) {
         // Equal to null
-        value = null;
-        op = manualOnly ? manualWhere(field, v => v == null) : '==';
+        return convertWhereImpl(field, 'eq', null, mode);
       } else {
         // Not equal to null
-        op = manualWhere(field, v => v != null);
+        return convertWhereImpl(field, 'ne', null, mode);
       }
       break;
 
@@ -136,7 +194,7 @@ function convertWhereImpl(field: string | FieldPath, operator: WhereFilterOp | S
         op = manualWhere(field, val => operator.test(val));
         value = undefined;
       } else {
-        if (manualOnly) {
+        if (mode === 'manualOnly') {
           switch (operator) {
             case 'array-contains':
               // Array contains value
@@ -152,9 +210,7 @@ function convertWhereImpl(field: string | FieldPath, operator: WhereFilterOp | S
             case 'array-contains-any':
               // Array contans any values in array
               // `value` must be an array
-              if (!_.isArray(value)) {
-                throw new Error(`"array-contains-any" operator requires an array value (got "${typeof value}")`);
-              }
+              value = _.castArray(value);
               op = manualWhere(field, v => {
                 if (_.isArray(v)) {
                   return _.some(v, val => _.some(value, eq(val)));
@@ -178,8 +234,13 @@ function convertWhereImpl(field: string | FieldPath, operator: WhereFilterOp | S
       }
   }
 
-  if (manualOnly && (typeof op !== 'function')) {
+  if ((mode === 'manualOnly') && (typeof op !== 'function')) {
     throw new Error(`Unknown operator could not be converted to a function: "${operator}".`);
+  }
+
+  if ((mode === 'nativeOnly') && (typeof op === 'function')) {
+    const type = operator instanceof RegExp ? 'RegExp' : operator;
+    throw new Error(`Operator "${type}" is not supported natively by Firestore. Use the \`allowNonNativeQueries\` option to enable a manual version of this query.`);  
   }
 
   return {

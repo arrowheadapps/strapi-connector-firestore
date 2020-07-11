@@ -65,7 +65,7 @@ module.exports = ({ env }) => ({
 
 ## Usage Instructions
 
-### Configuration options
+### Connector options
 
 These are the available options to be specified in the Strapi database configuration file: `./config/database.js`.
 
@@ -75,15 +75,44 @@ These are the available options to be specified in the Strapi database configura
 | `options.useEmulator`   | `string`    | `false`     | Connect to a local Firestore emulator instead of the production database. You must start a local emulator yourself using `firebase emulators:start --only firestore` before you start Strapi. See https://firebase.google.com/docs/emulator-suite/install_and_configure. |
 | `options.singleId`      | `string`    | `"default"` | The document ID to used for `singleType` models and flattened models. |
 | `options.flattenModels` | `(string | RegExp | { test: string | RegExp, doc: (model: StrapiModel) => string })[]`   | `true` | An array of `RegExp`'s that are matched against the `uid` property of each model to determine if it should be flattened (see below). Alternatively, and array of objects with `test` and `doc` properties, where `test` is the aforementioned `RegExp` and `doc` is a function taking the model and returning a document path where the collection should be stored.<br><br>Defaults to `[{ test: /^strapi::/, doc: ({ uid }) => uid.replace('::', '/') }]` such that core Strapi models will be flattened to a `"strapi/*"` document by default.<br><br>The `doc` function takes the model instance as the only argument. |
+| `options.allowNonNativeQueries` | `boolean` | `false` | Allow the connector to manually perform search and other query types than are not natively supported by Firestore (see [Search and non-native queries](#search-and-non-native-queries)). These can have poor performance and higher usage costs. If disabled, then search |
+
+### Model options
+
+In addition to the normal model options, you can provide the following to customise Firestore behaviour.
+
+| Name                    | Type        | Default     | Description                     |
+|-------------------------|-------------|-------------|---------------------------------|
+| `options.flatten`       | `string | RegExp | undefined` | `undefined` | If defined, overrides the connector's global `flattenModels` setting (see above) for this model. |
+| `options.allowNonNativeQueries` | `boolean | undefined` | `undefined` | If defined, overrides the connector's global `allowNonNativeQueries` setting (see above) for this model. If this model is flattened, this setting is ignored and non-native queries including search are supported. |
 
 ### Collection flattening
 
 You can choose to "flatten" a collection of Firestore documents down to fields within a single Firestore document. Considering that Firestore charges for document read and write operations, you may choose to flatten a collection to reduce usage costs and/or improve performance, however it may increase bandwidth costs as the collection will always be retrieved in it's entirety. Flattening may be especially beneficial for collections that are often queried in their entirety anyway.
 
+Flattening also enables search and other query types that are not natively supported in Firestore.
+
 Before choosing to flatten a collection, consider the following:
 
 - The collection should be bounded (i.e. you can guarantee that there will only be a finite number of entries). For example, a collection of users would be unbounded, but Strapi configurations and permissions/roles would be bounded.
 - The number of entries and size of the entries must fit within a single Firestore document. The size limit for a Firestore document is 1MiB ([see limits](https://firebase.google.com/docs/firestore/quotas#limits)).
+
+### Search and non-native queries
+
+Firestore does not natively support search. Nor does it support several Strapi filter types such as:
+
+- `'ne'` (inequality/not-equal)
+- `'nin'` (not included in array of values)
+- `'contains'` (case-insensitive string contains)
+- `'containss'` (case-sensitive string contains)
+- `'ncontains'` (case-insensitive string doesn't contain)
+- `'ncontainss'` (case-sensitive string doesn't contain)
+
+This connector manually implements search and these other filters by reading the Firestore collection in blocks without any filters, and then manually filtering the results. This can cause poor performance, and also increased usage costs, because more documents are read from Firestore.
+
+You can enable search and manual query implementations using the `allowNonNativeQueries` option, which is disabled by default. It is recommended that you only enable this if necessary, or only enable it on the specific models that you need.
+
+Flattened models support all of these filters including search, because the collection is fetched as a whole anyway.
 
 ### Minimal example
 
@@ -122,21 +151,28 @@ module.exports = ({ env }) => ({
         // when running in development mode
         useEmulator: process.env.NODE_ENV == 'development',
         singleId: 'default',
+
+        // Flatten internal Strapi models (this is the default)
         flattenCore: [
           {
             test: /^strapi::/,
             doc: ({ uid }) => uid.replace('::', '/')
           }
         ],
+
+        // Allow search and non-native queries on all models (use with caution)
+        allowNonNativeQueries: true
       }
     }
   },
 });
 ```
 
-You can also configure each model individually in it's JSON file `./api/{model-name}/models/{model-name}.settings.json`. This overrides any match from the connector's `flattenModels` option.
+### Model configuration examples
 
-The `singleId` option will be used as the document name, with the collection name being `collectionName`  or `glabalId` (in this example, `"myCollection/default"`):
+You can override some configuration options in each models JSON file `./api/{model-name}/models/{model-name}.settings.json`. 
+
+In this example, the collection will be flattened and the connector's `singleId` option will be used as the document name, with the collection name being `collectionName` or `glabalId` (in this example, `"myCollection/default"`):
 
 ```json
 {
@@ -148,7 +184,7 @@ The `singleId` option will be used as the document name, with the collection nam
 }
 ```
 
-The document name can also be specified explicity (in this case `"myCollection/myDoc"`):
+The document name can also be specified explicity (in this example `"myCollection/myDoc"`):
 
 ```json
 {
@@ -156,6 +192,18 @@ The document name can also be specified explicity (in this case `"myCollection/m
   "collectioName": "myCollection",
   "options": {
     "flatten": "myDoc"
+  }
+}
+```
+
+You can also overrive the connector's `allowNonNativeQueries` option:
+
+```json
+{
+  "kind": "collectionType",
+  "collectioName": "myCollection",
+  "options": {
+    "allowNonNativeQueries": true
   }
 }
 ```

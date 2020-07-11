@@ -2,72 +2,89 @@ import * as _ from 'lodash';
 import { QueryableCollection, QuerySnapshot, Snapshot } from './queryable-collection';
 import type { Query, Transaction, QueryDocumentSnapshot, FieldPath, WhereFilterOp } from '@google-cloud/firestore';
 import type { StrapiWhereOperator } from '../types';
-import { ManualFilter, convertWhere, convertWhereManual } from './convert-where';
+import { ManualFilter, convertWhere } from './convert-where';
 
 
 export class QueryableFirestoreCollection implements QueryableCollection {
 
-  private readonly query: Query
+  private allowNonNativeQueries: boolean
+  private query: Query
   private manualFilters: ManualFilter[] = [];
-  private orFilters: ManualFilter[] = [];
   private _limit?: number;
+  private _offset?: number;
 
-  constructor(other: Query | QueryableFirestoreCollection, limit?: number) {
+  constructor(other: QueryableFirestoreCollection)
+  constructor(other: Query, allowNonNativeQueries: boolean)
+  constructor(other: Query | QueryableFirestoreCollection, allowNonNativeQueries?: boolean) {
     if (other instanceof QueryableFirestoreCollection) {
+      this.allowNonNativeQueries = other.allowNonNativeQueries;
       this.query = other.query;
+      this.manualFilters = other.manualFilters.slice();
       this._limit = other._limit;
+      this._offset = other._offset;
     } else {
       this.query = other;
+      this.allowNonNativeQueries = allowNonNativeQueries || false;
     }
-    this._limit = limit;
   }
 
   get(trans?: Transaction): Promise<QuerySnapshot> {
-    return manualQuery(this.query, this.manualFilters, this.orFilters, this._limit || 0, trans);
+    return manualQuery(this.query, this.manualFilters, this._limit || 0, this._offset || 0, trans);
   }
 
-  where(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator | RegExp, value: any, combinator: 'and' | 'or' = 'and'): QueryableCollection {
-    if (combinator === 'or') {
-      // Push to manual 'OR' filters
-      const other = new QueryableFirestoreCollection(this.query);
-      const { operator: op } = convertWhereManual(field, operator, value);
-      other.orFilters.push(op);
-      return other;
+  where(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator | RegExp, value: any): QueryableCollection {
+    const filter = convertWhere(field, operator, value, this.allowNonNativeQueries);
+    const other = new QueryableFirestoreCollection(this);
+    if (typeof filter.operator === 'function') {
+      other.manualFilters.push(filter.operator);
     } else {
-      // Push to normal 'AND' filters
-      const filter = convertWhere(field, operator, value);
-      if (typeof filter.operator === 'function') {
-        const other = new QueryableFirestoreCollection(this.query);
-        other.manualFilters.push(filter.operator);
-        return other;
-      } else {
-        return new QueryableFirestoreCollection(this.query.where(filter.field, filter.operator, filter.value));
-      }
+      other.query = this.query.where(filter.field, filter.operator, filter.value);
     }
+    return other;
+  }
+
+  whereAny(filters: ManualFilter[]): QueryableCollection {
+    if (!this.allowNonNativeQueries) {
+      throw new Error('Search is not natively supported by Firestore. Use the `allowNonNativeQueries` option to enable manual search.');
+    }
+    const other = new QueryableFirestoreCollection(this);
+    other.manualFilters.push(data => filters.some(f => f(data)));
+    return other;
   }
 
   orderBy(field: string | FieldPath, directionStr: "desc" | "asc" = 'asc'): QueryableCollection {
-    return new QueryableFirestoreCollection(this.query.orderBy(field, directionStr));
+    const other = new QueryableFirestoreCollection(this);
+    other.query = this.query.orderBy(field, directionStr);
+    return other;
   }
 
   limit(limit: number): QueryableCollection {
-    return new QueryableFirestoreCollection(this.query.limit(limit), limit);
+    const other = new QueryableFirestoreCollection(this);
+    other.query = this.query.limit(limit);
+    other._limit = limit;
+    return other;
   }
 
   offset(offset: number): QueryableCollection {
-    return new QueryableFirestoreCollection(this.query.offset(offset));
+    const other = new QueryableFirestoreCollection(this);
+    other.query = this.query.offset(offset);
+    return other;
   }
 }
 
 
 
-async function manualQuery(baseQuery: Query, manualFilters: ManualFilter[], orFilters: ManualFilter[], limit: number, transaction: Transaction | undefined): Promise<QuerySnapshot> {
+async function manualQuery(baseQuery: Query, manualFilters: ManualFilter[], limit: number, offset: number, transaction: Transaction | undefined): Promise<QuerySnapshot> {
 
   let cursor: QueryDocumentSnapshot | undefined
   let docs: Snapshot[] = [];
   while (docs.length < limit) {
     if (limit) {
-      baseQuery = baseQuery.limit(limit);
+      // Use a minimum limit of 10 for the native query
+      // E.g. if we only want 1 result, we will still query
+      // ten at a time to improve performance
+      // But it will increase read usage (at most 9 reads will be unused)
+      baseQuery = baseQuery.limit(Math.max(10, limit));
     }
     if (cursor) {
       baseQuery = baseQuery.startAfter(cursor);
@@ -81,13 +98,13 @@ async function manualQuery(baseQuery: Query, manualFilters: ManualFilter[], orFi
     let resultDocs = result.docs;
     cursor = resultDocs[resultDocs.length - 1];
     if (manualFilters.length) {
-      // Entry must match every 'AND' filter
       resultDocs = resultDocs.filter((doc) => manualFilters.every(op => op(doc)));
     }
 
-    if (orFilters.length) {
-      // Entry must match any of the 'OR' filters
-      resultDocs = resultDocs.filter((doc) => manualFilters.some(op => op(doc)));
+    if (offset > 0) {
+      const length = resultDocs.length;
+      resultDocs = resultDocs.slice(offset);
+      offset -= length;
     }
 
     if ((docs.length + resultDocs.length) > limit) {

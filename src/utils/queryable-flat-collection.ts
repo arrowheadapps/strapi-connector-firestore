@@ -10,8 +10,7 @@ export class QueryableFlatCollection implements QueryableCollection {
 
   private readonly doc: DocumentReference
   private _filters: ManualFilter[] = [];
-  private _orFilters: ManualFilter[] = [];
-  private _orderBy?: { field: string | FieldPath, directionStr: OrderByDirection }
+  private _orderBy: { field: string | FieldPath, directionStr: OrderByDirection }[] = [];
   private _limit?: number
   private _offset?: number
 
@@ -20,7 +19,7 @@ export class QueryableFlatCollection implements QueryableCollection {
       this.doc = other.doc;
       // Copy the values
       this._filters = other._filters.slice();
-      this._orderBy = Object.assign({}, other._orderBy);
+      this._orderBy = other._orderBy.slice();
       this._limit = other._limit;
       this._offset = other._offset;
     } else {
@@ -41,16 +40,19 @@ export class QueryableFlatCollection implements QueryableCollection {
         exists: data != null,
         data: () => data,
       };
-      if ((!this._filters.length || this._filters.every(f => f(snap))) && (!this._orFilters.length || this._orFilters.some(f => f(snap)))) {
+      if (this._filters.every(f => f(snap))) {
         docs.push(snap);
       }
     };
 
-    if (this._orderBy) {
-      docs = _.sortBy(docs, d => getFieldPath(this._orderBy!.field, d));
-      if (this._orderBy!.directionStr === 'desc') {
-        docs = _.reverse(docs);
-      }
+    if (this._orderBy.length) {
+      this._orderBy.forEach(({ field, directionStr }) => {
+        docs = _.sortBy(docs, d => getFieldPath(field, d));
+        if (directionStr === 'desc') {
+          docs = _.reverse(docs);
+        }
+      });
+      
     }
     
     // Offset and limit after sorting
@@ -64,22 +66,23 @@ export class QueryableFlatCollection implements QueryableCollection {
     };
   }
 
-  where(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator | RegExp, value: any, combinator: 'and' | 'or' = 'and'): QueryableCollection {
+  where(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator | RegExp, value: any): QueryableCollection {
     const other = new QueryableFlatCollection(this);
 
     const { operator: op } = convertWhereManual(field, operator, value);
-    if (combinator === 'or') {
-      other._orFilters.push(op);
-    } else {
-      other._filters.push(op);
-    }
+    other._filters.push(op);
+    return other;
+  }
 
+  whereAny(filters: ManualFilter[]): QueryableCollection {
+    const other = new QueryableFlatCollection(this);
+    other._filters.push(data => filters.some(f => f(data)));
     return other;
   }
 
   orderBy(field: string | FieldPath, directionStr: OrderByDirection = 'asc'): QueryableCollection {
     const other = new QueryableFlatCollection(this);
-    other._orderBy = { field, directionStr };
+    other._orderBy.push({ field, directionStr });
     return other;
   }
 

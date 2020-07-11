@@ -1,6 +1,7 @@
 import * as _ from 'lodash';
 import type { OrderByDirection, DocumentData, DocumentReference, Firestore, Transaction, FieldPath, WhereFilterOp } from '@google-cloud/firestore';
 import type { StrapiWhereOperator } from '../types';
+import { ManualFilter } from './convert-where';
 
 export type Reference = DocumentReference | DeepReference;
 
@@ -44,7 +45,8 @@ export interface QuerySnapshot {
 export interface QueryableCollection {
   get(trans?: Transaction): Promise<QuerySnapshot>;
   
-  where(field: string | FieldPath, opStr: WhereFilterOp | StrapiWhereOperator | RegExp, value: any, combinator?: 'and' | 'or'): QueryableCollection;
+  where(field: string | FieldPath, opStr: WhereFilterOp | StrapiWhereOperator | RegExp, value: any): QueryableCollection;
+  whereAny(filters: ManualFilter[]): QueryableCollection;
   orderBy(field: string | FieldPath, directionStr?: OrderByDirection): QueryableCollection;
   limit(limit: number): QueryableCollection;
   offset(offset: number): QueryableCollection;

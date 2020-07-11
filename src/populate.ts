@@ -63,8 +63,6 @@ export async function populateDocs(model: FirestoreConnectorModel, docs: Partial
       }
     
       if (!data[f]) {
-        console.error(`EMPTY RELATION: ${f}: ${data[f]}`);
-
         const assocDetails = assocModel.attributes[details.via];
 
         // If the attribe in the related model has `model`
