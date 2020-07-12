@@ -33,10 +33,10 @@ export class QueryableFirestoreCollection implements QueryableCollection {
   }
 
   where(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator | RegExp, value: any): QueryableCollection {
-    const filter = convertWhere(field, operator, value, this.allowNonNativeQueries);
+    const filter = convertWhere(field, operator, value, this.allowNonNativeQueries ? 'preferNative' : 'nativeOnly');
     const other = new QueryableFirestoreCollection(this);
-    if (typeof filter.operator === 'function') {
-      other.manualFilters.push(filter.operator);
+    if (typeof filter === 'function') {
+      other.manualFilters.push(filter);
     } else {
       other.query = this.query.where(filter.field, filter.operator, filter.value);
     }

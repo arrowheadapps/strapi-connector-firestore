@@ -5,20 +5,10 @@ import { Snapshot } from './queryable-collection';
 
 export type ManualFilter = ((data: Snapshot) => boolean);
 
-export interface WhereFilter<T> {
+export interface WhereFilter {
   field: string | FieldPath
-  operator: T
+  operator: WhereFilterOp
   value: any
-}
-
-export function convertWhere(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator | RegExp, value: any, allowNonNativeQueries: false): WhereFilter<WhereFilterOp>
-export function convertWhere(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator | RegExp, value: any, allowNonNativeQueries: boolean): WhereFilter<WhereFilterOp | ManualFilter>
-export function convertWhere(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator | RegExp, value: any, allowNonNativeQueries: boolean): WhereFilter<WhereFilterOp | ManualFilter> {
-  return convertWhereImpl(field, operator, value, allowNonNativeQueries ? 'preferNative' : 'nativeOnly');
-}
-
-export function convertWhereManual(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator | RegExp, value: any): WhereFilter<ManualFilter> {
-  return convertWhereImpl(field, operator, value, 'manualOnly') as WhereFilter<ManualFilter>;
 }
 
 export function getFieldPath(field: string | FieldPath, data: Snapshot): any {
@@ -44,22 +34,21 @@ export function manualWhere(field: string | FieldPath, predicate: (fieldValue: a
  * Convert a Strapi or Firestore query operator to a Firestore operator
  * or a manual function.
  */
-function convertWhereImpl(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator | RegExp, value: any, mode: 'manualOnly' | 'nativeOnly' | 'preferNative') {
-  // We use both the _.isEqual (to handle objects etc)
-  // and the standard operator (because _.isEqual considers '42' == 42)
-  // whereas we need them to equal 
-  // Numbers received via querystring will be strings
-  const eq = val => v => ((val == v) || _.isEqual(val, v));
-  const ne = val => v => ((val != v) && !_.isEqual(val, v));
+export function convertWhere(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator | RegExp, value: any, mode: 'manualOnly'): ManualFilter
+export function convertWhere(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator | RegExp, value: any, mode: 'nativeOnly'): ManualFilter
+export function convertWhere(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator | RegExp, value: any, mode: 'manualOnly' | 'nativeOnly' | 'preferNative'): WhereFilter | ManualFilter
+export function convertWhere(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator | RegExp, value: any, mode: 'manualOnly' | 'nativeOnly' | 'preferNative'): WhereFilter | ManualFilter {
+  const eq = val => v => _.isEqual(val, v);
+  const ne = val => v => !_.isEqual(val, v);
 
-  let op: WhereFilterOp | ((data: Snapshot) => boolean);
+  let op: WhereFilterOp | ManualFilter;
   switch (operator) {
     case '==':
     case 'eq':
       if (_.isArray(value)) {
         // Equals any (OR)
         // I.e. "in"
-        return convertWhereImpl(field, 'in', value, mode);
+        return convertWhere(field, 'in', value, mode);
       } else {
         // Equals
         op = (mode === 'manualOnly') ?  manualWhere(field, eq(value)) : '==';
@@ -70,7 +59,7 @@ function convertWhereImpl(field: string | FieldPath, operator: WhereFilterOp | S
       if (_.isArray(value)) {
         // Not equals any (OR)
         // I.e. "nin"
-        return convertWhereImpl(field, 'nin', value, mode);
+        return convertWhere(field, 'nin', value, mode);
       } else {
         // NO NATIVE SUPPORT
         // Not equal
@@ -180,12 +169,12 @@ function convertWhereImpl(field: string | FieldPath, operator: WhereFilterOp | S
       break;
 
     case 'null':
-      if (value) {
+      if (_.toLower(value) === 'true') {
         // Equal to null
-        return convertWhereImpl(field, 'eq', null, mode);
+        return convertWhere(field, 'eq', null, mode);
       } else {
         // Not equal to null
-        return convertWhereImpl(field, 'ne', null, mode);
+        return convertWhere(field, 'ne', null, mode);
       }
       break;
 
@@ -243,11 +232,15 @@ function convertWhereImpl(field: string | FieldPath, operator: WhereFilterOp | S
     throw new Error(`Operator "${type}" is not supported natively by Firestore. Use the \`allowNonNativeQueries\` option to enable a manual version of this query.`);  
   }
 
-  return {
-    field,
-    operator: op,
-    value
-  };
+  if (typeof op === 'function') {
+    return op;
+  } else {
+    return {
+      field,
+      operator: op,
+      value
+    };
+  }
 }
 
 function guardManual(op: never): never {

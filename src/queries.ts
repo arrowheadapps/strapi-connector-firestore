@@ -13,7 +13,7 @@ import { FieldPath } from '@google-cloud/firestore';
 import { validateComponents } from './utils/validate-components';
 import { TransactionWrapper } from './utils/transaction-wrapper';
 import type { Snapshot, QueryableCollection, Reference } from './utils/queryable-collection';
-import { ManualFilter, convertWhereManual } from './utils/convert-where';
+import { ManualFilter, convertWhere } from './utils/convert-where';
 
 
 
@@ -22,9 +22,11 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
 
   function buildSearchQuery(value: any, query: QueryableCollection) {
 
-    const filters: ManualFilter[] = [
-      convertWhereManual(model.primaryKey, 'contains', value).operator
-    ];
+    const filters: ManualFilter[] = [];
+
+    if (value != null) {
+      filters.push(convertWhere(FieldPath.documentId(), 'contains', value.toString(), 'manualOnly'));
+    }
   
     Object.keys(model.attributes).forEach((field) => {
       switch (model.attributes[field].type) {
@@ -34,7 +36,7 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
         case 'decimal':
           const number = _.toNumber(value);
           if (!_.isNaN(number)) {
-            filters.push(convertWhereManual(field, 'eq', number).operator);
+            filters.push(convertWhere(field, 'eq', number, 'manualOnly'));
           }
           break;
 
@@ -44,7 +46,7 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
         case 'email':
         case 'enumeration':
         case 'uid':
-          filters.push(convertWhereManual(field, 'contains', value).operator);
+          filters.push(convertWhere(field, 'contains', value, 'manualOnly'));
           break;
           
         default:
@@ -68,8 +70,32 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
     } else {
       (filters.where || []).forEach(({ field, operator, value }) => {
 
-        // Convert reference ID to document reference
+        // Coerce to number for number fields
+        // Because values from querystring will come in as strings
         const details = model.attributes[field];
+        switch (details.type) {
+          case 'biginteger':
+          case 'integer':
+          case 'float':
+          case 'decimal':
+            if (_.isArray(value)) {
+              value = value.map(toNumber);
+            } else {
+              value = toNumber(value);
+            }
+            break;
+
+          default:
+            if (_.isArray(value)) {
+              value = value.map(v => v?.toString());
+            } else {
+              value = value?.toString();
+            }
+            break;
+
+        }
+
+        // Convert reference ID to document reference
         const assocModel = getModel(details.model || details.collection, details.plugin);
         if (assocModel) {
           value = getDocRef(value, assocModel);
@@ -330,3 +356,15 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
   };
 };
 
+/**
+ * Coerce to a number only if it is a number.
+ * If not a number, then return original value.
+ */
+function toNumber(value: any) {
+  const n = _.toNumber(value);
+  if (_.isNaN(n)) {
+    return value;
+  } else {
+    return n;
+  }
+}

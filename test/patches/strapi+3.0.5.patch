@@ -1,3 +1,39 @@
+diff --git a/node_modules/strapi/__tests__/search.test.e2e.js b/node_modules/strapi/__tests__/search.test.e2e.js
+index b6bb701..c67dd3a 100644
+--- a/node_modules/strapi/__tests__/search.test.e2e.js
++++ b/node_modules/strapi/__tests__/search.test.e2e.js
+@@ -50,6 +50,7 @@ const bedModel = {
+ const bedFixtures = [
+   {
+     // will have id=1
++    id: 1,
+     name: 'Sleepy Bed',
+     weight: 12.4,
+     shortDescription: 'Is a good bed to sleep in.',
+@@ -63,6 +64,7 @@ const bedFixtures = [
+   },
+   {
+     // will have id=2
++    id: 2,
+     name: 'Tired Bed',
+     weight: 11.1,
+     shortDescription: 'You will never wake up again.',
+@@ -76,6 +78,7 @@ const bedFixtures = [
+   },
+   {
+     // will have id=3
++    id: 3,
+     // other beds don't contain any 3 in order to find only Zombie Bed when searching 3
+     name: 'Zombie Bed',
+     weight: null,
+@@ -90,6 +93,7 @@ const bedFixtures = [
+   },
+   {
+     // will have id=4
++    id: 4,
+     name: 'a*b_c%d\\e+f',
+     weight: null,
+     shortDescription: null,
 diff --git a/node_modules/strapi/lib/Strapi.js b/node_modules/strapi/lib/Strapi.js
 index 2b720d3..4a005f1 100644
 --- a/node_modules/strapi/lib/Strapi.js

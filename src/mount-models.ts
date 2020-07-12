@@ -79,7 +79,7 @@ export function mountModels(models: FirestoreConnectorContext[]) {
 
         model.db = new QueryableFlatCollection(flatDoc);
         model.doc = (id?: string) => {
-          return path.posix.join(flatDoc.path, id || collection.doc().id)
+          return path.posix.join(flatDoc.path, id?.toString() || collection.doc().id)
         };
 
         model.delete = async (ref, trans) => {
@@ -126,7 +126,7 @@ export function mountModels(models: FirestoreConnectorContext[]) {
 
         const collection = instance.collection(collectionName);
         model.db = new QueryableFirestoreCollection(collection, model.options.allowNonNativeQueries);
-        model.doc = (id?: string) => id ? collection.doc(id) : collection.doc();
+        model.doc = (id?: string) => id ? collection.doc(id.toString()) : collection.doc();
 
         model.delete = async (ref, trans) => {
           if (!(ref instanceof DocumentReference)) {
