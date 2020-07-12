@@ -62,6 +62,13 @@ module.exports = ({ env }) => ({
 });
 ```
 
+## Examples
+
+See some example projects:
+
+- [Cloud Run and Firebase Hosting](/examples/cloud-run-and-hosting)
+
+
 ## Usage Instructions
 
 ### Configuration options
