@@ -18,7 +18,7 @@
     "strapi-plugin-email": "^3.0.5",
     "strapi-plugin-upload": "^3.0.5",
     "strapi-plugin-users-permissions": "^3.0.5",
-    "strapi-provider-upload-google-cloud-storage": "^3.0.1",
+    "strapi-provider-upload-google-cloud-storage": "^3.0.5",
     "strapi-utils": "^3.0.5"
   }
 }
