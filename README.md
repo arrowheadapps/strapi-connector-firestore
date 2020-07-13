@@ -33,6 +33,11 @@ It has several advantages such as:
 - Integration with the suite of mobile and web development that come with Firebase, such as Authentication, Push Notifications, Cloud Functions, etc.
 - Generous [free usage tier](https://firebase.google.com/pricing) so there is no up-front cost to get started.
 
+## Requirements
+
+- NodeJS `>= 12`
+- Strapi version compatible with `^3.0.0`
+
 ## Installation
 
 Install the NPM package:
@@ -41,7 +46,7 @@ Install the NPM package:
 $ npm install --save strapi-connector-firestore
 ```
 
-Configure Strapi (`^3.0.0`) to use the Firestore database connector in `./config/database.js`:
+Configure Strapi to use the Firestore database connector in `./config/database.js`:
 
 ```javascript
 // ./config/database.js
@@ -56,7 +61,9 @@ module.exports = ({ env }) => ({
       options: {
         // Connect to a local running Firestore emulator
         // when running in development mode
-        useEmulator: process.env.NODE_ENV == 'development'
+        useEmulator: process.env.NODE_ENV == 'development',
+        // Enable search and non-native queries on all models (use with caution)
+        allowNonNativeQueries: true
       }
     }
   },
@@ -135,9 +142,9 @@ module.exports = ({ env }) => ({
 
 ### Full example
 
-This configuration will work for production deployments and also local development using an emulator (when `process.env.NODE_ENV == 'development'`). For production deployments on non-GCP platforms (not supporting Application Default Credentials), make sure to download a service account key file, and set an environment variable `GOOGLE_APPLICATION_CREDENTIALS` pointing to the file.
+This configuration will work for production deployments, and also local development using an emulator (when `process.env.NODE_ENV == 'development'`). 
 
-See https://cloud.google.com/docs/authentication/production#obtaining_and_providing_service_account_credentials_manually.
+For production deployments on non-GCP platforms (not supporting Application Default Credentials), make sure to download a service account key file, and set an environment variable `GOOGLE_APPLICATION_CREDENTIALS` pointing to the file. See [Obtaining and providing service account credentials manually](https://cloud.google.com/docs/authentication/production#obtaining_and_providing_service_account_credentials_manually).
 
 ```javascript
 // ./config/database.js
@@ -158,7 +165,7 @@ module.exports = ({ env }) => ({
         // Disable default flattening
         flattenCore: [],
 
-        // Allow search and non-native queries on all models (use with caution)
+        // Enable search and non-native queries on all models (use with caution)
         allowNonNativeQueries: true
       }
     }
@@ -211,7 +218,7 @@ You can also overrive the connector's `allowNonNativeQueries` option:
 
 ### Indexes
 
-Firestore requires an index for every query, and it automatically creates indexes for basic queries [(read more)](https://firebase.google.com/docs/firestore/query-data/indexing). 
+Firestore requires an index for every query, and it automatically creates indexes for basic queries ([read more](https://firebase.google.com/docs/firestore/query-data/indexing)). 
 
 Depending on the sort of query operations you will perform, this means that you may need to manually create indexes or those queries will fail.
 
@@ -230,7 +237,7 @@ For more info, read their [pricing calculator](https://firebase.google.com/prici
 
 The Firestore database can be accessed directly via the many client SDKs available to take advantage of features like realtime updates.
 
-This means that there will be two security policies in play: Firestore security rules [(read more)](https://firebase.google.com/docs/firestore/security/overview), and Strapi's own access control via the Strapi API [(read more)](https://strapi.io/documentation/v3.x/plugins/users-permissions.html#concept).
+This means that there will be two security policies in play: Firestore security rules ([read more](https://firebase.google.com/docs/firestore/security/overview)), and Strapi's own access control via the Strapi API ([read more](https://strapi.io/documentation/v3.x/plugins/users-permissions.html#concept)).
 
 Be sure to secure your data properly by considering several options
 - Disable all access to Firestore using security rules, and use Strapi API only.
