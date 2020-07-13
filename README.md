@@ -74,21 +74,23 @@ These are the available options to be specified in the Strapi database configura
 | `settings`              | `Object`    | `undefined` | Passed directly to the Firestore constructor. Specify any options described here: https://googleapis.dev/nodejs/firestore/latest/Firestore.html#Firestore. You can omit this completely on platforms that support [Application Default Credentials](https://cloud.google.com/docs/authentication/production#finding_credentials_automatically) such as Cloud Run, and App Engine. If you want to test locally using a local emulator, you need to at least specify the `projectId`. |
 | `options.useEmulator`   | `string`    | `false`     | Connect to a local Firestore emulator instead of the production database. You must start a local emulator yourself using `firebase emulators:start --only firestore` before you start Strapi. See https://firebase.google.com/docs/emulator-suite/install_and_configure. |
 | `options.singleId`      | `string`    | `"default"` | The document ID to used for `singleType` models and flattened models. |
-| `options.flattenModels` | `(string | RegExp | { test: string | RegExp, doc: (model: StrapiModel) => string })[]`   | `true` | An array of `RegExp`'s that are matched against the `uid` property of each model to determine if it should be flattened (see below). Alternatively, and array of objects with `test` and `doc` properties, where `test` is the aforementioned `RegExp` and `doc` is a function taking the model and returning a document path where the collection should be stored.<br><br>Defaults to `[{ test: /^strapi::/, doc: ({ uid }) => uid.replace('::', '/') }]` such that core Strapi models will be flattened to a `"strapi/*"` document by default.<br><br>The `doc` function takes the model instance as the only argument. |
+| `options.flattenModels` | `(string \| RegExp \| { test: string \| RegExp, doc: (model: StrapiModel) => string })[]`   | `[{ test: /^strapi::/, doc: ({ uid }) => uid.replace('::', '/') }]` | An array of `RegExp`'s that are matched against the `uid` property of each model to determine if it should be flattened (see [collection flattening](#collection-flattening)). Alternatively, and array of objects with `test` and `doc` properties, where `test` is the aforementioned `RegExp` and `doc` is a function taking the model instance and returning a document path where the collection should be stored.<br><br>Defaults to a configuration that causes core Strapi models to be flattened to a `"strapi/*"` document by default. |
 | `options.allowNonNativeQueries` | `boolean` | `false` | Allow the connector to manually perform search and other query types than are not natively supported by Firestore (see [Search and non-native queries](#search-and-non-native-queries)). These can have poor performance and higher usage costs. If disabled, then search |
 
 ### Model options
 
-In addition to the normal model options, you can provide the following to customise Firestore behaviour.
+In addition to the normal model options, you can provide the following to customise Firestore behaviour. This configuration is in the model's JSON file: `./api/{model-name}/models/{model-name}.settings.json`.
 
 | Name                    | Type        | Default     | Description                     |
 |-------------------------|-------------|-------------|---------------------------------|
-| `options.flatten`       | `string | RegExp | undefined` | `undefined` | If defined, overrides the connector's global `flattenModels` setting (see above) for this model. |
-| `options.allowNonNativeQueries` | `boolean | undefined` | `undefined` | If defined, overrides the connector's global `allowNonNativeQueries` setting (see above) for this model. If this model is flattened, this setting is ignored and non-native queries including search are supported. |
+| `options.flatten`       | `string \| RegExp \| undefined` | `undefined` | If defined, overrides the connector's global `flattenModels` setting (see above) for this model. |
+| `options.allowNonNativeQueries` | `boolean \| undefined` | `undefined` | If defined, overrides the connector's global `allowNonNativeQueries` setting (see above) for this model. If this model is flattened, this setting is ignored and non-native queries including search are supported. |
 
 ### Collection flattening
 
-You can choose to "flatten" a collection of Firestore documents down to fields within a single Firestore document. Considering that Firestore charges for document read and write operations, you may choose to flatten a collection to reduce usage costs and/or improve performance, however it may increase bandwidth costs as the collection will always be retrieved in it's entirety. Flattening may be especially beneficial for collections that are often queried in their entirety anyway.
+You can choose to "flatten" a collection of Firestore documents down to fields within a single Firestore document. Considering that Firestore charges for document read and write operations, you may choose to flatten a collection to reduce usage costs and/or improve performance, however it may increase bandwidth costs as the collection will always be retrieved in it's entirety. 
+
+Flattening may be especially beneficial for collections that are often counted or queried in their entirety anyway. It will cost a single read to retrieve the entire flattened collection, but with increased bandwidth usage. If a collection is normally only queried one document at a time, then that would only have resulted in a single in the first place.
 
 Flattening also enables search and other query types that are not natively supported in Firestore.
 
@@ -96,6 +98,7 @@ Before choosing to flatten a collection, consider the following:
 
 - The collection should be bounded (i.e. you can guarantee that there will only be a finite number of entries). For example, a collection of users would be unbounded, but Strapi configurations and permissions/roles would be bounded.
 - The number of entries and size of the entries must fit within a single Firestore document. The size limit for a Firestore document is 1MiB ([see limits](https://firebase.google.com/docs/firestore/quotas#limits)).
+- The benefits of flattening will be diminished if the collection is most commonly queried one document at a time (flattening would increase bandwith usage with same amount of read operations). 
 
 ### Search and non-native queries
 
@@ -152,13 +155,8 @@ module.exports = ({ env }) => ({
         useEmulator: process.env.NODE_ENV == 'development',
         singleId: 'default',
 
-        // Flatten internal Strapi models (this is the default)
-        flattenCore: [
-          {
-            test: /^strapi::/,
-            doc: ({ uid }) => uid.replace('::', '/')
-          }
-        ],
+        // Disable default flattening
+        flattenCore: [],
 
         // Allow search and non-native queries on all models (use with caution)
         allowNonNativeQueries: true
