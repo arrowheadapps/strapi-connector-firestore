@@ -81,7 +81,7 @@ These are the available options to be specified in the Strapi database configura
 | `settings`              | `Object`    | `undefined` | Passed directly to the Firestore constructor. Specify any options described here: https://googleapis.dev/nodejs/firestore/latest/Firestore.html#Firestore. You can omit this completely on platforms that support [Application Default Credentials](https://cloud.google.com/docs/authentication/production#finding_credentials_automatically) such as Cloud Run, and App Engine. If you want to test locally using a local emulator, you need to at least specify the `projectId`. |
 | `options.useEmulator`   | `string`    | `false`     | Connect to a local Firestore emulator instead of the production database. You must start a local emulator yourself using `firebase emulators:start --only firestore` before you start Strapi. See https://firebase.google.com/docs/emulator-suite/install_and_configure. |
 | `options.singleId`      | `string`    | `"default"` | The document ID to used for `singleType` models and flattened models. |
-| `options.flattenModels` | `(string \| RegExp \| { test: string \| RegExp, doc: (model: StrapiModel) => string })[]`   | `[{ test: /^strapi::/, doc: ({ uid }) => uid.replace('::', '/') }]` | An array of `RegExp`'s that are matched against the `uid` property of each model to determine if it should be flattened (see [collection flattening](#collection-flattening)). Alternatively, and array of objects with `test` and `doc` properties, where `test` is the aforementioned `RegExp` and `doc` is a function taking the model instance and returning a document path where the collection should be stored.<br><br>Defaults to a configuration that causes core Strapi models to be flattened to a `"strapi/*"` document by default. |
+| `options.flattenModels` | `(string \| RegExp \| { test: string \| RegExp, doc: (model: StrapiModel) => string })[]`   | `[]` | An array of `RegExp`'s that are matched against the `uid` property of each model to determine if it should be flattened (see [collection flattening](#collection-flattening)). Alternatively, and array of objects with `test` and `doc` properties, where `test` is the aforementioned `RegExp` and `doc` is a function taking the model instance and returning a document path where the collection should be stored.<br><br>This is useful for flattening models built-in models or plugin models where you don't have access to the model configuration. Defaults an empty array (no flattening). |
 | `options.allowNonNativeQueries` | `boolean` | `false` | Allow the connector to manually perform search and other query types than are not natively supported by Firestore (see [Search and non-native queries](#search-and-non-native-queries)). These can have poor performance and higher usage costs. If disabled, then search |
 
 ### Model options
@@ -162,8 +162,17 @@ module.exports = ({ env }) => ({
         useEmulator: process.env.NODE_ENV == 'development',
         singleId: 'default',
 
-        // Disable default flattening
-        flattenCore: [],
+        // Flatten internal Strapi models (as an example)
+        // However, flattening the internal Strapi models is
+        // not actaully an effective usage of flattening, 
+        // because they are only queried one-at-a-time anyway
+        // So this would only result in increased bandwidth usage
+        flattenCore: [
+          {
+            test: /^strapi::/,
+            doc: ({ uid }) => uid.replace('::', '/')
+          }
+        ],
 
         // Enable search and non-native queries on all models (use with caution)
         allowNonNativeQueries: true

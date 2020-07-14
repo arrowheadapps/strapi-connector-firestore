@@ -17,12 +17,7 @@ const defaults = {
 const defaultOptions: ConnectorOptions = {
   useEmulator: false,
   singleId: 'default',
-  flattenModels: [
-    {
-      test: /^strapi::/,
-      doc: ({ uid }) => uid.replace('::', '/')
-    }
-  ],
+  flattenModels: [],
   allowNonNativeQueries: false
 }
 
