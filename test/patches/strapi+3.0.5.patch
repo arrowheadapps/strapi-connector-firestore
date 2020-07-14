@@ -1,5 +1,5 @@
 diff --git a/node_modules/strapi/__tests__/search.test.e2e.js b/node_modules/strapi/__tests__/search.test.e2e.js
-index b6bb701..c67dd3a 100644
+index b6bb701..71f621a 100644
 --- a/node_modules/strapi/__tests__/search.test.e2e.js
 +++ b/node_modules/strapi/__tests__/search.test.e2e.js
 @@ -50,6 +50,7 @@ const bedModel = {
@@ -18,7 +18,14 @@ index b6bb701..c67dd3a 100644
      name: 'Tired Bed',
      weight: 11.1,
      shortDescription: 'You will never wake up again.',
-@@ -76,6 +78,7 @@ const bedFixtures = [
+@@ -71,11 +73,13 @@ const bedFixtures = [
+     savEmail: 'sav@sleep.fr',
+     type: 'feather',
+     serialNumber: 1111111111111111,
+-    peopleNumber: 1,
++    // Change from 1 to 99, otherwise search for id=1 will find this also
++    peopleNumber: 99,
+     fabricThickness: 1.0001,
    },
    {
      // will have id=3
@@ -26,7 +33,7 @@ index b6bb701..c67dd3a 100644
      // other beds don't contain any 3 in order to find only Zombie Bed when searching 3
      name: 'Zombie Bed',
      weight: null,
-@@ -90,6 +93,7 @@ const bedFixtures = [
+@@ -90,6 +94,7 @@ const bedFixtures = [
    },
    {
      // will have id=4

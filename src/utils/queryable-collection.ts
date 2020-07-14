@@ -1,7 +1,7 @@
 import * as _ from 'lodash';
-import type { OrderByDirection, DocumentData, DocumentReference, Firestore, Transaction, FieldPath, WhereFilterOp } from '@google-cloud/firestore';
+import type { OrderByDirection, DocumentData, DocumentReference, Transaction, FieldPath, WhereFilterOp } from '@google-cloud/firestore';
 import type { StrapiWhereOperator } from '../types';
-import { ManualFilter } from './convert-where';
+import type { ManualFilter } from './convert-where';
 
 export type Reference = DocumentReference | DeepReference;
 
@@ -10,23 +10,6 @@ export type Reference = DocumentReference | DeepReference;
  * In the format: `"collection/doc/field"`
  */
 export type DeepReference = string;
-
-export function parseDeepReference(ref: DeepReference, instance: Firestore) {
-
-  const lastSlash = ref.lastIndexOf('/');
-  const id = ref.slice(lastSlash + 1);
-  if ((lastSlash === -1) || !id) {
-    throw new Error('Reference has invalid format');
-  }
-
-  const doc = instance.doc(ref.slice(0, lastSlash));
-
-  return {
-    doc,
-    id,
-    path: doc.path
-  }
-}
 
 
 export interface Snapshot {

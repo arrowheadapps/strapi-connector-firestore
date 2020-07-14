@@ -4,7 +4,7 @@
 
 import * as _ from 'lodash';
 import { populateDocs } from './populate';
-import { getDocRef, getModel } from './utils/get-doc-ref';
+import { coerceToReference, getModel } from './utils/doc-ref';
 import { convertRestQueryParams } from 'strapi-utils';
 import type { StrapiQueryParams, StrapiFilter } from './types';
 import { StatusError } from './utils/status-error';
@@ -46,12 +46,22 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
         case 'email':
         case 'enumeration':
         case 'uid':
-          filters.push(convertWhere(field, 'contains', value, 'manualOnly'));
+          filters.push(convertWhere(field, 'contains', value?.toString(), 'manualOnly'));
+          break;
+
+        case 'date':
+        case 'time':
+        case 'datetime':
+        case 'json':
+        case 'boolean':
+        case 'password':
+          // Explicitly don't search in these fields
           break;
           
         default:
           // Unsupported field type for search
           // Just ignore
+          break;
       }
     });
   
@@ -70,35 +80,82 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
     } else {
       (filters.where || []).forEach(({ field, operator, value }) => {
 
-        // Coerce to number for number fields
-        // Because values from querystring will come in as strings
+        // Coerce to the appropriate types
+        // Because values from querystring will always come in as strings
         const details = model.attributes[field];
-        switch (details.type) {
-          case 'biginteger':
-          case 'integer':
-          case 'float':
-          case 'decimal':
-            if (_.isArray(value)) {
-              value = value.map(toNumber);
-            } else {
-              value = toNumber(value);
+        if (details) {
+          if (details.type) {
+            switch (details.type) {
+              case 'biginteger':
+              case 'integer':
+              case 'float':
+              case 'decimal':
+                if (_.isArray(value)) {
+                  value = value.map(toNumber);
+                } else {
+                  value = toNumber(value);
+                }
+                break;
+
+              case 'string':
+              case 'text':
+              case 'richtext':
+              case 'email':
+              case 'enumeration':
+              case 'uid':
+                if (_.isArray(value)) {
+                  value = value.map(v => v?.toString());
+                } else {
+                  value = value?.toString();
+                }
+                break;
+
+              case 'date':
+              case 'time':
+              case 'datetime':
+                // TODO:
+                // To we need to coerce this to a Date object?
+                break;
+
+              case 'json':
+              case 'boolean':
+                if (_.isArray(value)) {
+                  value = value.map(v => {
+                    try {
+                      return JSON.parse(value);
+                    } catch {
+                      return value;
+                    }
+                  });
+                } else {
+                  try {
+                    value = JSON.parse(value);
+                  } catch {
+                  }
+                }
+                break;
+
+              case 'password':
+                // Disable queries on password fields
+                return;
+
+
+              default:
+                // Unknown field (or it's a relation)
+                // Don't coerce
+                break;
+
             }
-            break;
+          } else {
 
-          default:
-            if (_.isArray(value)) {
-              value = value.map(v => v?.toString());
-            } else {
-              value = value?.toString();
+            // Convert reference ID to document reference if it is one
+            if (details.model || details.collection) {
+              const assocModel = getModel(details.model || details.collection, details.plugin);
+              if (assocModel) {
+                value = coerceToReference(value, assocModel);
+              }
             }
-            break;
-
-        }
-
-        // Convert reference ID to document reference
-        const assocModel = getModel(details.model || details.collection, details.plugin);
-        if (assocModel) {
-          value = getDocRef(value, assocModel);
+          }
         }
 
         query = query.where(field, operator, value);
@@ -209,7 +266,7 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
       // Populate relations
       const [entry] = await populateDocs(model, [{ ref, data: () => data }], model.defaultPopulate, wrapper);
 
-      model.create(ref, data, wrapper);
+      await model.create(ref, data, wrapper);
       wrapper.doWrites();
 
       return entry;
@@ -272,7 +329,7 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
       const [entry] = await populateDocs(model, [{ ref, data: () => data }], model.defaultPopulate, wrapper);
 
       // Update entry without relational data.
-      model.setMerge(ref, data, wrapper);
+      await model.update(ref, data, wrapper);
       wrapper.doWrites();
 
       return entry;
@@ -309,7 +366,7 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
 
       await deleteRelations(model, { entry: doc, ref }, wrapper);
 
-      model.delete(ref, wrapper);
+      await model.delete(ref, wrapper);
       wrapper.doWrites();
 
       return doc;

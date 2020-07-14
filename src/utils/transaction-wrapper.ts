@@ -1,5 +1,6 @@
 import { DocumentReference, DocumentSnapshot, Transaction, ReadOptions, DocumentData, Firestore, Query } from '@google-cloud/firestore';
-import { QueryableCollection, Snapshot, QuerySnapshot, Reference, parseDeepReference } from './queryable-collection';
+import type { QueryableCollection, Snapshot, QuerySnapshot, Reference } from './queryable-collection';
+import { parseDeepReference } from './doc-ref';
 
 export class TransactionWrapper {
   private readonly transaction: Transaction

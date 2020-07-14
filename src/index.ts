@@ -2,10 +2,9 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as _ from 'lodash';
 import { Firestore, Settings } from '@google-cloud/firestore';
-
 import { mountModels, DEFAULT_CREATE_TIME_KEY, DEFAULT_UPDATE_TIME_KEY } from './mount-models';
 import { queries } from './queries';
-import { Strapi, FirestoreConnectorContext, StrapiModel, ConnectorOptions } from './types';
+import type { Strapi, FirestoreConnectorContext, StrapiModel, ConnectorOptions } from './types';
 
 /**
  * Firestore hook

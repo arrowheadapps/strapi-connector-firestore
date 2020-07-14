@@ -1,8 +1,8 @@
 import * as _ from 'lodash';
 import * as path from 'path';
-import { QueryableCollection, QuerySnapshot, Snapshot } from './queryable-collection';
 import { getFieldPath, convertWhere, ManualFilter } from './convert-where';
-import type { DocumentReference, OrderByDirection, Transaction, FieldPath, WhereFilterOp } from '@google-cloud/firestore';
+import { DocumentReference, OrderByDirection, Transaction, FieldPath, WhereFilterOp } from '@google-cloud/firestore';
+import type { QueryableCollection, QuerySnapshot, Snapshot } from './queryable-collection';
 import type { StrapiWhereOperator } from '../types';
 
 
@@ -24,6 +24,9 @@ export class QueryableFlatCollection implements QueryableCollection {
       this._offset = other._offset;
     } else {
       this.doc = other;
+
+      // Default sort by ID
+      this.orderBy(FieldPath.documentId(), 'asc');
     }
   }
 

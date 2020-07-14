@@ -1,8 +1,8 @@
 import * as _ from 'lodash';
-import { QueryableCollection, QuerySnapshot, Snapshot } from './queryable-collection';
-import type { Query, Transaction, QueryDocumentSnapshot, FieldPath, WhereFilterOp } from '@google-cloud/firestore';
-import type { StrapiWhereOperator } from '../types';
 import { ManualFilter, convertWhere } from './convert-where';
+import { Query, Transaction, QueryDocumentSnapshot, FieldPath, WhereFilterOp } from '@google-cloud/firestore';
+import type { QueryableCollection, QuerySnapshot, Snapshot } from './queryable-collection';
+import type { StrapiWhereOperator } from '../types';
 
 
 export class QueryableFirestoreCollection implements QueryableCollection {
@@ -25,6 +25,7 @@ export class QueryableFirestoreCollection implements QueryableCollection {
     } else {
       this.query = other;
       this.allowNonNativeQueries = allowNonNativeQueries || false;
+      this.orderBy(FieldPath.documentId(), 'asc');
     }
   }
 

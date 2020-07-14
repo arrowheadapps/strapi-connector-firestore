@@ -159,9 +159,10 @@ export interface FirestoreConnectorModel extends StrapiModel {
 
   doc(): Reference;
   doc(id: string): Reference;
+  create(ref: Reference, data: DocumentData, transaction: TransactionWrapper | undefined): Promise<void>;
+  update(ref: Reference, data: DocumentData, transaction: TransactionWrapper | undefined): Promise<void>;
   setMerge(ref: Reference, data: DocumentData, transaction: TransactionWrapper | undefined): Promise<void>;
   delete(ref: Reference, transaction: TransactionWrapper): Promise<void>;
-  create(ref: Reference, data: DocumentData, transaction: TransactionWrapper | undefined): Promise<void>;
 
   assocKeys: string[];
   componentKeys: string[];

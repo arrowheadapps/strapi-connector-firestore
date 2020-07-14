@@ -2,10 +2,11 @@ import * as _ from 'lodash';
 import * as utils from 'strapi-utils';
 import * as path from 'path';
 import { DocumentReference, FieldValue } from '@google-cloud/firestore';
-import { parseDeepReference } from './utils/queryable-collection';
-import type { FirestoreConnectorContext, FirestoreConnectorModel, ModelOptions } from './types';
 import { QueryableFirestoreCollection } from './utils/queryable-firestore-collection';
 import { QueryableFlatCollection } from './utils/queryable-flat-collection';
+import { parseDeepReference } from './utils/doc-ref';
+import type { FirestoreConnectorContext, FirestoreConnectorModel, ModelOptions } from './types';
+import type { TransactionWrapper } from './utils/transaction-wrapper';
 
 export const DEFAULT_CREATE_TIME_KEY = 'createdAt';
 export const DEFAULT_UPDATE_TIME_KEY = 'updatedAt';
@@ -83,17 +84,43 @@ export function mountModels(models: FirestoreConnectorContext[]) {
         };
 
         model.delete = async (ref, trans) => {
-          await model.setMerge(ref, FieldValue.delete(), trans);
+          await set(ref, FieldValue.delete(), trans, false);
         };
 
         model.create = async (ref, data, trans) => {
           // TODO:
           // Error if document already exists
-          await model.setMerge(ref, data, trans);
+          await set(ref, data, trans, false);
         };
-        
+
+        model.update = async (ref, data, trans) => {
+          // TODO:
+          // Error if document doesn't exist
+          await set(ref, data, trans, false);
+        };
+
+
         // Set flattened document
         model.setMerge = async (ref, data, trans) => {
+          await set(ref, data, trans, true);
+        };
+
+        let _ensureDocument: Promise<any> | null = null;
+        const ensureDocument = async () => {
+          // Set and merge with empty object
+          // This will ensure that the document exists using
+          // as single write operation
+          if (!_ensureDocument) {
+            _ensureDocument = flatDoc.set({}, { merge: true })
+              .catch((err) => {
+                _ensureDocument = null;
+                throw err;
+              });
+          }
+          return _ensureDocument;
+        };
+        
+        const set = async (ref, data, trans: TransactionWrapper | undefined, merge: boolean) => {
           if (typeof ref !== 'string') {
             throw new Error('Flattened collection must have reference of type `String`');
           }
@@ -102,23 +129,42 @@ export function mountModels(models: FirestoreConnectorContext[]) {
           if (!doc.isEqual(flatDoc)) {
             throw new Error('Reference points to a different model');
           }
-          
-          if (!data) {
-            data = FieldValue.delete();
+
+          if (!data || (typeof data !== 'object')) {
+            throw new Error(`Invalid data provided to Firestore. It must be an object but it was: ${JSON.stringify(data)}`);
           }
+          
+          if (FieldValue.delete().isEqual(data)) {
+            data = { [id]: FieldValue.delete() };
+          } else {
+            if (merge) {
+              // Flatten into key-value pairs to merge the fields
+              const pairs = _.toPairs(data);
+              data = {};
+              pairs.forEach(([path, val]) => {
+                data[`${id}.${path}`] = val;
+              });
+            } else {
+              data = { [id]: data };
+            }
+          }
+
+          // Ensure document exists
+          // This costs one write operation at startup only
+          await ensureDocument();
 
           if (trans) {
             // Batch all writes to documents in this flattened
             // collection and do it only once
             trans.addKeyedWrite(doc.path, 
-              (ctx) => Object.assign(ctx || {}, { [id]: data }),
+              (ctx) => Object.assign(ctx || {}, data),
               (trans, ctx) => {
-                trans.set(doc, ctx, { merge: true });
+                trans.update(doc, ctx);
               }
             );
           } else {
             // Do the write immediately
-            await doc.set({ [id]: data }, { merge: true });
+            await doc.update(data);
           }
         };
 
@@ -147,6 +193,17 @@ export function mountModels(models: FirestoreConnectorContext[]) {
             trans.addWrite((trans)  => trans.create(ref, data));
           } else {
             await ref.create(data);
+          }
+        };
+
+        model.update = async (ref, data, trans) => {
+          if (!(ref instanceof DocumentReference)) {
+            throw new Error('Non-flattened collection must have reference of type `DocumentReference`');
+          }
+          if (trans) {
+            trans.addWrite((trans)  => trans.update(ref, data));
+          } else {
+            await ref.update(data);
           }
         };
 

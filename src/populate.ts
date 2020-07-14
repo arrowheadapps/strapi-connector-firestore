@@ -1,5 +1,5 @@
 import * as _ from 'lodash';
-import { getDocRef, getModel, parseRef } from './utils/get-doc-ref';
+import { coerceToReference, getModel, parseRef } from './utils/doc-ref';
 import { getComponentModel } from './utils/validate-components';
 import type { FirestoreConnectorModel } from './types';
 import type { DocumentReference } from '@google-cloud/firestore';
@@ -90,7 +90,7 @@ export async function populateDocs(model: FirestoreConnectorModel, docs: Partial
         // Expects array of DocumentReference instances
         data[f].forEach(ref => {
           subDocs.push({
-            doc: getDocRef(ref, assocModel) as DocumentReference,
+            doc: coerceToReference(ref, assocModel) as DocumentReference,
             assign: (snap) => {
               data[f].push(processPopulatedDoc(snap));
             }
@@ -102,7 +102,7 @@ export async function populateDocs(model: FirestoreConnectorModel, docs: Partial
       } else {
         // oneToOne or manyToOne etc
         subDocs.push({
-          doc: getDocRef(data[f], assocModel) as DocumentReference,
+          doc: coerceToReference(data[f], assocModel) as DocumentReference,
           assign: (snap) => {
             data[f] = processPopulatedDoc(snap);
           }

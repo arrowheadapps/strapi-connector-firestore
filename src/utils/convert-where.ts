@@ -1,7 +1,7 @@
 import * as _ from 'lodash';
-import { WhereFilterOp, FieldPath } from '@google-cloud/firestore';
+import { WhereFilterOp, FieldPath, DocumentReference } from '@google-cloud/firestore';
+import type { Snapshot } from './queryable-collection';
 import type { StrapiWhereOperator } from '../types';
-import { Snapshot } from './queryable-collection';
 
 export type ManualFilter = ((data: Snapshot) => boolean);
 
@@ -38,9 +38,6 @@ export function convertWhere(field: string | FieldPath, operator: WhereFilterOp 
 export function convertWhere(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator | RegExp, value: any, mode: 'nativeOnly'): ManualFilter
 export function convertWhere(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator | RegExp, value: any, mode: 'manualOnly' | 'nativeOnly' | 'preferNative'): WhereFilter | ManualFilter
 export function convertWhere(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator | RegExp, value: any, mode: 'manualOnly' | 'nativeOnly' | 'preferNative'): WhereFilter | ManualFilter {
-  const eq = val => v => _.isEqual(val, v);
-  const ne = val => v => !_.isEqual(val, v);
-
   let op: WhereFilterOp | ManualFilter;
   switch (operator) {
     case '==':
@@ -93,7 +90,7 @@ export function convertWhere(field: string | FieldPath, operator: WhereFilterOp 
       value = _.castArray(value).map(v => _.toLower(v));
       op = manualWhere(field, v => {
         const lv = _.toLower(v);
-        return value.some(val => _.includes(lv, val));
+        return value.some(val => includes(lv, val));
       });
       break;
 
@@ -104,7 +101,7 @@ export function convertWhere(field: string | FieldPath, operator: WhereFilterOp 
       value = _.castArray(value).map(v => _.toLower(v));
       op = manualWhere(field, v => {
         const lv = _.toLower(v);
-        return value.some(val => !_.includes(lv, val));
+        return value.some(val => !includes(lv, val));
       });
       break;
 
@@ -113,7 +110,7 @@ export function convertWhere(field: string | FieldPath, operator: WhereFilterOp 
       // String includes value
       // Inherently handle 'OR' case (when value is an array)
       value = _.castArray(value);
-      op = manualWhere(field, v => value.some(val => _.includes(v, val)));
+      op = manualWhere(field, v => value.some(val => includes(v, val)));
       break;
 
     case 'ncontainss':
@@ -121,7 +118,7 @@ export function convertWhere(field: string | FieldPath, operator: WhereFilterOp 
       // String doesn't include value
       // Inherently handle 'OR' case (when value is an array)
       value = _.castArray(value);
-      op = manualWhere(field, v => value.some(val => !_.includes(v, val)));
+      op = manualWhere(field, v => value.some(val => !includes(v, val)));
       break;
 
     case '<':
@@ -245,4 +242,30 @@ export function convertWhere(field: string | FieldPath, operator: WhereFilterOp 
 
 function guardManual(op: never): never {
   throw new Error(`Unsupported operator: "${op}"`);
+}
+
+function eq(val) {
+  return v => isEqual(val, v);
+}
+
+function ne(val) {
+  return v => !isEqual(val, v);
+}
+
+/**
+ * Special equality algorithim that handles DocumentReference instances.
+ */
+function isEqual(a: any, b: any): boolean {
+  a = (a instanceof DocumentReference) ?  a.path : a;
+  b = (b instanceof DocumentReference) ?  b.path : b;
+  return _.isEqual(a, b);
+}
+
+/**
+ * Special string includes algorithm that handles DocumentReference instances.
+ */
+function includes(a: any, b: any): boolean {
+  a = (a instanceof DocumentReference) ?  a.path : a;
+  b = (b instanceof DocumentReference) ?  b.path : b;
+  return _.includes(a, b);
 }

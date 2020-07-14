@@ -1,5 +1,5 @@
 import * as _ from 'lodash';
-import { getDocRef, getModel, refEquals } from './utils/get-doc-ref'
+import { coerceToReference, getModel, refEquals } from './utils/doc-ref'
 import { FieldValue, DocumentReference } from '@google-cloud/firestore';;
 import type { FirestoreConnectorModel } from './types';
 import type { TransactionWrapper } from './utils/transaction-wrapper';
@@ -16,10 +16,10 @@ interface MorphDef {
 
 const removeUndefinedKeys = (obj: any) => _.pickBy(obj, _.negate(_.isUndefined));
 
-const addRelationMorph = (model: FirestoreConnectorModel, params: MorphDef, transaction: TransactionWrapper) => {
+const addRelationMorph = async (model: FirestoreConnectorModel, params: MorphDef, transaction: TransactionWrapper) => {
   const { id, alias, refId, ref, field, filter } = params;
 
-  model.setMerge(
+  await model.setMerge(
     id!, 
     {
       [alias]: FieldValue.arrayUnion({
@@ -44,15 +44,13 @@ const removeRelationMorph = async (model: FirestoreConnectorModel, params: Morph
   };
 
   if (id) {
-    model.setMerge(id, value, transaction);
+    await model.setMerge(id, value, transaction);
 
   } else {
 
     const q = model.db.where(alias, 'array-contains', value);
     const docs = (await (transaction ? transaction.get(q) : q.get())).docs;
-    docs.forEach(d => {
-      model.setMerge(d.ref, value, transaction);
-    });
+    await Promise.all(docs.map(d => model.setMerge(d.ref, value, transaction)));
   }
 };
 
@@ -72,8 +70,8 @@ export async function updateRelations(model: FirestoreConnectorModel, params: { 
       throw new Error('Associated model no longer exists');
     }
 
-    const currentRef = getDocRef(data[attribute], assocModel);
-    const newRef = getDocRef(values[attribute], assocModel);
+    const currentRef = coerceToReference(data[attribute], assocModel);
+    const newRef = coerceToReference(values[attribute], assocModel);
 
     switch (association.nature) {
       case 'oneWay': {
@@ -94,23 +92,23 @@ export async function updateRelations(model: FirestoreConnectorModel, params: { 
         // if the value is null, set field to null on both sides
         if (!newRef) {
           if (currentRef) {
-            assocModel.setMerge(currentRef, { [details.via]: null }, transaction);
+            relationUpdates.push(assocModel.setMerge(currentRef, { [details.via]: null }, transaction));
           }
           return _.set(data, attribute, null);
         }
 
         // set old relations to null
-        relationUpdates.push(transaction.get(newRef).then(snap => {
+        relationUpdates.push(transaction.get(newRef).then(async snap => {
           const d = snap.data();
           if (d && d[details.via]) {
-            const oldLink = getDocRef(d[details.via], assocModel);
+            const oldLink = coerceToReference(d[details.via], assocModel);
             if (oldLink) {
-              assocModel.setMerge(oldLink as DocumentReference, { [attribute]: null }, transaction);
+              await assocModel.setMerge(oldLink as DocumentReference, { [attribute]: null }, transaction);
             }
           }
 
           // set new relation
-          assocModel.setMerge(newRef, { [details.via]: ref }, transaction);
+          await assocModel.setMerge(newRef, { [details.via]: ref }, transaction);
 
         }));
         return _.set(data, attribute, newRef);
@@ -123,10 +121,10 @@ export async function updateRelations(model: FirestoreConnectorModel, params: { 
         const toRemove = _.differenceWith(currentArray, newArray, refEquals);
         
         toRemove.forEach(r => {
-          assocModel.setMerge(r, { [details.via]: null }, transaction);
+          relationUpdates.push(assocModel.setMerge(r, { [details.via]: null }, transaction));
         });
         newArray.map(r => {
-          assocModel.setMerge(r, { [details.via]: ref }, transaction);
+          relationUpdates.push(assocModel.setMerge(r, { [details.via]: ref }, transaction));
         });
         
         return;
@@ -146,10 +144,10 @@ export async function updateRelations(model: FirestoreConnectorModel, params: { 
         }
 
         currentRef.map(v => {
-          assocModel.setMerge(v, { [association.via]: FieldValue.arrayRemove(ref) }, transaction);
+          relationUpdates.push(assocModel.setMerge(v, { [association.via]: FieldValue.arrayRemove(ref) }, transaction));
         });
         newRef.map(v => {
-          assocModel.setMerge(v, { [association.via]: FieldValue.arrayUnion(ref) }, transaction);
+          relationUpdates.push(assocModel.setMerge(v, { [association.via]: FieldValue.arrayUnion(ref) }, transaction));
         });
 
         return;
@@ -188,13 +186,13 @@ export async function updateRelations(model: FirestoreConnectorModel, params: { 
               field: obj.field,
               filter: association.filter,
             }, transaction);
-            createRelation();
-            assocModel.setMerge(refModel.doc(obj.refId), {
+            await createRelation();
+            await assocModel.setMerge(refModel.doc(obj.refId), {
               [obj.field]: ref
             }, transaction);
           } else {
             createRelation();
-            assocModel.setMerge(refModel.doc(obj.refId), FieldValue.arrayUnion(ref), transaction);
+            await assocModel.setMerge(refModel.doc(obj.refId), FieldValue.arrayUnion(ref), transaction);
           }
         })));
         break;
@@ -214,7 +212,7 @@ export async function updateRelations(model: FirestoreConnectorModel, params: { 
 
         _.set(data, attribute, newIds);
 
-        toRemove.map(id => {
+        toRemove.forEach(id => {
           relationUpdates.push(removeRelationMorph(morphModel!, {
             id,
             alias: association.via,
@@ -226,14 +224,14 @@ export async function updateRelations(model: FirestoreConnectorModel, params: { 
         });
 
         toAdd.forEach(id => {
-          addRelationMorph(morphModel!, {
+          relationUpdates.push(addRelationMorph(morphModel!, {
             id,
             alias: association.via,
             ref: model.globalId,
             refId: ref,
             field: association.alias,
             filter: association.filter,
-          }, transaction);
+          }, transaction));
         });
 
         break;
@@ -262,13 +260,13 @@ export async function deleteRelations(model: FirestoreConnectorModel, params: { 
         ? relatedModel.db.where(key, '==', ref)
         : relatedModel.db.where(key, 'array-contains', ref);
       const docs = (await transaction.get(q)).docs;
-      docs.forEach(d => {
+      await Promise.all(docs.map(async d => {
         if (attr.model) {
-          relatedModel.setMerge(d.ref, { [key]: null }, transaction);
+          await relatedModel.setMerge(d.ref, { [key]: null }, transaction);
         } else {
-          relatedModel.setMerge(d.ref, { [key]: FieldValue.arrayRemove(ref) }, transaction);
+          await relatedModel.setMerge(d.ref, { [key]: FieldValue.arrayRemove(ref) }, transaction);
         }
-      })
+      }));
     })
   );
 
@@ -283,7 +281,7 @@ export async function deleteRelations(model: FirestoreConnectorModel, params: { 
       if (!assocModel) {
         throw new Error('Associated model no longer exists');
       }
-      const currentValue = getDocRef(entry[alias], assocModel);
+      const currentValue = coerceToReference(entry[alias], assocModel);
 
       // TODO: delete all the ref to the model
 
@@ -301,7 +299,7 @@ export async function deleteRelations(model: FirestoreConnectorModel, params: { 
           if (_.isArray(currentValue)) {
             throw new Error('oneToMany or oneToOne relation must not be an array');
           }
-          assocModel.setMerge(currentValue, { [via]: null }, transaction);
+          await assocModel.setMerge(currentValue, { [via]: null }, transaction);
           return;
         }
 
@@ -311,11 +309,11 @@ export async function deleteRelations(model: FirestoreConnectorModel, params: { 
             return;
           }
           if (_.isArray(currentValue)) {
-            currentValue.forEach(v => {
-              assocModel.setMerge(v, { [via]: FieldValue.arrayRemove(ref) }, transaction);
-            });
+            await Promise.all(currentValue.map(async v => {
+              await assocModel.setMerge(v, { [via]: FieldValue.arrayRemove(ref) }, transaction);
+            }));
           } else {
-            assocModel.setMerge(currentValue, { [via]: FieldValue.arrayRemove(ref) }, transaction);
+            await assocModel.setMerge(currentValue, { [via]: FieldValue.arrayRemove(ref) }, transaction);
           }
           return;
         }
@@ -337,7 +335,7 @@ export async function deleteRelations(model: FirestoreConnectorModel, params: { 
             [association.filter]: association.alias,
           };
 
-          assocModel.setMerge(ref, { [via]: FieldValue.arrayRemove(element) }, transaction);
+          await assocModel.setMerge(ref, { [via]: FieldValue.arrayRemove(element) }, transaction);
           return;
         }
 
@@ -362,13 +360,13 @@ export async function deleteRelations(model: FirestoreConnectorModel, params: { 
                 const docs = (await transaction.get(q)).docs;
 
                 if (reverseAssoc && reverseAssoc.nature === 'oneToManyMorph') {
-                  docs.forEach(d => {
-                    assocModel.setMerge(d.ref, { [field]: null }, transaction);
-                  });
+                  await Promise.all(docs.map(async d => {
+                    await assocModel.setMerge(d.ref, { [field]: null }, transaction);
+                  }));
                 } else {
-                  docs.forEach(d => {
-                    assocModel.setMerge(d.ref, { [field]: FieldValue.arrayRemove(ref) }, transaction);
-                  });
+                  await Promise.all(docs.map(async d => {
+                    await assocModel.setMerge(d.ref, { [field]: FieldValue.arrayRemove(ref) }, transaction);
+                  }));
                 }
               })
             );
