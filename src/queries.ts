@@ -30,7 +30,6 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
   
     Object.keys(model.attributes).forEach((field) => {
       switch (model.attributes[field].type) {
-        case 'biginteger':
         case 'integer':
         case 'float':
         case 'decimal':
@@ -40,6 +39,7 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
           }
           break;
 
+        case 'biginteger': // biginteger stored as a string
         case 'string':
         case 'text':
         case 'richtext':
@@ -86,7 +86,6 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
         if (details) {
           if (details.type) {
             switch (details.type) {
-              case 'biginteger':
               case 'integer':
               case 'float':
               case 'decimal':
@@ -97,6 +96,7 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
                 }
                 break;
 
+              case 'biginteger': // biginteger stored as a string
               case 'string':
               case 'text':
               case 'richtext':

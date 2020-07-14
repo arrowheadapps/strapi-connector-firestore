@@ -97,6 +97,7 @@ export interface StrapiModel {
   collectionName: string
   kind: 'collectionType' | 'singleType'
   globalId: string
+  modelName: string
   uid: string
   orm: string
   options: {

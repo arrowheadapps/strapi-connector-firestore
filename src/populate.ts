@@ -43,7 +43,7 @@ export async function populateDocs(model: FirestoreConnectorModel, docs: Partial
     docsData.push(data);
 
     const populateData = async (model: FirestoreConnectorModel, f: string, data: any) => {
-      const details = model.attributes[f];
+      const details = model.associations.find(assoc => assoc.alias === f)!;
       const assocModel = getModel(details.model || details.collection, details.plugin);
     
       if (!assocModel) {
@@ -63,14 +63,18 @@ export async function populateDocs(model: FirestoreConnectorModel, docs: Partial
       }
     
       if (!data[f]) {
-        const assocDetails = assocModel.attributes[details.via];
+        const via = details.via || details.alias;
+        const assocDetails = assocModel.associations.find(assoc => assoc.alias === via);
+        if (!assocDetails) {
+          throw new Error(`No configuration found for attribute "${via}"`);
+        }
 
         // If the attribe in the related model has `model`
         // then it is a one-way relation
         // otherwise it has `collection` and it is a multi-way relation
         const q = assocDetails.model
-          ? assocModel.db.where(details.via, '==', doc.ref)
-          : assocModel.db.where(details.via, 'array-contains', doc.ref);
+          ? assocModel.db.where(via, '==', doc.ref)
+          : assocModel.db.where(via, 'array-contains', doc.ref);
 
         const snaps = (await transaction.get(q)).docs;
         

@@ -43,7 +43,7 @@ module.exports = ({ rq }) => {
   }
 
   async function createContentType(data, restart = true) {
-    await rq({
+    const result = await rq({
       url: '/content-type-builder/content-types',
       method: 'POST',
       body: {
@@ -54,6 +54,10 @@ module.exports = ({ rq }) => {
       },
     });
 
+    if (result.body.errors) {
+      console.error(result.body.errors);
+    }
+
     if (restart) {
       await waitRestart();
     }
@@ -61,7 +65,8 @@ module.exports = ({ rq }) => {
 
   async function createContentTypes(models) {
     for (let model of models) {
-      await createContentType(model, false);
+      // Need to restart every time
+      await createContentType(model, true);
     }
 
     await waitRestart();
