@@ -25,6 +25,7 @@ export interface ConnectorOptions {
 
 export interface ModelOptions {
   timestamps?: boolean | [string, string]
+  singleId?: string
 
   /**
    * Override connector flattening options per model.

@@ -38,6 +38,9 @@ export function mountModels(models: FirestoreConnectorContext[]) {
     if (model.options.timestamps === true) {
       model.options.timestamps = [DEFAULT_CREATE_TIME_KEY, DEFAULT_UPDATE_TIME_KEY];
     }
+    if (!model.options.singleId) {
+      model.options.singleId = options.singleId;
+    }
     if (model.options.flatten === undefined) {
       const match = options.flattenModels.find(testOrRegEx => {
         const regexRaw = ((typeof testOrRegEx === 'string') || (testOrRegEx instanceof RegExp))
@@ -55,14 +58,14 @@ export function mountModels(models: FirestoreConnectorContext[]) {
       }
     }
     if (model.options.flatten === true) {
-      model.options.flatten = path.posix.join(collectionName, options.singleId);
+      model.options.flatten = path.posix.join(collectionName, model.options.singleId);
     }
     if (model.options.allowNonNativeQueries === undefined) {
       model.options.allowNonNativeQueries = options.allowNonNativeQueries;
     }
 
 
-    const singleKey = model.kind === 'singleType' ? options.singleId : '';
+    const singleKey = model.kind === 'singleType' ? model.options.singleId : '';
     const flattenedKey = model.options.flatten;
 
     model.orm = 'firestore'; 
