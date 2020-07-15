@@ -31,11 +31,10 @@ export interface ModelOptions {
    * Override connector flattening options per model.
    * `false` to disable.
    * `true` to enable and use connector's `singleId` for the doucment ID.
-   * `string` to enable and customise the document ID.
    * 
    * Defaults to `undefined` (use connector setting).
    */
-  flatten?: boolean | string
+  flatten?: boolean
 
 
   /**

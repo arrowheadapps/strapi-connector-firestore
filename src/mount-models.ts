@@ -57,16 +57,13 @@ export function mountModels(models: FirestoreConnectorContext[]) {
         model.options.flatten = doc || true;
       }
     }
-    if (model.options.flatten === true) {
-      model.options.flatten = path.posix.join(collectionName, model.options.singleId);
-    }
     if (model.options.allowNonNativeQueries === undefined) {
       model.options.allowNonNativeQueries = options.allowNonNativeQueries;
     }
 
 
     const singleKey = model.kind === 'singleType' ? model.options.singleId : '';
-    const flattenedKey = model.options.flatten;
+    const flattenedKey = model.options.flatten ? path.posix.join(collectionName, model.options.singleId) : '';
 
     model.orm = 'firestore'; 
     model.associations = [];

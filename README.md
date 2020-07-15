@@ -91,7 +91,7 @@ In addition to the normal model options, you can provide the following to custom
 | Name                    | Type        | Default     | Description                     |
 |-------------------------|-------------|-------------|---------------------------------|
 | `options.singleId`      | `string \| undefined` | `undefined` | If defined, overrides the connector's global `singleId` setting (see above) for this model. |
-| `options.flatten`       | `string \| RegExp \| undefined` | `undefined` | If defined, overrides the connector's global `flattenModels` setting (see above) for this model. |
+| `options.flatten`       | `boolean \| undefined` | `undefined` | If defined, overrides the connector's global `flattenModels` setting (see above) for this model. |
 | `options.allowNonNativeQueries` | `boolean \| undefined` | `undefined` | If defined, overrides the connector's global `allowNonNativeQueries` setting (see above) for this model. If this model is flattened, this setting is ignored and non-native queries including search are supported. |
 
 ### Collection flattening
