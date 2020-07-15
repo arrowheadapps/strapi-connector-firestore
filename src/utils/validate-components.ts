@@ -1,6 +1,7 @@
 import * as _ from 'lodash';
 import type { FirestoreConnectorModel, StrapiRelation } from "../types";
 import { StatusError } from "./status-error";
+import { coerceModel } from './coerce';
 
 export interface Component {
   value: any
@@ -53,10 +54,13 @@ export function validateComponents(values, model: FirestoreConnectorModel): Comp
     }
   }
 
-  return components.map(c => ({
-    value: c.value,
-    model: getComponentModel(model, c.key, c.value)
-  }));
+  return components.map(c => {
+    const m = getComponentModel(model, c.key, c.value);
+    return {
+      value: coerceModel(m, c.value),
+      model: m
+    };
+  });
 }
 
 

@@ -4,7 +4,6 @@
 
 import * as _ from 'lodash';
 import { populateDocs } from './populate';
-import { coerceToReference, getModel } from './utils/doc-ref';
 import { convertRestQueryParams } from 'strapi-utils';
 import type { StrapiQueryParams, StrapiFilter } from './types';
 import { StatusError } from './utils/status-error';
@@ -14,6 +13,7 @@ import { validateComponents } from './utils/validate-components';
 import { TransactionWrapper } from './utils/transaction-wrapper';
 import type { Snapshot, QueryableCollection, Reference } from './utils/queryable-collection';
 import { ManualFilter, convertWhere } from './utils/convert-where';
+import { coerceValue } from './utils/coerce';
 
 
 
@@ -38,8 +38,15 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
             filters.push(convertWhere(field, 'eq', number, 'manualOnly'));
           }
           break;
+        
+        case 'biginteger':
+          try {
+            const bigint = BigInt(value);
+            filters.push(convertWhere(field, 'eq', bigint, 'manualOnly'));
+          } catch {
+          }
+          break;
 
-        case 'biginteger': // biginteger stored as a string
         case 'string':
         case 'text':
         case 'richtext':
@@ -82,80 +89,10 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
 
         // Coerce to the appropriate types
         // Because values from querystring will always come in as strings
-        const details = model.attributes[field];
-        if (details) {
-          if (details.type) {
-            switch (details.type) {
-              case 'integer':
-              case 'float':
-              case 'decimal':
-                if (_.isArray(value)) {
-                  value = value.map(toNumber);
-                } else {
-                  value = toNumber(value);
-                }
-                break;
-
-              case 'biginteger': // biginteger stored as a string
-              case 'string':
-              case 'text':
-              case 'richtext':
-              case 'email':
-              case 'enumeration':
-              case 'uid':
-                if (_.isArray(value)) {
-                  value = value.map(v => v?.toString());
-                } else {
-                  value = value?.toString();
-                }
-                break;
-
-              case 'date':
-              case 'time':
-              case 'datetime':
-                // TODO:
-                // To we need to coerce this to a Date object?
-                break;
-
-              case 'json':
-              case 'boolean':
-                if (_.isArray(value)) {
-                  value = value.map(v => {
-                    try {
-                      return JSON.parse(value);
-                    } catch {
-                      return value;
-                    }
-                  });
-                } else {
-                  try {
-                    value = JSON.parse(value);
-                  } catch {
-                  }
-                }
-                break;
-
-              case 'password':
-                // Disable queries on password fields
-                return;
-
-
-              default:
-                // Unknown field (or it's a relation)
-                // Don't coerce
-                break;
-
-            }
-          } else {
-
-            // Convert reference ID to document reference if it is one
-            if (details.model || details.collection) {
-              const assocModel = getModel(details.model || details.collection, details.plugin);
-              if (assocModel) {
-                value = coerceToReference(value, assocModel);
-              }
-            }
-          }
+        // Don't coerce the 'null' operatore because the value is true/false
+        // not the type of the field
+        if (operator !== 'null') {
+          value = coerceValue(model, field, value);
         }
 
         query = query.where(field, operator, value);
@@ -412,16 +349,3 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
     countSearch,
   };
 };
-
-/**
- * Coerce to a number only if it is a number.
- * If not a number, then return original value.
- */
-function toNumber(value: any) {
-  const n = _.toNumber(value);
-  if (_.isNaN(n)) {
-    return value;
-  } else {
-    return n;
-  }
-}

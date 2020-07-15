@@ -26,6 +26,15 @@ function assignMeta(model: FirestoreConnectorModel, docSnap: PartialDocumentSnap
     convertTimestampToDate(docData, createdAtKey);
     convertTimestampToDate(docData, updatedAtKey);
   }
+
+  // Firestore returns all integers as BigInt
+  // Convert back to number unless it is supposed to be BigInt
+  Object.keys(model.attributes).forEach(key => {
+    const attr = model.attributes[key];
+    if ((typeof docData[key] === 'bigint') && (attr.type !== 'biginteger')) {
+      docData[key] = Number(docData[key]);
+    }
+  });
 }
 
 
