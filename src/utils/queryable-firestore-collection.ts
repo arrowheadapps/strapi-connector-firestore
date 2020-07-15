@@ -79,7 +79,7 @@ async function manualQuery(baseQuery: Query, manualFilters: ManualFilter[], limi
 
   let cursor: QueryDocumentSnapshot | undefined
   let docs: Snapshot[] = [];
-  while (docs.length < limit) {
+  while (!limit || (docs.length < limit)) {
     if (limit) {
       // Use a minimum limit of 10 for the native query
       // E.g. if we only want 1 result, we will still query
@@ -108,7 +108,7 @@ async function manualQuery(baseQuery: Query, manualFilters: ManualFilter[], limi
       offset -= length;
     }
 
-    if ((docs.length + resultDocs.length) > limit) {
+    if (limit && ((docs.length + resultDocs.length) > limit)) {
       docs = docs.concat(resultDocs.slice(0, limit - docs.length));
     } else {
       docs = docs.concat(resultDocs);

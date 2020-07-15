@@ -136,17 +136,17 @@ export async function updateRelations(model: FirestoreConnectorModel, params: { 
 
       case 'manyWay':
       case 'manyToMany': {
+        if ((currentRef && !_.isArray(currentRef)) || (newRef && !_.isArray(newRef))) {
+          throw new Error('manyToMany relation must be an array');
+        }
         if (association.dominant) {
           return _.set(data, attribute, newRef);
         }
-        if (!_.isArray(currentRef) || !_.isArray(newRef)) {
-          throw new Error('manyToMany relation must be an array');
-        }
 
-        currentRef.map(v => {
+        ((currentRef as Reference[]) || []).map(v => {
           relationUpdates.push(assocModel.setMerge(v, { [association.via]: FieldValue.arrayRemove(ref) }, transaction));
         });
-        newRef.map(v => {
+        ((newRef as Reference[]) || []).map(v => {
           relationUpdates.push(assocModel.setMerge(v, { [association.via]: FieldValue.arrayUnion(ref) }, transaction));
         });
 
@@ -158,11 +158,11 @@ export async function updateRelations(model: FirestoreConnectorModel, params: { 
       case 'manyMorphToOne': {
 
         const newValue = values[attribute];
-        if (!_.isArray(newValue)) {
+        if (newValue && !_.isArray(newValue)) {
           throw new Error('manyMorphToMany or manyMorphToOne relation must be an array');
         }
 
-        relationUpdates.push(Promise.all(newValue.map(async obj => {
+        relationUpdates.push(Promise.all((newValue || []).map(async obj => {
           const refModel = strapi.getModel(obj.ref, obj.source);
 
           const createRelation = () => {
