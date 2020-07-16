@@ -74,8 +74,10 @@ jobs:
         uses: actions/setup-node@v1
 
       # Write separate coverage outputs to "input" directory
+      - name: Make "input" directory
+        run: mkdir input
       - name: Write input coverage reports
-        run: echo "${{ needs.test.ouputs.json }}" > input/coverage.json
+        run: echo "${{ needs.test.ouputs.coverage }}"
 
       # Combine coverate
       - name: Combine coverage
