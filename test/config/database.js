@@ -9,12 +9,10 @@ module.exports = ({ env }) => ({
       options: {
         useEmulator: true,
         allowNonNativeQueries: true,
-        flattenModels: [
-          {
-            test: /^strapi::/,
-            doc: ({ uid }) => uid.replace('::', '/')
-          }
-        ]
+        
+        // Use flattening config from env variable
+        // Default to no flattening
+        flattenModels: JSON.parse(process.env.FLATTENING || '[]')
       },
     }
   },

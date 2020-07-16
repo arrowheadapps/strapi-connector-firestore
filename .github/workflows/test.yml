@@ -10,6 +10,13 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix: 
+        flattening:
+          - "[]"        # None
+          - "[\".*\"]"  # Flatten all models
+    outputs:
+      coverage: ${{ steps.coverage.outputs.json }}
     steps:
       - name: Checkout project
         uses: actions/checkout@v2
@@ -47,14 +54,33 @@ jobs:
         run: test/node_modules/.bin/firebase setup:emulators:firestore 
 
       # Run tests
-      # Upload coverage regardless if test failed or not
+      # Set output coverage JSON regardless if test failed or not
       - name: Run tests
         run: npm test
+        env: 
+          FLATTENING: ${{ matrix.flattening }}
       - name: Remap
+        id: coverage
         if: ${{ always() }}
-        run: npm run remap --prefix test
+        run: echo "::set-output name=json::`npm run remap -s --prefix test`"
+
+  codecov:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Setup Node.js
+        uses: actions/setup-node@v1
+
+      # Write separate coverage outputs to "input" directory
+      - name: Write input coverage reports
+        run: echo "${{ needs.test.ouputs.json }}" > input/coverage.json
+
+      # Combine coverate
+      - name: Combine coverage
+        run: npx istanbul-combine -- -d detail -r json input/*.json
+      
+      # Upload report
       - name: Codecov
         uses: codecov/codecov-action@v1
-        if: ${{ always() }}
         with:
           fail_ci_if_error: true
