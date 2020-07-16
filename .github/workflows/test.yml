@@ -11,6 +11,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix: 
         flattening:
           - "[]"        # None
@@ -66,6 +67,7 @@ jobs:
 
   codecov:
     runs-on: ubuntu-latest
+    if: ${{ always() }}
     needs: test
     steps:
       - name: Setup Node.js
