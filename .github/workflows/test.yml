@@ -63,7 +63,7 @@ jobs:
       - name: Remap
         id: coverage
         if: ${{ always() }}
-        run: echo "::set-output name=json::`npm run remap -s --prefix test`"
+        run: echo ::set-output name=json::'$(npm run remap -s --prefix test)'
 
   codecov:
     runs-on: ubuntu-latest
