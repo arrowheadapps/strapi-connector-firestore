@@ -10,10 +10,10 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix: 
-        flattening: [flatten_all, flatten_none]
+    #strategy:
+    #  fail-fast: false
+    #  matrix: 
+    #    flattening: [flatten_all, flatten_none]
     outputs:
       coverage: ${{ steps.coverage.outputs.json }}
     steps:
@@ -56,8 +56,8 @@ jobs:
       # Set output coverage JSON regardless if test failed or not
       - name: Run tests
         run: npm test
-        env: 
-          FLATTENING: ${{ matrix.flattening }}
+        #env: 
+        #  FLATTENING: ${{ matrix.flattening }}
       - name: Remap
         id: coverage
         if: ${{ always() }}
