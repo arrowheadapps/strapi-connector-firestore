@@ -13,9 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix: 
-        flattening:
-          - "[]"        # None
-          - "[\".*\"]"  # Flatten all models
+        flattening: [flatten_all, flatten_none]
     outputs:
       coverage: ${{ steps.coverage.outputs.json }}
     steps:

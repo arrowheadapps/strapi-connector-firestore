@@ -4,7 +4,7 @@
     "postinstall": "patch-package",
     "remap": "remap-istanbul --input ../coverage/coverage-final.json",
     "test": "node e2e.js",
-    "test:e2e": "jest --config jest.config.e2e.js --runInBand --verbose --forceExit --detectOpenHandles",
+    "test:e2e": "STRAPI_HIDE_STARTUP_MESSAGE=true jest --config jest.config.e2e.js --runInBand --verbose --forceExit --detectOpenHandles",
     "clean": "node -e \"require('./helpers/testAppGenerator').cleanTestApp('.')\" && rm -rf __tests__"
   },
   "dependencies": {
@@ -17,14 +17,14 @@
     "remap-istanbul": "^0.13.0",
     "request-promise-native": "^1.0.8",
     "rimraf": "^3.0.2",
-    "strapi": "^3.0.5",
-    "strapi-admin": "^3.0.5",
+    "strapi": "^3.0.6",
+    "strapi-admin": "^3.0.6",
     "strapi-connector-firestore": "file:..",
-    "strapi-plugin-content-manager": "^3.0.5",
-    "strapi-plugin-content-type-builder": "^3.0.5",
-    "strapi-plugin-upload": "^3.0.5",
-    "strapi-plugin-users-permissions": "^3.0.5",
-    "strapi-utils": "^3.0.5",
+    "strapi-plugin-content-manager": "^3.0.6",
+    "strapi-plugin-content-type-builder": "^3.0.6",
+    "strapi-plugin-upload": "^3.0.6",
+    "strapi-plugin-users-permissions": "^3.0.6",
+    "strapi-utils": "^3.0.6",
     "wait-on": "^5.1.0"
   }
 }

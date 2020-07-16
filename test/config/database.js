@@ -1,3 +1,8 @@
+const flattening = {
+  flatten_all: [/.*/],
+  flatten_none: [],
+};
+
 module.exports = ({ env }) => ({
   defaultConnection: 'default',
   connections: {
@@ -12,7 +17,7 @@ module.exports = ({ env }) => ({
         
         // Use flattening config from env variable
         // Default to no flattening
-        flattenModels: JSON.parse(process.env.FLATTENING || '[]')
+        flattenModels: flattening[process.env.FLATTENING] || []
       },
     }
   },
