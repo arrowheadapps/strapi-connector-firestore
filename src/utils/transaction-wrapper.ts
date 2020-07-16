@@ -1,17 +1,52 @@
-import { DocumentReference, DocumentSnapshot, Transaction, ReadOptions, DocumentData, Firestore, Query } from '@google-cloud/firestore';
+import * as _ from 'lodash';
+import { DocumentReference, DocumentSnapshot, Transaction, DocumentData, Firestore, Query } from '@google-cloud/firestore';
 import type { QueryableCollection, Snapshot, QuerySnapshot, Reference } from './queryable-collection';
-import { parseDeepReference } from './doc-ref';
+import { parseDeepReference, parseRef } from './doc-ref';
 
 export class TransactionWrapper {
   private readonly transaction: Transaction
   private readonly writes: ((trans: Transaction) => void)[] = [];
 
   private readonly keyedContext: Record<string, DocumentData> = {};
+  private readonly docReads: Record<string, Promise<DocumentSnapshot>> = {};
 
   constructor(transaction: Transaction, private readonly instance: Firestore) {
     this.transaction = transaction;
     this.instance = instance;
   }
+
+  /**
+   * Gets all DocumentReferences and memoises the promises to the results of each.
+   * Only those that aren't already memoised are actually fetched.
+   * Any duplicate documents are only actually fetched once.
+   */
+  private _getAll(docs: DocumentReference[]): Promise<DocumentSnapshot[]> {
+
+    // Unique documents that haven't already been fetched
+    const toGet = _.uniqBy(docs.filter(({ path }) => !this.docReads[path]), doc => doc.path);
+
+    // Memoise a promise for each document
+    const toGetAsync = this.transaction.getAll(...toGet);
+    toGet.forEach(({ path }, i) => {
+      this.docReads[path] = toGetAsync.then(snaps => snaps[i]);
+    });
+
+    // Arrange all the memoised promises as results
+    const results = docs.map(({ path }) => this.docReads[path]);
+    return Promise.all(results);
+  }
+
+  /**
+   * Get's a single DocumentReference and memoises the result.
+   * Returns a memoised result if there is one.
+   */
+  private _get(doc: DocumentReference): Promise<DocumentSnapshot> {
+    if (!this.docReads[doc.path]) {
+      this.docReads[doc.path] = this.transaction.get(doc);
+    }
+    return this.docReads[doc.path];
+  }
+
 
   get(documentRef: Reference): Promise<Snapshot>;
   get(query: QueryableCollection): Promise<QuerySnapshot>;
@@ -19,7 +54,7 @@ export class TransactionWrapper {
     // Deep reference to flat collection
     if (typeof val === 'string') {
       const { doc, id } = parseDeepReference(val, this.instance);
-      const flatDoc = await this.transaction.get(doc);
+      const flatDoc = await this._get(doc);
       const data = flatDoc.data()?.[id];
       const snap: Snapshot = {
         exists: data !== undefined,
@@ -43,8 +78,35 @@ export class TransactionWrapper {
 
   }
 
-  getAll<T>(...documentRefsOrReadOptions: (DocumentReference<T> | ReadOptions)[]): Promise<DocumentSnapshot<T>[]> {
-    return this.transaction.getAll<T>(...documentRefsOrReadOptions);
+  async getAll(...refs: Reference[]): Promise<Snapshot[]> {
+    const docs: DocumentReference[] = new Array(refs.length);
+    const ids: (string | null)[] = new Array(refs.length);
+    refs.forEach((ref, i) => {
+      const r = parseRef(ref, this.instance);
+      if (r instanceof DocumentReference) {
+        docs[i] = r;
+        ids[i] = null;
+      } else {
+        docs[i] = r.doc;
+        ids[i] = r.id;
+      }
+    });
+
+    const results = await this._getAll(docs);
+    return results.map((snap, i) => {
+      const id = ids[i];
+      if (id) {
+        const data = snap.data()?.[id];
+        return {
+          ref: refs[i],
+          data: () => data,
+          exists: data !== undefined,
+          id
+        };
+      } else {
+        return snap;
+      }
+    });
   }
 
   addWrite(writeOp: (trans: Transaction) => void) {

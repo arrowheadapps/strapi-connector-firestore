@@ -13,7 +13,7 @@ export type DeepReference = string;
 
 
 export interface Snapshot {
-  data(): DocumentData
+  data(): DocumentData | undefined
   ref: Reference
   id: string
   exists: boolean
