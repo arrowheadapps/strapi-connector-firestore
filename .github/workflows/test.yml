@@ -10,12 +10,10 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    #strategy:
-    #  fail-fast: false
-    #  matrix: 
-    #    flattening: [flatten_all, flatten_none]
-    outputs:
-      coverage: ${{ steps.coverage.outputs.json }}
+    strategy:
+      fail-fast: false
+      matrix: 
+        flattening: [flatten_all, flatten_none]
     steps:
       - name: Checkout project
         uses: actions/checkout@v2
@@ -56,12 +54,16 @@ jobs:
       # Set output coverage JSON regardless if test failed or not
       - name: Run tests
         run: npm test
-        #env: 
-        #  FLATTENING: ${{ matrix.flattening }}
+        env: 
+          FLATTENING: ${{ matrix.flattening }}
       - name: Remap
-        id: coverage
         if: ${{ always() }}
-        run: echo ::set-output name=json::'$(npm run remap -s --prefix test)'
+        run: npm run remap -s --prefix test
+      - name: Upload coverage
+        uses: actions/upload-artifact@v2
+        with:
+          name: coverage_${{ matrix.flattening }}
+          path: coverage/coverage-mapped.json
 
   codecov:
     runs-on: ubuntu-latest
@@ -71,15 +73,14 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v1
 
-      # Write separate coverage outputs to "input" directory
-      - name: Make "input" directory
-        run: mkdir input
-      - name: Write input coverage reports
-        run: echo "${{ needs.test.ouputs.coverage }}"
+      # Download individual coverage reports
+      - uses: actions/download-artifact@v2
+        with:
+          path: input
 
       # Combine coverate
       - name: Combine coverage
-        run: npx istanbul-combine -- -d detail -r json input/*.json
+        run: npx istanbul-combine -- -d detail -r json input/**/*.json
       
       # Upload report
       - name: Codecov

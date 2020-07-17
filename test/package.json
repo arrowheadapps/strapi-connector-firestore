@@ -2,10 +2,9 @@
   "private": true,
   "scripts": {
     "postinstall": "patch-package",
-    "remap": "remap-istanbul --input ../coverage/coverage-final.json",
+    "remap": "remap-istanbul --input ../coverage/coverage-final.json --output ../coverage/coverage-mapped.json",
     "test": "node e2e.js",
-    "test:e2e": "STRAPI_HIDE_STARTUP_MESSAGE=true jest --config jest.config.e2e.js --runInBand --verbose --forceExit --detectOpenHandles",
-    "clean": "node -e \"require('./helpers/testAppGenerator').cleanTestApp('.')\" && rm -rf __tests__"
+    "test:e2e": "STRAPI_HIDE_STARTUP_MESSAGE=true jest --config jest.config.e2e.js --runInBand --verbose --forceExit --detectOpenHandles"
   },
   "dependencies": {
     "codecov": "^3.7.0",
