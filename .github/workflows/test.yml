@@ -83,11 +83,11 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-node-
         
-        # Install and build the package
-        - name: Install root package
-          run: npm install
-        - name: Build
-          run: npm run build
+      # Install and build the package
+      - name: Install root package
+        run: npm install
+      - name: Build
+        run: npm run build
   
       # Download individual coverage reports
       - uses: actions/download-artifact@v2
