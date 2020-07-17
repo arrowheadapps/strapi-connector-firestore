@@ -96,7 +96,8 @@ jobs:
 
       # Combine coverate
       - name: Combine coverage
-        run: npx istanbul-combine -- -d detail -r json input/**/*.json
+        working-directory: input
+        run: npx istanbul-combine -- -d ../coverage -p detail -r json **/*.json
       
       # Upload report
       - name: Codecov
