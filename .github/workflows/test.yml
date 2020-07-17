@@ -61,6 +61,7 @@ jobs:
         run: npm run remap -s --prefix test
       - name: Upload coverage
         uses: actions/upload-artifact@v2
+        if: ${{ always() }}
         with:
           name: coverage_${{ matrix.flattening }}
           path: coverage/coverage-mapped.json
