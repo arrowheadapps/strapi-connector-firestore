@@ -26,7 +26,9 @@ export class TransactionWrapper {
     const toGet = _.uniqBy(docs.filter(({ path }) => !this.docReads[path]), doc => doc.path);
 
     // Memoise a promise for each document
-    const toGetAsync = this.transaction.getAll(...toGet);
+    const toGetAsync = toGet.length 
+      ? this.transaction.getAll(...toGet) 
+      : Promise.resolve([]);
     toGet.forEach(({ path }, i) => {
       this.docReads[path] = toGetAsync.then(snaps => snaps[i]);
     });
