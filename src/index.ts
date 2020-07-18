@@ -1,7 +1,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import * as _ from 'lodash';
-import { Firestore, Settings } from '@google-cloud/firestore';
+import { Firestore, Settings, DocumentReference, Timestamp } from '@google-cloud/firestore';
 import { mountModels, DEFAULT_CREATE_TIME_KEY, DEFAULT_UPDATE_TIME_KEY } from './mount-models';
 import { queries } from './queries';
 import type { Strapi, FirestoreConnectorContext, StrapiModel, ConnectorOptions } from './types';
@@ -24,6 +24,11 @@ const defaultOptions: ConnectorOptions = {
 const isFirestoreConnection = ({ connector }: StrapiModel) => connector === 'firestore';
 
 module.exports = function(strapi: Strapi) {
+
+  // Allow some types to be serialised in JSON responses
+  (DocumentReference.prototype as any).toJSON = function() { return this.path; };
+  (Timestamp.prototype as any).toJSON = function() { return this.toDate().toJSON(); };
+
   function initialize() {
     const { connections } = strapi.config;
 

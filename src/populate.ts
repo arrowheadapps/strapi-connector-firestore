@@ -53,11 +53,9 @@ export async function populateDocs(model: FirestoreConnectorModel, docs: Partial
 
       const processPopulatedDoc = (snap: PartialDocumentSnapshot) => {
         const data = snap.data();
-
-        // Remove second level relations
-        assocModel.assocKeys.forEach(k => delete data[k]);
-        
-        assignMeta(assocModel, snap, data);
+        if (data) {
+          assignMeta(assocModel, snap, data);
+        }
         return data;
       }
     
@@ -142,11 +140,10 @@ export async function populateDocs(model: FirestoreConnectorModel, docs: Partial
   // Assign all the fetched data
   subDocsData.forEach((subDocSnap, i) => {
     const { assign } = subDocs[i];
-    if (subDocSnap.exists) {
-      assign(subDocSnap);
-    } else {
-      throw new Error(`Relation not found: ${typeof subDocSnap.ref === 'string' ? subDocSnap.ref : subDocSnap.ref.path}`);
+    if (!subDocSnap.exists) {
+      strapi.log.warn(`Missing relation "${typeof subDocSnap.ref === 'string' ? subDocSnap.ref : subDocSnap.ref.path}"`);
     }
+    assign(subDocSnap);
   });
 
   return docsData;

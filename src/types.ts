@@ -1,6 +1,7 @@
 import type { Firestore, DocumentData } from '@google-cloud/firestore';
 import type { QueryableCollection, Reference } from './utils/queryable-collection';
 import type { TransactionWrapper } from './utils/transaction-wrapper';
+import type { Logger } from 'pino';
 
 export interface ConnectorOptions {
   useEmulator?: boolean
@@ -61,6 +62,7 @@ export interface Strapi {
   admin: StrapiPlugin
   plugins: Record<string, StrapiPlugin>
   db: any
+  log: Logger
 
   getModel(ref, source): FirestoreConnectorModel
 

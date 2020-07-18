@@ -257,7 +257,8 @@ export async function deleteRelations(model: FirestoreConnectorModel, params: { 
     model.relatedNonDominantAttrs.map(async ({ key, attr, modelKey }) => {
       const relatedModel = getModel(modelKey, undefined as any)!;
       if (!relatedModel) {
-        throw new Error(`Could not find model for "${modelKey}"`);
+        // Silently ignore non-existent models
+        return;
       }
       const q = attr.model
         ? relatedModel.db.where(key, '==', ref)
