@@ -4,10 +4,9 @@
     "postinstall": "patch-package",
     "remap": "remap-istanbul --input ../coverage/coverage-final.json --output ../coverage/coverage-mapped.json",
     "test": "node e2e.js",
-    "test:e2e": "STRAPI_HIDE_STARTUP_MESSAGE=true jest --config jest.config.e2e.js --runInBand --verbose --forceExit --detectOpenHandles"
+    "test:e2e": "jest --config jest.config.e2e.js --runInBand --verbose --forceExit --detectOpenHandles"
   },
   "dependencies": {
-    "codecov": "^3.7.0",
     "execa": "^4.0.3",
     "firebase-tools": "^8.6.0",
     "fs-extra": "^9.0.1",

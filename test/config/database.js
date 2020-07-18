@@ -1,6 +1,23 @@
 const flattening = {
   flatten_all: [/.*/],
   flatten_none: [],
+
+  // Flatten models that are referred to
+  // by non-flattened models
+  flatten_mixed_src: [
+    /category/,
+    /tag/,
+    /user/,
+    /collector/,
+  ],
+
+  // Flatten models that refer to
+  // non-flattened models
+  flatten_mixed_target: [
+    /reference/,
+    /article/,
+    /paniniCard/,
+  ],
 };
 
 module.exports = ({ env }) => ({

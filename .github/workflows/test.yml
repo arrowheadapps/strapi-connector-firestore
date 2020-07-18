@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix: 
-        flattening: [flatten_all, flatten_none]
+        flattening: [flatten_all, flatten_none, flatten_mixed_src, flatten_mixed_target]
     steps:
       - name: Checkout project
         uses: actions/checkout@v2
@@ -71,13 +71,37 @@ jobs:
     if: ${{ always() }}
     needs: test
     steps:
+      - name: Checkout project
+        uses: actions/checkout@v2
+      - name: Setup Node.js
+        uses: actions/setup-node@v1
+      - name: Cache NPM packages
+        uses: actions/cache@v2
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+        
+      # Install and build the package
+      - name: Install root package
+        run: npm install
+      - name: Build
+        run: npm run build
+  
       # Download individual coverage reports
       - uses: actions/download-artifact@v2
         with:
-          path: coverage
+          path: input
 
+      # Combine coverate
+      - name: Combine coverage
+        working-directory: input
+        run: npx istanbul-combine -- -d ../coverage -p detail -r json **/*.json
+      
       # Upload report
       - name: Codecov
         uses: codecov/codecov-action@v1
         with:
+          directory: coverage
           fail_ci_if_error: true
