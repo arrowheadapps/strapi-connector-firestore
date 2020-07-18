@@ -63,13 +63,13 @@ function coerceToReferenceSingle(value: any, to: FirestoreConnectorModel): Refer
   const id = (typeof value === 'string') ? value : _.get(value, to.primaryKey, null);
 
   if (id) {
-    const lastSlash = value.lastIndexOf('/');
+    const lastSlash = id.lastIndexOf('/');
     if (lastSlash === -1) {
       // No slash, so it isn't a full path
       // So assume it is just an ID
-      return to.doc(value);
+      return to.doc(id);
     } else {
-      return value;
+      return id;
     }
   }
   
