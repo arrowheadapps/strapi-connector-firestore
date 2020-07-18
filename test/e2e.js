@@ -25,7 +25,7 @@ const main = async () => {
     await test();
 
   } catch (error) {
-    console.log(error);
+    console.log(error.shortMessage || error);
     console.log('\nTests failed\n');
     process.exitCode = 1;
   }

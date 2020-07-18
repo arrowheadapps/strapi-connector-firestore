@@ -10,6 +10,10 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: 
+        flattening: [flatten_all, flatten_none, flatten_mixed_src, flatten_mixed_target]
     steps:
       - name: Checkout project
         uses: actions/checkout@v2
@@ -47,5 +51,57 @@ jobs:
         run: test/node_modules/.bin/firebase setup:emulators:firestore 
 
       # Run tests
+      # Set output coverage JSON regardless if test failed or not
       - name: Run tests
-        run: npm test; ./test/node_modules/.bin/codecov --token=${{ secrets.CODECOV_TOKEN }}
+        run: npm test
+        env: 
+          FLATTENING: ${{ matrix.flattening }}
+      - name: Remap
+        if: ${{ always() }}
+        run: npm run remap -s --prefix test
+      - name: Upload coverage
+        uses: actions/upload-artifact@v2
+        if: ${{ always() }}
+        with:
+          name: coverage_${{ matrix.flattening }}
+          path: coverage/coverage-mapped.json
+
+  codecov:
+    runs-on: ubuntu-latest
+    if: ${{ always() }}
+    needs: test
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v2
+      - name: Setup Node.js
+        uses: actions/setup-node@v1
+      - name: Cache NPM packages
+        uses: actions/cache@v2
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+        
+      # Install and build the package
+      - name: Install root package
+        run: npm install
+      - name: Build
+        run: npm run build
+  
+      # Download individual coverage reports
+      - uses: actions/download-artifact@v2
+        with:
+          path: input
+
+      # Combine coverate
+      - name: Combine coverage
+        working-directory: input
+        run: npx istanbul-combine -- -d ../coverage -p detail -r json **/*.json
+      
+      # Upload report
+      - name: Codecov
+        uses: codecov/codecov-action@v1
+        with:
+          directory: coverage
+          fail_ci_if_error: true

@@ -1,8 +1,14 @@
 import * as _ from 'lodash';
-import { getDocRef, getModel } from './utils/get-doc-ref';
-import { FirestoreConnectorModel } from './types';
-import type { DocumentSnapshot, DocumentReference, DocumentData, Transaction, Query } from '@google-cloud/firestore';
+import { coerceToReference, getModel, parseRef } from './utils/doc-ref';
 import { getComponentModel } from './utils/validate-components';
+import type { FirestoreConnectorModel } from './types';
+import type { TransactionWrapper } from './utils/transaction-wrapper';
+import type { Reference } from './utils/queryable-collection';
+
+export interface PartialDocumentSnapshot {
+  ref: Reference
+  data: () => any
+}
 
 function convertTimestampToDate(data: any, key: string) {
   const value = data[key];
@@ -11,8 +17,8 @@ function convertTimestampToDate(data: any, key: string) {
   }
 }
 
-function assignMeta(model: FirestoreConnectorModel, docSnap: Partial<DocumentSnapshot>, docData: any) {
-  docData[model.primaryKey] = docSnap.id;
+function assignMeta(model: FirestoreConnectorModel, docSnap: PartialDocumentSnapshot, docData: any) {
+  docData[model.primaryKey] = parseRef(docSnap.ref, model.firestore).id;
 
   if (_.isArray(model.options.timestamps)) {
     const [createdAtKey, updatedAtKey] = model.options.timestamps;
@@ -22,66 +28,64 @@ function assignMeta(model: FirestoreConnectorModel, docSnap: Partial<DocumentSna
 }
 
 
-export async function populateDocs(model: FirestoreConnectorModel, docs: { id: string, ref: DocumentReference, data: () => any }[], populateFields: string [], transaction?: Transaction) {
+export async function populateDocs(model: FirestoreConnectorModel, docs: PartialDocumentSnapshot[], populateFields: string [], transaction: TransactionWrapper) {
   const docsData: any[] = [];
-  const subDocs: { doc: DocumentReference, data?: any, assign: (data: DocumentData) => void }[] = [];
+  const subDocs: { doc: Reference, data?: any, assign: (snap: PartialDocumentSnapshot) => void }[] = [];
 
   await Promise.all(docs.map(doc => {
     const data = Object.assign({}, doc.data());
     if (!data) {
-      throw new Error(`Document not found: ${doc.ref.path}`);
+      throw new Error(`Document not found: ${parseRef(doc.ref, model.firestore).path}`);
     }
 
     assignMeta(model, doc, data);
     docsData.push(data);
 
     const populateData = async (model: FirestoreConnectorModel, f: string, data: any) => {
-      const details = model._attributes[f];
-      const assoc = model.associations.find(a => a.alias === f)!;
+      const details = model.associations.find(assoc => assoc.alias === f)!;
       const assocModel = getModel(details.model || details.collection, details.plugin);
     
       if (!assocModel) {
         // This seems to happen for polymorphic relations such as images
         // Can we just safely ignore this?
-        return;
+        throw new Error(`Associated model not found for model: "${details.model || details.collection}" plugin: "${details.plugin}"`);
+      }
+
+      const processPopulatedDoc = (snap: PartialDocumentSnapshot) => {
+        const data = snap.data();
+        if (data) {
+          assignMeta(assocModel, snap, data);
+        }
+        return data;
       }
     
       if (!data[f]) {
-        // For the following types of relations
-        // The list is maintained in the related object not this one
-        //  - oneToMany
-    
-        let q: Query
-        switch (assoc.nature) {
-          case 'oneToMany':
-          case 'manyToMany':
-          // TODO: FIXME: I'm pretty sure the morph lookups won't work
-          case 'manyToManyMorph':
-          case 'manyMorphToMany':
-          case 'oneMorphToMany':
-          case 'oneToManyMorph':
-            q = assocModel.where(details.via, 'array-contains', doc.ref || model.doc(doc.id));
-            break;
-    
-          case 'manyToOne':
-          case 'manyWay':
-          case 'oneToOne':
-          case 'oneWay':
-          // TODO: FIXME: I'm pretty sure the morph lookups won't work
-          case 'oneMorphToOne':
-          case 'manyMorphToOne':
-            q = assocModel.where(details.via, '==', doc.ref || model.doc(doc.id));
-            break;
+        if (!details.dominant) {
+          const via = details.via || details.alias;
+          const assocDetails = assocModel.associations.find(assoc => assoc.alias === via);
+          if (!assocDetails) {
+            throw new Error(`No configuration found for attribute "${via}"`);
+          }
+
+          // If the attribe in the related model has `model`
+          // then it is a one-way relation
+          // otherwise it has `collection` and it is a multi-way relation
+          const q = assocDetails.model
+            ? assocModel.db.where(via, '==', doc.ref)
+            : assocModel.db.where(via, 'array-contains', doc.ref);
+
+          const snaps = (await transaction.get(q)).docs;
+          
+          if (details.model) {
+            // This is a one-way relation
+            data[f] = snaps.length
+              ? processPopulatedDoc(snaps[0])
+              : null;
+          } else {
+            // This is a multi-way relation
+            data[f] = snaps.map(processPopulatedDoc);
+          }
         }
-    
-        const snaps = (await (transaction ? transaction.get(q) : q.get())).docs;
-        data[f] = snaps.map(snap => {
-          const d = snap.data();
-          // Remove second level relations
-          assocModel.assocKeys.forEach(k => delete d[k]);
-          assignMeta(assocModel, snap, d);
-          return d;
-        });
         
       } else if (Array.isArray(data[f])) {
     
@@ -89,11 +93,9 @@ export async function populateDocs(model: FirestoreConnectorModel, docs: { id: s
         // Expects array of DocumentReference instances
         data[f].forEach(ref => {
           subDocs.push({
-            doc: getDocRef(ref, assocModel) as DocumentReference,
-            assign: (d) => {
-              // Remove second level relations
-              assocModel.assocKeys.forEach(k => delete d[k]);
-              data[f].push(d);
+            doc: coerceToReference(ref, assocModel) as Reference,
+            assign: (snap) => {
+              data[f].push(processPopulatedDoc(snap));
             }
           });
         });
@@ -103,11 +105,9 @@ export async function populateDocs(model: FirestoreConnectorModel, docs: { id: s
       } else {
         // oneToOne or manyToOne etc
         subDocs.push({
-          doc: getDocRef(data[f], assocModel) as DocumentReference,
-          assign: (d) => {
-            // Remove second level relations
-            assocModel.assocKeys.forEach(k => delete d[k]);
-            data[f] = d;
+          doc: coerceToReference(data[f], assocModel) as Reference,
+          assign: (snap) => {
+            data[f] = processPopulatedDoc(snap);
           }
         });
       }
@@ -119,10 +119,12 @@ export async function populateDocs(model: FirestoreConnectorModel, docs: { id: s
       const component = data[componentKey];
       if (component) {
         await Promise.all(_.castArray(component).map(async c => {
-          const componentModel = getComponentModel(model, componentKey, c);
-          await Promise.all(componentModel.defaultPopulate.map(async field => {
-            await populateData(componentModel, field, c);
-          }));
+          if (c[componentKey]) {
+            const componentModel = getComponentModel(model, componentKey, c);
+            await Promise.all(componentModel.defaultPopulate.map(async field => {
+              await populateData(componentModel, field, c);
+            }));
+          }
         }));
       }
     }));
@@ -132,20 +134,16 @@ export async function populateDocs(model: FirestoreConnectorModel, docs: { id: s
 
   // Get all the documents all at once
   const subDocsData = subDocs.length
-    ? await (transaction || model.firestore).getAll(...subDocs.map(d => d.doc))
+    ? await transaction.getAll(...subDocs.map(d => d.doc))
     : [];
 
   // Assign all the fetched data
   subDocsData.forEach((subDocSnap, i) => {
     const { assign } = subDocs[i];
-    const data = subDocSnap.data();
-    if (data) {
-      assignMeta(model, subDocSnap, data);
-      assign(data);
-    } else {
-      // How to handle a not found document
-      throw new Error(`relation not found: ${subDocSnap.ref.path}`);
+    if (!subDocSnap.exists) {
+      strapi.log.warn(`Missing relation "${typeof subDocSnap.ref === 'string' ? subDocSnap.ref : subDocSnap.ref.path}"`);
     }
+    assign(subDocSnap);
   });
 
   return docsData;

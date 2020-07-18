@@ -1,5 +1,5 @@
 import * as _ from 'lodash';
-import type { FirestoreConnectorModel } from "../types";
+import type { FirestoreConnectorModel, StrapiRelation } from "../types";
 import { StatusError } from "./status-error";
 
 export interface Component {
@@ -60,7 +60,7 @@ export function validateComponents(values, model: FirestoreConnectorModel): Comp
 }
 
 
-function validateRepeatableInput(value, { key, min, max, required }) {
+function validateRepeatableInput(value, { key, min, max, required }: { key } & StrapiRelation) {
   if (!Array.isArray(value)) {
     throw new StatusError(`Component ${key} is repetable. Expected an array`, 400);
   }
@@ -71,7 +71,7 @@ function validateRepeatableInput(value, { key, min, max, required }) {
     }
   });
 
-  if ((required === true || (required !== true && value.length > 0)) && min && value.length < min) {
+  if ((required === true || (value.length > 0)) && min && value.length < min) {
     throw new StatusError(`Component ${key} must contain at least ${min} items`, 400);
   }
 
@@ -80,7 +80,7 @@ function validateRepeatableInput(value, { key, min, max, required }) {
   }
 }
 
-function validateNonRepeatableInput(value, { key, required }) {
+function validateNonRepeatableInput(value, { key, required }: { key } & StrapiRelation) {
   if (typeof value !== 'object' || Array.isArray(value)) {
     throw new StatusError(`Component ${key} should be an object`, 400);
   }
@@ -90,7 +90,7 @@ function validateNonRepeatableInput(value, { key, required }) {
   }
 }
 
-function validateDynamiczoneInput(value, { key, min, max, components, required }) {
+function validateDynamiczoneInput(value, { key, min, max, components, required }: { key } & StrapiRelation) {
   if (!Array.isArray(value)) {
     throw new StatusError(`Dynamiczone ${key} is invalid. Expected an array`, 400);
   }
@@ -107,7 +107,7 @@ function validateDynamiczoneInput(value, { key, min, max, components, required }
     }
   });
 
-  if ((required === true || (required !== true && value.length > 0)) && min && value.length < min) {
+  if ((required === true || (value.length > 0)) && min && value.length < min) {
     throw new StatusError(`Dynamiczone ${key} must contain at least ${min} items`, 400);
   }
   if (max && value.length > max) {

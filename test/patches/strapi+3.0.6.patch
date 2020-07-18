@@ -1,0 +1,13 @@
+diff --git a/node_modules/strapi/lib/Strapi.js b/node_modules/strapi/lib/Strapi.js
+index 16be314..b20781e 100644
+--- a/node_modules/strapi/lib/Strapi.js
++++ b/node_modules/strapi/lib/Strapi.js
+@@ -246,7 +246,7 @@ class Strapi {
+     }
+ 
+     // Kill process.
+-    process.exit(exitCode);
++    // process.exit(exitCode);
+   }
+ 
+   async load() {

@@ -4,156 +4,168 @@
 
 import * as _ from 'lodash';
 import { populateDocs } from './populate';
-import { getDocRef, getModel } from './utils/get-doc-ref';
+import { coerceToReference, getModel } from './utils/doc-ref';
 import { convertRestQueryParams } from 'strapi-utils';
-import { StrapiQueryParams, StrapiFilter, StrapiWhereFilter } from './types';
+import type { StrapiQueryParams, StrapiFilter } from './types';
 import { StatusError } from './utils/status-error';
 import { deleteRelations, updateRelations } from './relations';
-import { WhereFilterOp, DocumentData, Transaction, Query, DocumentSnapshot, FieldValue } from '@google-cloud/firestore';
+import { FieldPath } from '@google-cloud/firestore';
 import { validateComponents } from './utils/validate-components';
-import { ManualFilter, manualQuery } from './utils/manual-query';
 import { TransactionWrapper } from './utils/transaction-wrapper';
+import type { Snapshot, QueryableCollection, Reference } from './utils/queryable-collection';
+import { ManualFilter, convertWhere } from './utils/convert-where';
 
 
 
 export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
   
 
+  function buildSearchQuery(value: any, query: QueryableCollection) {
 
-  function manualWhere(field: string, predicate: (fieldValue: any) => boolean) {
-    return (docData: DocumentData) => {
-      const value = _.get(docData, field, undefined);
-      return predicate(value);
-    };
-  }
-  
+    const filters: ManualFilter[] = [];
 
-  function convertWhere({ field, value, operator }: StrapiWhereFilter) {
-    
-    const details = model._attributes[field];
-    const assocModel = getModel(details.model || details.collection, details.plugin);
-
-    if (assocModel) {
-      // Convert reference ID to document reference
-      value = getDocRef(value, assocModel);
+    if (value != null) {
+      filters.push(convertWhere(FieldPath.documentId(), 'contains', value.toString(), 'manualOnly'));
     }
-
-    let op: WhereFilterOp | ((data: DocumentData) => boolean);
-    switch (operator) {
-      case 'eq':
-        op = '==';
-        break;
-      case 'ne':
-        op = manualWhere(field, (val) => val != value);
-        break;
-      case 'in':
-        op = 'in';
-        break;
-      case 'nin':
-        op = manualWhere(field, (val) => !_.includes(val, value));
-        break;
-      case 'contains':
-        op = manualWhere(field, (val) => _.includes(val, value));
-        break;
-      case 'ncontains':
-        op = manualWhere(field, (val) => !_.includes(val, value));
-        break;
-      case 'containss':
-        op = manualWhere(field, (val) => _.includes(_.toLower(val), _.toLower(value)));
-        break;
-      case 'ncontainss':
-        op = manualWhere(field, (val) => !_.includes(_.toLower(val), _.toLower(value)));
-        break;
-      case 'lt':
-        op = '<';
-        break;
-      case 'lte':
-        op = '<=';
-        break;
-      case 'gt':
-        op = '>';
-        break;
-      case 'gte':
-        op = '>=';
-        break;
-      case 'null':
-        if (value) {
-          op = '==';
-          value = null;
-        } else {
-          op = manualWhere(field, (val) => val != null);
-        }
-        break;
-    }
-
-    return {
-      field,
-      operator: op,
-      value
-    };
-  }
-
-  function buildSearchQuery(value: any) {
-    let query: Query = model;
-    const manualFilters: ManualFilter[] = [];
   
     Object.keys(model.attributes).forEach((field) => {
       switch (model.attributes[field].type) {
-        case 'biginteger':
         case 'integer':
         case 'float':
         case 'decimal':
           const number = _.toNumber(value);
           if (!_.isNaN(number)) {
-            query = query.where(field, '==', number);
+            filters.push(convertWhere(field, 'eq', number, 'manualOnly'));
           }
+          break;
+
+        case 'biginteger': // biginteger stored as a string
         case 'string':
         case 'text':
         case 'richtext':
         case 'email':
         case 'enumeration':
         case 'uid':
-          const regex = new RegExp(value, 'i');
-          manualFilters.push(manualWhere(field, (val) => regex.test(val)));
+          filters.push(convertWhere(field, 'contains', value?.toString(), 'manualOnly'));
+          break;
+
+        case 'date':
+        case 'time':
+        case 'datetime':
+        case 'json':
+        case 'boolean':
+        case 'password':
+          // Explicitly don't search in these fields
+          break;
+          
+        default:
+          // Unsupported field type for search
+          // Just ignore
+          break;
       }
     });
   
-    return { query, manualFilters };
+    return query.whereAny(filters);
   };
 
-  async function buildFirestoreQuery(params, searchQuery?: string, transaction?: Transaction) {
+  function buildFirestoreQuery(params, searchQuery: string | null, query: QueryableCollection) {
     // Remove any search query
     // because we extract and handle it separately
+    // Otherwise `convertRestQueryParams` will also handle it
     delete params._q;
-
     const filters: StrapiFilter = convertRestQueryParams(params);
-    let query: Query = model;
-    let manualFilters: ManualFilter[] = [];
 
     if (searchQuery) {
-      const q = buildSearchQuery(searchQuery);
-      manualFilters = manualFilters.concat(q.manualFilters);
-      query = q.query;
+      query = buildSearchQuery(searchQuery, query);
     } else {
-      (filters.where || []).forEach((filter) => {
-        const { field, operator, value } = convertWhere(filter);
-        if (typeof operator === 'function') {
-          manualFilters.push(operator);
-        } else {
-          query = query.where(field, operator, value);
+      (filters.where || []).forEach(({ field, operator, value }) => {
+
+        // Coerce to the appropriate types
+        // Because values from querystring will always come in as strings
+        const details = model.attributes[field];
+        if (details) {
+          if (details.type) {
+            switch (details.type) {
+              case 'integer':
+              case 'float':
+              case 'decimal':
+                if (_.isArray(value)) {
+                  value = value.map(toNumber);
+                } else {
+                  value = toNumber(value);
+                }
+                break;
+
+              case 'biginteger': // biginteger stored as a string
+              case 'string':
+              case 'text':
+              case 'richtext':
+              case 'email':
+              case 'enumeration':
+              case 'uid':
+                if (_.isArray(value)) {
+                  value = value.map(v => v?.toString());
+                } else {
+                  value = value?.toString();
+                }
+                break;
+
+              case 'date':
+              case 'time':
+              case 'datetime':
+                // TODO:
+                // To we need to coerce this to a Date object?
+                break;
+
+              case 'json':
+              case 'boolean':
+                if (_.isArray(value)) {
+                  value = value.map(v => {
+                    try {
+                      return JSON.parse(value);
+                    } catch {
+                      return value;
+                    }
+                  });
+                } else {
+                  try {
+                    value = JSON.parse(value);
+                  } catch {
+                  }
+                }
+                break;
+
+              case 'password':
+                // Disable queries on password fields
+                return;
+
+
+              default:
+                // Unknown field (or it's a relation)
+                // Don't coerce
+                break;
+
+            }
+          } else {
+
+            // Convert reference ID to document reference if it is one
+            if (details.model || details.collection) {
+              const assocModel = getModel(details.model || details.collection, details.plugin);
+              if (assocModel) {
+                value = coerceToReference(value, assocModel);
+              }
+            }
+          }
         }
+
+        query = query.where(field, operator, value);
       });
     }
 
-    let idSortOrder: 'asc' | 'desc' | undefined
 
     (filters.sort || []).forEach(({ field, order }) => {
       if (_.includes(model.idKeys, field)) {
-        // While it is possible to order by `FieldPath.documentId()`
-        // that will do a case sensitive sort, and it also only supports ascending sort
-        // So we will manually order by ID once we get the results
-        idSortOrder = order;
-        return;
+        query = query.orderBy(FieldPath.documentId() as any, order);
       } else {
         query = query.orderBy(field, order);
       }
@@ -164,43 +176,39 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
     }
 
     const limit = Math.max(0, filters.limit || 0);
-    const results = await manualQuery(
-      query, 
-      manualFilters,
-      searchQuery ? 'or' : 'and', 
-      limit, 
-      transaction
-    );
+    query = query.limit(limit);
 
-    if (idSortOrder) {
-      const sorted = _.sortBy(results, r => _.toLower(r.id));
-      return idSortOrder === 'desc'
-        ? _.reverse(sorted)
-        : sorted;
-    } else {
-      return results;
-    }
+    return query;
   }
+
+  async function runFirestoreQuery(params, searchQuery: string | null, transaction: TransactionWrapper | undefined) {
+    const query = buildFirestoreQuery(params, searchQuery, model.db);
+    const result = await (transaction ? transaction.get(query) : query.get());
+    return result.docs;
+  }
+
+
 
 
   async function find(params: any, populate?: string[]) {
     const populateOpt = populate || model.defaultPopulate;
 
     return await model.firestore.runTransaction(async trans => {
-      let docs: DocumentSnapshot[];
+      const wrapper = new TransactionWrapper(trans, model.firestore);
+      let docs: Snapshot[];
       if (model.hasPK(params)) {
         const ref = model.doc(model.getPK(params));
-        const snap = await trans.get(ref);
+        const snap = await wrapper.get(ref);
         if (!snap.exists) {
           docs = [];
         } else {
           docs = [snap];
         }
       } else {
-        docs = await buildFirestoreQuery(params, undefined, trans);
+        docs = await runFirestoreQuery(params, null, wrapper);
       }
 
-      return await populateDocs(model, docs, populateOpt, trans);
+      return await populateDocs(model, docs, populateOpt, wrapper);
     });
   }
 
@@ -211,7 +219,7 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
 
   async function count(params: any) {
     // Don't populate any fields, we are just counting
-    const docs = await buildFirestoreQuery(params);
+    const docs = await runFirestoreQuery(params, null, undefined);
     return docs.length;
   }
 
@@ -226,28 +234,24 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
 
     // Add timestamp data
     if (_.isArray(model.options.timestamps)) {
+      const now = new Date();
       const [createdAtKey, updatedAtKey] = model.options.timestamps;
-      data[createdAtKey] = FieldValue.serverTimestamp();
-      data[updatedAtKey] = FieldValue.serverTimestamp();
+      data[createdAtKey] = now;
+      data[updatedAtKey] = now;
     }
 
-    // Create entry without relational data.
+    // Create entry without relational data
     const id = model.getPK(values);
     const ref = id ? model.doc(id) : model.doc();
 
     return await model.firestore.runTransaction(async trans => {
-      const wrapper = new TransactionWrapper(trans);
-      
-      // Populate relations
-      // TODO: does this need to be done after relations are updated?
-      const [entry] = await populateDocs(model, [{ id: ref.id, ref, data: () => data }], model.defaultPopulate, trans);
+      const wrapper = new TransactionWrapper(trans, model.firestore);
       
       // Update components
       await Promise.all(components.map(async ({ model, value }) => {
         await updateRelations(model, {
           values: model.pickRelations(value),
           data: value,
-          entry: {},
           ref
         }, wrapper);
       }));
@@ -256,12 +260,14 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
       await updateRelations(model, {
         values: relations,
         data,
-        entry,
         ref
       }, wrapper);
+      
+      // Populate relations
+      const [entry] = await populateDocs(model, [{ ref, data: () => data }], model.defaultPopulate, wrapper);
 
+      await model.create(ref, data, wrapper);
       wrapper.doWrites();
-      trans.create(ref, data);
 
       return entry;
     });
@@ -278,46 +284,37 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
 
     // Add timestamp data
     if (_.isArray(model.options.timestamps)) {
+      const now = new Date();
       const [createdAtKey, updatedAtKey] = model.options.timestamps;
 
       // Prevent creation timestamp from being overwritten
       delete data[createdAtKey];
-
-      data[updatedAtKey] = FieldValue.serverTimestamp();
+      data[updatedAtKey] = now;
     }
 
     // Run the transaction
     return await model.firestore.runTransaction(async trans => {
-      const wrapper = new TransactionWrapper(trans);
+      const wrapper = new TransactionWrapper(trans, model.firestore);
 
-      let snap: DocumentSnapshot | null;
+      let ref: Reference;
       if (model.hasPK(params)) {
-        const ref = model.doc(model.getPK(params));
-        snap = await trans.get(ref);
-        if (!snap.exists) {
-          snap = null;
-        }
+        ref = model.doc(model.getPK(params));
       } else {
-        const docs = await buildFirestoreQuery({ ...params, _limit: 1 }, undefined, trans);
-        snap = docs[0] || null;
+        const docs = await runFirestoreQuery({ ...params, _limit: 1 }, null, wrapper);
+        if (!docs.length) {
+          throw new StatusError('entry.notFound', 404);
+        }
+
+        ref = docs[0].ref;
       }
 
-      if (!snap) {
-        throw new StatusError('entry.notFound', 404);
-      }
-
-
-      // Populate relations
-      // TODO: does this need to be done after relations are updated?
-      const [entry] = await populateDocs(model, [snap], model.defaultPopulate, trans);
 
       // Update components
       await Promise.all(components.map(async ({ model, value }) => {
         await updateRelations(model, {
           values: model.pickRelations(value),
           data: value,
-          entry: {},
-          ref: snap!.ref
+          ref
         }, wrapper);
       }));
 
@@ -325,14 +322,15 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
       await updateRelations(model, {
         values: relations,
         data,
-        entry,
-        ref: snap.ref
+        ref
       }, wrapper);
 
+      // Populate relations
+      const [entry] = await populateDocs(model, [{ ref, data: () => data }], model.defaultPopulate, wrapper);
 
       // Update entry without relational data.
+      await model.update(ref, data, wrapper);
       wrapper.doWrites();
-      trans.set(snap.ref, data, { merge: true });
 
       return entry;
 
@@ -355,21 +353,21 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
   async function deleteOne(id: string) {
     
     return await model.firestore.runTransaction(async trans => {
-      const wrapper = new TransactionWrapper(trans);
+      const wrapper = new TransactionWrapper(trans, model.firestore);
 
       const ref = model.doc(id);
-      const snap = await trans.get(ref);
+      const snap = await wrapper.get(ref);
       const entry = snap.data();
       if (!entry) {
         throw new StatusError('entry.notFound', 404);
       }
 
-      const [doc] = await populateDocs(model, [snap], model.defaultPopulate, trans);
+      const [doc] = await populateDocs(model, [snap], model.defaultPopulate, wrapper);
 
       await deleteRelations(model, { entry: doc, ref }, wrapper);
 
+      await model.delete(ref, wrapper);
       wrapper.doWrites();
-      trans.delete(ref);
 
       return doc;
     });
@@ -379,26 +377,27 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
     const populateOpt = populate || model.defaultPopulate;
 
     return await model.firestore.runTransaction(async trans => {
-      let docs: DocumentSnapshot[];
+      const wrapper = new TransactionWrapper(trans, model.firestore);
+      let docs: Snapshot[];
       if (model.hasPK(params)) {
         const ref = model.doc(model.getPK(params));
-        const snap = await trans.get(ref);
+        const snap = await wrapper.get(ref);
         if (!snap.exists) {
           docs = [];
         } else {
           docs = [snap];
         }
       } else {
-        docs = await buildFirestoreQuery(params, params._q, trans);
+        docs = await runFirestoreQuery(params, params._q, wrapper);
       }
 
-      return await populateDocs(model, docs, populateOpt, trans);
+      return await populateDocs(model, docs, populateOpt, wrapper);
     });
   }
 
   async function countSearch(params: any) {
     // Don't populate any fields, we are just counting
-    const docs = await buildFirestoreQuery(params, params._q);
+    const docs = await runFirestoreQuery(params, params._q, undefined);
     return docs.length;
   }
 
@@ -414,3 +413,15 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
   };
 };
 
+/**
+ * Coerce to a number only if it is a number.
+ * If not a number, then return original value.
+ */
+function toNumber(value: any) {
+  const n = _.toNumber(value);
+  if (_.isNaN(n)) {
+    return value;
+  } else {
+    return n;
+  }
+}

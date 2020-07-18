@@ -6,6 +6,25 @@ const { promisify } = require('util');
 const rm = promisify(rimraf);
 
 const testsDir = '__tests__';
+const flattenExcludes = {
+  flatten_all: [],
+  flatten_none: [],
+
+  // For mixed-flattening tests we only need to test relations
+  // so skip all the other tests
+  flatten_mixed_src: [
+    /api/,
+    /filtering/,
+    /search/,
+    /single-type/
+  ],
+  flatten_mixed_target: [
+    /api/,
+    /filtering/,
+    /search/,
+    /single-type/
+  ]
+};
 
 /**
  * Delete the testApp folder
@@ -20,11 +39,14 @@ const cleanTestApp = async appName => {
     rm(path.resolve(appName, 'api')),
     rm(path.resolve(appName, 'extensions')),
     rm(path.resolve(appName, 'components')),
-    rm(path.resolve(appName, testsDir)),
   ]);
 
   await fs.mkdir('api');
   await fs.mkdir('extensions');
+};
+
+const cleanTests = async appName => {
+  await rm(path.resolve(appName, testsDir));
 };
 
 const copyTests = async appName => {
@@ -34,9 +56,18 @@ const copyTests = async appName => {
 
   await fs.emptyDir(dest);
   await fs.copy(path.join(strapiDir, testsDir), dest);
+
+  // Remove excluded tests
+  const excludes = flattenExcludes[process.env.FLATTENING] || [];
+  for (const p of await fs.readdir(dest)) {
+    if (excludes.some(e => e.test(p))) {
+      await fs.remove(path.join(dest, p));
+    }
+  }
 };
 
 module.exports = {
   cleanTestApp,
-  copyTests
+  copyTests,
+  cleanTests
 };

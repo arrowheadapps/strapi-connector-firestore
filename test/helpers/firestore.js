@@ -10,15 +10,14 @@ const startFirestore = async () => {
 
   try {
     process.stdout.write('\nStarting Firestore...\n');
-    proc = execa('node_modules/.bin/firebase emulators:start --only firestore', {
+    proc = execa.command('node_modules/.bin/firebase emulators:start --only firestore', {
       stdio: ['pipe', 'inherit', 'inherit'],
-      shell: true,
     });
 
     // Wait for Firestore to come online or for the process to end or crash
     const result = await Promise.race([
       proc, 
-      waitOn({ resources: ['http-get://localhost:8080'], timeout: 15_000, })
+      waitOn({ resources: ['http-get://localhost:8080'], timeout: 20_000, })
     ]);
 
     if (result) {
@@ -39,7 +38,7 @@ const startFirestore = async () => {
 const stopFirestore = async () => {
   if (proc) {
     try {
-      process.stdout.write('Killing Firestore...\n');
+      process.stdout.write('Killing Firestore... ');
       proc.kill('SIGINT', { forceKillAfterTimeout: 3000 });
 
       // Wait for process to end or timeout

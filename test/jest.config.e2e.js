@@ -3,15 +3,15 @@ module.exports = {
   rootDir: '../',
   collectCoverage: true,
   testEnvironment: 'node',
-  testMatch: ['<rootDir>/test/**/?(*.)+(spec|test).e2e.js'],
+  testMatch: ['<rootDir>/test/**/*.test.e2e.js'],
   globalSetup: '<rootDir>/test/setup.js',
   globalTeardown: '<rootDir>/test/teardown.js',
   setupFilesAfterEnv: ['<rootDir>/test/setup-test.js'],
 
+  coverageReporters: ['json', 'text'],
   collectCoverageFrom: [
     '<rootDir>/lib/**/*.js',
   ],
-  coveragePathIgnorePatterns: [],
   moduleNameMapper: {
     // When tests are copied over from the strapi module
     // the relative imports are broken

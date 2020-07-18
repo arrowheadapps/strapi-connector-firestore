@@ -1,26 +1,28 @@
 {
   "private": true,
   "scripts": {
+    "postinstall": "patch-package",
+    "remap": "remap-istanbul --input ../coverage/coverage-final.json --output ../coverage/coverage-mapped.json",
     "test": "node e2e.js",
-    "test:e2e": "jest --config jest.config.e2e.js --runInBand --verbose --forceExit --detectOpenHandles --silent",
-    "clean": "node -e \"require('./helpers/testAppGenerator').cleanTestApp('.')\" && rm -rf __tests__"
+    "test:e2e": "jest --config jest.config.e2e.js --runInBand --verbose --forceExit --detectOpenHandles"
   },
   "dependencies": {
-    "codecov": "^3.7.0",
     "execa": "^4.0.3",
-    "firebase-tools": "^8.5.0",
+    "firebase-tools": "^8.6.0",
     "fs-extra": "^9.0.1",
     "jest": "^26.1.0",
+    "patch-package": "^6.2.2",
+    "remap-istanbul": "^0.13.0",
     "request-promise-native": "^1.0.8",
     "rimraf": "^3.0.2",
-    "strapi": "^3.0.5",
-    "strapi-admin": "^3.0.5",
+    "strapi": "^3.0.6",
+    "strapi-admin": "^3.0.6",
     "strapi-connector-firestore": "file:..",
-    "strapi-plugin-content-manager": "^3.0.5",
-    "strapi-plugin-content-type-builder": "^3.0.5",
-    "strapi-plugin-upload": "^3.0.5",
-    "strapi-plugin-users-permissions": "^3.0.5",
-    "strapi-utils": "^3.0.5",
-    "wait-on": "^5.0.3"
+    "strapi-plugin-content-manager": "^3.0.6",
+    "strapi-plugin-content-type-builder": "^3.0.6",
+    "strapi-plugin-upload": "^3.0.6",
+    "strapi-plugin-users-permissions": "^3.0.6",
+    "strapi-utils": "^3.0.6",
+    "wait-on": "^5.1.0"
   }
 }
