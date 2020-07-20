@@ -119,7 +119,7 @@ export async function populateDocs(model: FirestoreConnectorModel, docs: Partial
       const component = data[componentKey];
       if (component) {
         await Promise.all(_.castArray(component).map(async c => {
-          if (c[componentKey]) {
+          if (c) {
             const componentModel = getComponentModel(model, componentKey, c);
             await Promise.all(componentModel.defaultPopulate.map(async field => {
               await populateData(componentModel, field, c);
