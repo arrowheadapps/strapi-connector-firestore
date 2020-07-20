@@ -46,9 +46,12 @@ export async function populateDocs(model: FirestoreConnectorModel, docs: Partial
       const assocModel = getModel(details.model || details.collection, details.plugin);
     
       if (!assocModel) {
+        // TODO:
         // This seems to happen for polymorphic relations such as images
         // Can we just safely ignore this?
-        throw new Error(`Associated model not found for model: "${details.model || details.collection}" plugin: "${details.plugin}"`);
+        //throw new Error(`Associated model not found for model: "${details.model || details.collection}" plugin: "${details.plugin}"`);
+
+        return;
       }
 
       const processPopulatedDoc = (snap: PartialDocumentSnapshot) => {
