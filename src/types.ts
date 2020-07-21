@@ -1,5 +1,5 @@
 import type { Firestore, DocumentData } from '@google-cloud/firestore';
-import type { QueryableCollection, Reference } from './utils/queryable-collection';
+import type { QueryableCollection, Reference, Snapshot } from './utils/queryable-collection';
 import type { TransactionWrapper } from './utils/transaction-wrapper';
 import type { Logger } from 'pino';
 
@@ -49,6 +49,10 @@ export interface ModelOptions {
 
 declare global {
   const strapi: Strapi
+
+  interface StrapiModelMap {
+
+  }
 }
 
 export interface Strapi {
@@ -57,30 +61,35 @@ export interface Strapi {
     hook: any
     appPath: string
   }
-  components: Record<string, FirestoreConnectorModel>
-  models: Record<string, FirestoreConnectorModel>
-  admin: StrapiPlugin
-  plugins: Record<string, StrapiPlugin>
+  components: StrapiModelRecord
+  models: StrapiModelRecord
+  admin: Readonly<StrapiPlugin>
+  plugins: Record<string, Readonly<StrapiPlugin>>
   db: any
   log: Logger
 
-  getModel(ref, source): FirestoreConnectorModel
+  getModel(ref, source): Readonly<FirestoreConnectorModel>
 
+  query<K extends keyof StrapiModelMap>(modelKey: K): StrapiQuery<StrapiModelMap[K]>
   query(modelKey: string): StrapiQuery
 }
 
+export type StrapiModelRecord = {
+  [modelKel in keyof StrapiModelMap]: Readonly<FirestoreConnectorModel<StrapiModelMap[modelKel]>>
+};
+
 export interface StrapiPlugin {
-  models: Record<string, FirestoreConnectorModel>
+  models: StrapiModelRecord
 }
 
-export interface StrapiQuery {
-  find(params: any): Promise<any[]>
-  findOne(params: any): Promise<any>
-  create(params: any, values: any): Promise<any>
-  update(params: any, values: any): Promise<any>
-  delete(params: any): Promise<any>
-  count(params: any): Promise<number>
-  search(params: any): Promise<any[]>
+export interface StrapiQuery<T = DocumentData> {
+  find(params?: any): Promise<T[]>
+  findOne(params?: any): Promise<T>
+  create(values: T): Promise<T>
+  update(params: any, values: T): Promise<T>
+  delete(params: any): Promise<T>
+  count(params?: any): Promise<number>
+  search(params: any): Promise<T[]>
   countSearch(params: any): Promise<number>
 }
 
@@ -156,16 +165,20 @@ export interface FirestoreConnectorContext {
   isComponent?: boolean
 }
 
-export interface FirestoreConnectorModel extends StrapiModel {
+export interface FirestoreConnectorModel<T = DocumentData> extends StrapiModel {
   firestore: Firestore;
-  db: QueryableCollection;
+  db: QueryableCollection<T>;
 
-  doc(): Reference;
-  doc(id: string): Reference;
-  create(ref: Reference, data: DocumentData, transaction: TransactionWrapper | undefined): Promise<void>;
-  update(ref: Reference, data: DocumentData, transaction: TransactionWrapper | undefined): Promise<void>;
-  setMerge(ref: Reference, data: DocumentData, transaction: TransactionWrapper | undefined): Promise<void>;
-  delete(ref: Reference, transaction: TransactionWrapper): Promise<void>;
+  doc(): Reference<T>;
+  doc(id: string): Reference<T>;
+  create(ref: Reference<T>, data: T, transaction: TransactionWrapper | undefined): Promise<void>;
+  update(ref: Reference<T>, data: T, transaction: TransactionWrapper | undefined): Promise<void>;
+  setMerge(ref: Reference<T>, data: T, transaction: TransactionWrapper | undefined): Promise<void>;
+  delete(ref: Reference<T>, transaction: TransactionWrapper | undefined): Promise<void>;
+
+  runTransaction<TResult>(fn: (transaction: TransactionWrapper) => Promise<TResult>): Promise<TResult>;
+
+  populate(data: Snapshot<T>, transaction: TransactionWrapper): Promise<T>
 
   assocKeys: string[];
   componentKeys: string[];

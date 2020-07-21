@@ -20,7 +20,7 @@ export class TransactionWrapper {
    * Only those that aren't already memoised are actually fetched.
    * Any duplicate documents are only actually fetched once.
    */
-  private _getAll(docs: DocumentReference[]): Promise<DocumentSnapshot[]> {
+  private _getAll<T = DocumentData>(docs: DocumentReference<T>[]): Promise<DocumentSnapshot<T>[]> {
 
     // Unique documents that haven't already been fetched
     const toGet = _.uniqBy(docs.filter(({ path }) => !this.docReads[path]), doc => doc.path);
@@ -34,7 +34,7 @@ export class TransactionWrapper {
     });
 
     // Arrange all the memoised promises as results
-    const results = docs.map(({ path }) => this.docReads[path]);
+    const results = docs.map(({ path }) => this.docReads[path] as Promise<DocumentSnapshot<T>>);
     return Promise.all(results);
   }
 
@@ -50,8 +50,8 @@ export class TransactionWrapper {
   }
 
 
-  get(documentRef: Reference): Promise<Snapshot>;
-  get(query: QueryableCollection): Promise<QuerySnapshot>;
+  get<T>(documentRef: Reference<T>): Promise<Snapshot<T>>;
+  get<T>(query: QueryableCollection<T>): Promise<QuerySnapshot<T>>;
   async get(val: Reference | QueryableCollection): Promise<any> {
     // Deep reference to flat collection
     if (typeof val === 'string') {
@@ -80,16 +80,16 @@ export class TransactionWrapper {
 
   }
 
-  async getAll(...refs: Reference[]): Promise<Snapshot[]> {
-    const docs: DocumentReference[] = new Array(refs.length);
+  async getAll<T>(...refs: Reference<T>[]): Promise<Snapshot<T>[]> {
+    const docs: DocumentReference<T>[] = new Array(refs.length);
     const ids: (string | null)[] = new Array(refs.length);
     refs.forEach((ref, i) => {
-      const r = parseRef(ref, this.instance);
+      const r = parseRef<T>(ref, this.instance);
       if (r instanceof DocumentReference) {
         docs[i] = r;
         ids[i] = null;
       } else {
-        docs[i] = r.doc;
+        docs[i] = r.doc as DocumentReference<T>;
         ids[i] = r.id;
       }
     });
@@ -131,6 +131,9 @@ export class TransactionWrapper {
     }
   }
 
+  /**
+   * @private
+   */
   doWrites() {
     this.writes.forEach(w => w(this.transaction));
   }

@@ -1,6 +1,6 @@
 import * as _ from 'lodash';
 import * as path from 'path';
-import { DocumentReference, Firestore } from '@google-cloud/firestore';
+import { DocumentReference, Firestore, DocumentData } from '@google-cloud/firestore';
 import type { FirestoreConnectorModel } from '../types';
 import type { Reference, DeepReference } from './queryable-collection';
 
@@ -22,7 +22,7 @@ export function refEquals(a: Reference | null, b: Reference | null): boolean {
   return false;
 }
 
-export function parseRef(ref: Reference, instance: Firestore) {
+export function parseRef<T = DocumentData>(ref: Reference<T>, instance: Firestore) {
   if (typeof ref === 'string') {
     return parseDeepReference(ref, instance);
   } else {

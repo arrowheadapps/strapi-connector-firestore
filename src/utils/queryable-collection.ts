@@ -3,7 +3,7 @@ import type { OrderByDirection, DocumentData, DocumentReference, Transaction, Fi
 import type { StrapiWhereOperator } from '../types';
 import type { ManualFilter } from './convert-where';
 
-export type Reference = DocumentReference | DeepReference;
+export type Reference<T = DocumentData> = DocumentReference<T> | DeepReference;
 
 /**
  * References a field within a document.
@@ -12,25 +12,25 @@ export type Reference = DocumentReference | DeepReference;
 export type DeepReference = string;
 
 
-export interface Snapshot {
-  data(): DocumentData | undefined
-  ref: Reference
+export interface Snapshot<T = DocumentData> {
+  data(): T | undefined
+  ref: Reference<T>
   id: string
   exists: boolean
 }
 
-export interface QuerySnapshot {
-  docs: Snapshot[]
+export interface QuerySnapshot<T = DocumentData> {
+  docs: Snapshot<T>[]
   empty: boolean
 }
 
 
-export interface QueryableCollection {
-  get(trans?: Transaction): Promise<QuerySnapshot>;
+export interface QueryableCollection<T = DocumentData> {
+  get(trans?: Transaction): Promise<QuerySnapshot<T>>;
   
-  where(field: string | FieldPath, opStr: WhereFilterOp | StrapiWhereOperator | RegExp, value: any): QueryableCollection;
-  whereAny(filters: ManualFilter[]): QueryableCollection;
-  orderBy(field: string | FieldPath, directionStr?: OrderByDirection): QueryableCollection;
-  limit(limit: number): QueryableCollection;
-  offset(offset: number): QueryableCollection;
+  where(field: string | FieldPath, opStr: WhereFilterOp | StrapiWhereOperator | RegExp, value: any): QueryableCollection<T>;
+  whereAny(filters: ManualFilter[]): QueryableCollection<T>;
+  orderBy(field: string | FieldPath, directionStr?: OrderByDirection): QueryableCollection<T>;
+  limit(limit: number): QueryableCollection<T>;
+  offset(offset: number): QueryableCollection<T>;
 }

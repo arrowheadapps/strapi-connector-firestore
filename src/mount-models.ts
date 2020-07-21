@@ -6,7 +6,8 @@ import { QueryableFirestoreCollection } from './utils/queryable-firestore-collec
 import { QueryableFlatCollection } from './utils/queryable-flat-collection';
 import { parseDeepReference } from './utils/doc-ref';
 import type { FirestoreConnectorContext, FirestoreConnectorModel, ModelOptions } from './types';
-import type { TransactionWrapper } from './utils/transaction-wrapper';
+import { TransactionWrapper } from './utils/transaction-wrapper';
+import { populateDocs } from './populate';
 
 export const DEFAULT_CREATE_TIME_KEY = 'createdAt';
 export const DEFAULT_UPDATE_TIME_KEY = 'updatedAt';
@@ -72,6 +73,18 @@ export function mountModels(models: FirestoreConnectorContext[]) {
     if (!isComponent) {
 
       model.firestore = instance;
+      model.runTransaction = (fn) => {
+        return instance.runTransaction(async (trans) => {
+          const wrapper = new TransactionWrapper(trans, instance);
+          const result = await fn(wrapper);
+          wrapper.doWrites();
+          return result;
+        });
+      };
+
+      model.populate = (data, transaction) => {
+        return populateDocs(model, [data], model.defaultPopulate, transaction);
+      };
 
       if (flattenedKey) {
 
