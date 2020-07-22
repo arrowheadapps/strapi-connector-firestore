@@ -1,21 +1,21 @@
 import * as _ from 'lodash';
 import { ManualFilter, convertWhere } from './convert-where';
-import { Query, Transaction, QueryDocumentSnapshot, FieldPath, WhereFilterOp } from '@google-cloud/firestore';
+import { Query, Transaction, QueryDocumentSnapshot, FieldPath, WhereFilterOp, DocumentData } from '@google-cloud/firestore';
 import type { QueryableCollection, QuerySnapshot, Snapshot } from './queryable-collection';
 import type { StrapiWhereOperator } from '../types';
 
 
-export class QueryableFirestoreCollection implements QueryableCollection {
+export class QueryableFirestoreCollection<T = DocumentData> implements QueryableCollection<T> {
 
   private allowNonNativeQueries: boolean
-  private query: Query
+  private query: Query<T>
   private manualFilters: ManualFilter[] = [];
   private _limit?: number;
   private _offset?: number;
 
-  constructor(other: QueryableFirestoreCollection)
-  constructor(other: Query, allowNonNativeQueries: boolean)
-  constructor(other: Query | QueryableFirestoreCollection, allowNonNativeQueries?: boolean) {
+  constructor(other: QueryableFirestoreCollection<T>)
+  constructor(other: Query<T>, allowNonNativeQueries: boolean)
+  constructor(other: Query<T> | QueryableFirestoreCollection<T>, allowNonNativeQueries?: boolean) {
     if (other instanceof QueryableFirestoreCollection) {
       this.allowNonNativeQueries = other.allowNonNativeQueries;
       this.query = other.query;
@@ -29,11 +29,11 @@ export class QueryableFirestoreCollection implements QueryableCollection {
     }
   }
 
-  get(trans?: Transaction): Promise<QuerySnapshot> {
+  get(trans?: Transaction): Promise<QuerySnapshot<T>> {
     return manualQuery(this.query, this.manualFilters, this._limit || 0, this._offset || 0, trans);
   }
 
-  where(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator | RegExp, value: any): QueryableCollection {
+  where(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator | RegExp, value: any): QueryableCollection<T> {
     const filter = convertWhere(field, operator, value, this.allowNonNativeQueries ? 'preferNative' : 'nativeOnly');
     const other = new QueryableFirestoreCollection(this);
     if (typeof filter === 'function') {
@@ -44,7 +44,7 @@ export class QueryableFirestoreCollection implements QueryableCollection {
     return other;
   }
 
-  whereAny(filters: ManualFilter[]): QueryableCollection {
+  whereAny(filters: ManualFilter[]): QueryableCollection<T> {
     if (!this.allowNonNativeQueries) {
       throw new Error('Search is not natively supported by Firestore. Use the `allowNonNativeQueries` option to enable manual search.');
     }
@@ -53,20 +53,20 @@ export class QueryableFirestoreCollection implements QueryableCollection {
     return other;
   }
 
-  orderBy(field: string | FieldPath, directionStr: "desc" | "asc" = 'asc'): QueryableCollection {
+  orderBy(field: string | FieldPath, directionStr: "desc" | "asc" = 'asc'): QueryableCollection<T> {
     const other = new QueryableFirestoreCollection(this);
     other.query = this.query.orderBy(field, directionStr);
     return other;
   }
 
-  limit(limit: number): QueryableCollection {
+  limit(limit: number): QueryableCollection<T> {
     const other = new QueryableFirestoreCollection(this);
     other.query = this.query.limit(limit);
     other._limit = limit;
     return other;
   }
 
-  offset(offset: number): QueryableCollection {
+  offset(offset: number): QueryableCollection<T> {
     const other = new QueryableFirestoreCollection(this);
     other.query = this.query.offset(offset);
     return other;
@@ -75,11 +75,11 @@ export class QueryableFirestoreCollection implements QueryableCollection {
 
 
 
-async function manualQuery(baseQuery: Query, manualFilters: ManualFilter[], limit: number, offset: number, transaction: Transaction | undefined): Promise<QuerySnapshot> {
+async function manualQuery<T>(baseQuery: Query<T>, manualFilters: ManualFilter[], limit: number, offset: number, transaction: Transaction | undefined): Promise<QuerySnapshot<T>> {
 
-  let cursor: QueryDocumentSnapshot | undefined
-  let docs: Snapshot[] = [];
-  while (docs.length < limit) {
+  let cursor: QueryDocumentSnapshot<T> | undefined
+  let docs: Snapshot<T>[] = [];
+  while (!limit || (docs.length < limit)) {
     if (limit) {
       // Use a minimum limit of 10 for the native query
       // E.g. if we only want 1 result, we will still query
@@ -108,7 +108,7 @@ async function manualQuery(baseQuery: Query, manualFilters: ManualFilter[], limi
       offset -= length;
     }
 
-    if ((docs.length + resultDocs.length) > limit) {
+    if (limit && ((docs.length + resultDocs.length) > limit)) {
       docs = docs.concat(resultDocs.slice(0, limit - docs.length));
     } else {
       docs = docs.concat(resultDocs);

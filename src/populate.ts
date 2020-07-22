@@ -2,7 +2,6 @@ import * as _ from 'lodash';
 import { coerceToReference, getModel, parseRef } from './utils/doc-ref';
 import { getComponentModel } from './utils/validate-components';
 import type { FirestoreConnectorModel } from './types';
-import type { DocumentReference } from '@google-cloud/firestore';
 import type { TransactionWrapper } from './utils/transaction-wrapper';
 import type { Reference } from './utils/queryable-collection';
 
@@ -40,7 +39,7 @@ function assignMeta(model: FirestoreConnectorModel, docSnap: PartialDocumentSnap
 
 export async function populateDocs(model: FirestoreConnectorModel, docs: PartialDocumentSnapshot[], populateFields: string [], transaction: TransactionWrapper) {
   const docsData: any[] = [];
-  const subDocs: { doc: DocumentReference, data?: any, assign: (snap: PartialDocumentSnapshot) => void }[] = [];
+  const subDocs: { doc: Reference, data?: any, assign: (snap: PartialDocumentSnapshot) => void }[] = [];
 
   await Promise.all(docs.map(doc => {
     const data = Object.assign({}, doc.data());
@@ -56,45 +55,48 @@ export async function populateDocs(model: FirestoreConnectorModel, docs: Partial
       const assocModel = getModel(details.model || details.collection, details.plugin);
     
       if (!assocModel) {
+        // TODO:
         // This seems to happen for polymorphic relations such as images
         // Can we just safely ignore this?
-        throw new Error(`Associated model not found for model: "${details.model || details.collection}" plugin: "${details.plugin}"`);
+        //throw new Error(`Associated model not found for model: "${details.model || details.collection}" plugin: "${details.plugin}"`);
+
+        return;
       }
 
       const processPopulatedDoc = (snap: PartialDocumentSnapshot) => {
         const data = snap.data();
-
-        // Remove second level relations
-        assocModel.assocKeys.forEach(k => delete data[k]);
-        
-        assignMeta(assocModel, snap, data);
+        if (data) {
+          assignMeta(assocModel, snap, data);
+        }
         return data;
       }
     
       if (!data[f]) {
-        const via = details.via || details.alias;
-        const assocDetails = assocModel.associations.find(assoc => assoc.alias === via);
-        if (!assocDetails) {
-          throw new Error(`No configuration found for attribute "${via}"`);
-        }
+        if (!details.dominant) {
+          const via = details.via || details.alias;
+          const assocDetails = assocModel.associations.find(assoc => assoc.alias === via);
+          if (!assocDetails) {
+            throw new Error(`No configuration found for attribute "${via}"`);
+          }
 
-        // If the attribe in the related model has `model`
-        // then it is a one-way relation
-        // otherwise it has `collection` and it is a multi-way relation
-        const q = assocDetails.model
-          ? assocModel.db.where(via, '==', doc.ref)
-          : assocModel.db.where(via, 'array-contains', doc.ref);
+          // If the attribe in the related model has `model`
+          // then it is a one-way relation
+          // otherwise it has `collection` and it is a multi-way relation
+          const q = assocDetails.model
+            ? assocModel.db.where(via, '==', doc.ref)
+            : assocModel.db.where(via, 'array-contains', doc.ref);
 
-        const snaps = (await transaction.get(q)).docs;
-        
-        if (details.model) {
-          // This is a one-way relation
-          data[f] = snaps.length
-            ? processPopulatedDoc(snaps[0])
-            : null;
-        } else {
-          // This is a multi-way relation
-          data[f] = snaps.map(processPopulatedDoc);
+          const snaps = (await transaction.get(q)).docs;
+          
+          if (details.model) {
+            // This is a one-way relation
+            data[f] = snaps.length
+              ? processPopulatedDoc(snaps[0])
+              : null;
+          } else {
+            // This is a multi-way relation
+            data[f] = snaps.map(processPopulatedDoc);
+          }
         }
         
       } else if (Array.isArray(data[f])) {
@@ -103,7 +105,7 @@ export async function populateDocs(model: FirestoreConnectorModel, docs: Partial
         // Expects array of DocumentReference instances
         data[f].forEach(ref => {
           subDocs.push({
-            doc: coerceToReference(ref, assocModel) as DocumentReference,
+            doc: coerceToReference(ref, assocModel) as Reference,
             assign: (snap) => {
               data[f].push(processPopulatedDoc(snap));
             }
@@ -115,7 +117,7 @@ export async function populateDocs(model: FirestoreConnectorModel, docs: Partial
       } else {
         // oneToOne or manyToOne etc
         subDocs.push({
-          doc: coerceToReference(data[f], assocModel) as DocumentReference,
+          doc: coerceToReference(data[f], assocModel) as Reference,
           assign: (snap) => {
             data[f] = processPopulatedDoc(snap);
           }
@@ -129,7 +131,7 @@ export async function populateDocs(model: FirestoreConnectorModel, docs: Partial
       const component = data[componentKey];
       if (component) {
         await Promise.all(_.castArray(component).map(async c => {
-          if (c[componentKey]) {
+          if (c) {
             const componentModel = getComponentModel(model, componentKey, c);
             await Promise.all(componentModel.defaultPopulate.map(async field => {
               await populateData(componentModel, field, c);
@@ -150,11 +152,10 @@ export async function populateDocs(model: FirestoreConnectorModel, docs: Partial
   // Assign all the fetched data
   subDocsData.forEach((subDocSnap, i) => {
     const { assign } = subDocs[i];
-    if (subDocSnap.exists) {
-      assign(subDocSnap);
-    } else {
-      throw new Error(`Relation not found: ${subDocSnap.ref.path}`);
+    if (!subDocSnap.exists) {
+      strapi.log.warn(`Missing relation "${typeof subDocSnap.ref === 'string' ? subDocSnap.ref : subDocSnap.ref.path}"`);
     }
+    assign(subDocSnap);
   });
 
   return docsData;

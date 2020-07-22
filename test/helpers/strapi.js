@@ -6,6 +6,10 @@ async function startStrapi() {
   if (!instance) {
     process.stdout.write('Starting Strapi... ');
     process.env.BROWSER = 'none';
+    process.env.STRAPI_HIDE_STARTUP_MESSAGE = 'true';
+
+    // Allow changed configuration files to be reloaded from disk rather than cache
+    jest.resetModules();
 
     /** the following code in copied from `./node_modules/strapi/lib/Strapi.js` */
     await Strapi().load();

@@ -1,6 +1,6 @@
 import * as _ from 'lodash';
 import * as path from 'path';
-import { DocumentReference, Firestore } from '@google-cloud/firestore';
+import { DocumentReference, Firestore, DocumentData } from '@google-cloud/firestore';
 import type { FirestoreConnectorModel } from '../types';
 import type { Reference, DeepReference } from './queryable-collection';
 
@@ -22,7 +22,7 @@ export function refEquals(a: Reference | null, b: Reference | null): boolean {
   return false;
 }
 
-export function parseRef(ref: Reference, instance: Firestore) {
+export function parseRef<T = DocumentData>(ref: Reference<T>, instance: Firestore) {
   if (typeof ref === 'string') {
     return parseDeepReference(ref, instance);
   } else {
@@ -63,13 +63,13 @@ function coerceToReferenceSingle(value: any, to: FirestoreConnectorModel): Refer
   const id = (typeof value === 'string') ? value : _.get(value, to.primaryKey, null);
 
   if (id) {
-    const lastSlash = value.lastIndexOf('/');
+    const lastSlash = id.lastIndexOf('/');
     if (lastSlash === -1) {
       // No slash, so it isn't a full path
       // So assume it is just an ID
-      return to.doc(value);
+      return to.doc(id);
     } else {
-      return value;
+      return id;
     }
   }
   

@@ -1,0 +1,24 @@
+{
+  "private": true,
+  "scripts": {
+    "develop": "npm run clean && strapi develop",
+    "emulator": "firebase emulators:start --only firestore",
+    "start": "NODE_ENV=production strapi start",
+    "build": "strapi build",
+    "build:prod": "npm run clean && NODE_ENV=production strapi build",
+    "strapi": "strapi",
+    "clean": "rm -rf .temp .cache build"
+  },
+  "dependencies": {
+    "strapi": "^3.0.5",
+    "strapi-admin": "^3.0.5",
+    "strapi-connector-firestore": "^3.0.0-alpha.8",
+    "strapi-plugin-content-manager": "^3.0.5",
+    "strapi-plugin-content-type-builder": "^3.0.5",
+    "strapi-plugin-email": "^3.0.5",
+    "strapi-plugin-upload": "^3.0.5",
+    "strapi-plugin-users-permissions": "^3.0.5",
+    "strapi-provider-upload-google-cloud-storage": "^3.0.5",
+    "strapi-utils": "^3.0.5"
+  }
+}
