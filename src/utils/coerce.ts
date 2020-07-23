@@ -1,6 +1,7 @@
 import * as _ from 'lodash';
 import { getModel, coerceToReference } from './doc-ref';
 import type { FirestoreConnectorModel, StrapiRelation } from "../types";
+import { parseType } from 'strapi-utils/lib/parse-type';
 
 export function coerceModel(model: FirestoreConnectorModel, values: any) {
   Object.keys(model.attributes).forEach(key => {
@@ -71,13 +72,6 @@ function coerceValueImpl(relation: StrapiRelation, value: any): any {
         }
         break;
 
-      case 'date':
-      case 'time':
-      case 'datetime':
-        // TODO:
-        // To we need to coerce this to a Date object?
-        break;
-
       case 'json':
         try {
           value = typeof value === 'string'
@@ -89,20 +83,13 @@ function coerceValueImpl(relation: StrapiRelation, value: any): any {
         break;
 
       case 'boolean':
-        if (typeof value !== 'boolean') {
-          switch ((typeof value === 'string') && value.toLowerCase()) {
-            case 'true':
-              value = true;
-            case 'false':
-              value = false;
-            default:
-              throw err();
-          }
-        }
-        break;
-
+      case 'date':
+      case 'time':
+      case 'datetime':
+      case 'timestamp':
       default:
-        // Unknown field, don't coerce
+        // These types can be handled by built-in Strapi utils
+        value = parseType(relation.type);
         break;
 
     }
