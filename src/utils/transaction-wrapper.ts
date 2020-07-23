@@ -3,7 +3,17 @@ import { DocumentReference, DocumentSnapshot, Transaction, DocumentData, Firesto
 import type { QueryableCollection, Snapshot, QuerySnapshot, Reference } from './queryable-collection';
 import { parseDeepReference, parseRef } from './doc-ref';
 
-export class TransactionWrapper {
+export interface TransactionWrapper {
+
+  get<T>(documentRef: Reference<T>): Promise<Snapshot<T>>;
+  get<T>(query: QueryableCollection<T>): Promise<QuerySnapshot<T>>;
+  getAll<T>(...refs: Reference<T>[]): Promise<Snapshot<T>[]>;
+
+  addWrite(writeOp: (trans: Transaction) => void): void;
+  addWrites(writeOps: ((trans: Transaction) => void)[]): void;
+}
+
+export class TransactionWrapperImpl implements TransactionWrapper {
   private readonly transaction: Transaction
   private readonly writes: ((trans: Transaction) => void)[] = [];
 

@@ -6,7 +6,7 @@ import * as _ from 'lodash';
 import { populateDocs } from './populate';
 import { coerceToReference, getModel } from './utils/doc-ref';
 import { convertRestQueryParams } from 'strapi-utils';
-import type { StrapiQueryParams, StrapiFilter } from './types';
+import type { StrapiQueryParams, StrapiFilter, StrapiQuery } from './types';
 import { StatusError } from './utils/status-error';
 import { deleteRelations, updateRelations } from './relations';
 import { FieldPath } from '@google-cloud/firestore';
@@ -193,22 +193,21 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
   async function find(params: any, populate?: string[]) {
     const populateOpt = populate || model.defaultPopulate;
 
-    return await model.firestore.runTransaction(async trans => {
-      const wrapper = new TransactionWrapper(trans, model.firestore);
+    return await model.runTransaction(async trans => {
       let docs: Snapshot[];
       if (model.hasPK(params)) {
         const ref = model.doc(model.getPK(params));
-        const snap = await wrapper.get(ref);
+        const snap = await trans.get(ref);
         if (!snap.exists) {
           docs = [];
         } else {
           docs = [snap];
         }
       } else {
-        docs = await runFirestoreQuery(params, null, wrapper);
+        docs = await runFirestoreQuery(params, null, trans);
       }
 
-      return await populateDocs(model, docs, populateOpt, wrapper);
+      return await populateDocs(model, docs, populateOpt, trans);
     });
   }
 
@@ -223,7 +222,8 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
     return docs.length;
   }
 
-  async function create(values: any) {
+  async function create(values: any, populate?: string[]) {
+    const populateOpt = populate || model.defaultPopulate;
 
     // Validate components dynamiczone
     const components = validateComponents(values, model);
@@ -244,8 +244,7 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
     const id = model.getPK(values);
     const ref = id ? model.doc(id) : model.doc();
 
-    return await model.firestore.runTransaction(async trans => {
-      const wrapper = new TransactionWrapper(trans, model.firestore);
+    return await model.runTransaction(async trans => {
       
       // Update components
       await Promise.all(components.map(async ({ model, value }) => {
@@ -253,7 +252,7 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
           values: model.pickRelations(value),
           data: value,
           ref
-        }, wrapper);
+        }, trans);
       }));
       
       // Update relations
@@ -261,19 +260,18 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
         values: relations,
         data,
         ref
-      }, wrapper);
+      }, trans);
       
       // Populate relations
-      const [entry] = await populateDocs(model, [{ ref, data: () => data }], model.defaultPopulate, wrapper);
+      const [entry] = await populateDocs(model, [{ ref, data: () => data }], populateOpt, trans);
 
-      await model.create(ref, data, wrapper);
-      wrapper.doWrites();
-
+      await model.create(ref, data, trans);
       return entry;
     });
   }
 
-  async function update(params: any, values: any) {
+  async function update(params: any, values: any, merge = false, populate?: string[]) {
+    const populateOpt = populate || model.defaultPopulate;
 
     // Validate components dynamiczone
     const components = validateComponents(values, model);
@@ -293,14 +291,13 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
     }
 
     // Run the transaction
-    return await model.firestore.runTransaction(async trans => {
-      const wrapper = new TransactionWrapper(trans, model.firestore);
+    return await model.runTransaction(async trans => {
 
       let ref: Reference;
       if (model.hasPK(params)) {
         ref = model.doc(model.getPK(params));
       } else {
-        const docs = await runFirestoreQuery({ ...params, _limit: 1 }, null, wrapper);
+        const docs = await runFirestoreQuery({ ...params, _limit: 1 }, null, trans);
         if (!docs.length) {
           throw new StatusError('entry.notFound', 404);
         }
@@ -315,7 +312,7 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
           values: model.pickRelations(value),
           data: value,
           ref
-        }, wrapper);
+        }, trans);
       }));
 
       // Update relations
@@ -323,52 +320,53 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
         values: relations,
         data,
         ref
-      }, wrapper);
+      }, trans);
 
       // Populate relations
-      const [entry] = await populateDocs(model, [{ ref, data: () => data }], model.defaultPopulate, wrapper);
+      const [entry] = await populateDocs(model, [{ ref, data: () => data }], populateOpt, trans);
 
       // Update entry without relational data.
-      await model.update(ref, data, wrapper);
-      wrapper.doWrites();
+      if (merge) {
+        await model.setMerge(ref, data, trans);
+      } else {
+        await model.update(ref, data, trans);
+      }
 
       return entry;
 
     });
   }
 
-  async function deleteMany(params: any) {
+  async function deleteMany(params: any, populate?: string[]) {
     if (model.hasPK(params)) {
-      return await deleteOne(model.getPK(params))
+      return await deleteOne(model.getPK(params), populate)
     } else {
       // TODO: FIXME: Running multiple deletes at the same time
       // Deletes may affect many relations
       // All are transacted so they all may interfere with eachother
       // Should run in the same transaction
       const entries = await find(params);
-      return Promise.all(entries.map(entry => deleteOne(entry[model.primaryKey])));
+      return Promise.all(entries.map(entry => deleteOne(entry[model.primaryKey], populate)));
     }
   }
 
-  async function deleteOne(id: string) {
-    
-    return await model.firestore.runTransaction(async trans => {
-      const wrapper = new TransactionWrapper(trans, model.firestore);
+  async function deleteOne(id: string, populate: string[] | undefined) {
+    const populateOpt = populate || model.defaultPopulate;
+
+    return await model.runTransaction(async trans => {
 
       const ref = model.doc(id);
-      const snap = await wrapper.get(ref);
+      const snap = await trans.get(ref);
       const entry = snap.data();
       if (!entry) {
         throw new StatusError('entry.notFound', 404);
       }
 
-      const [doc] = await populateDocs(model, [snap], model.defaultPopulate, wrapper);
+      const [doc] = await populateDocs(model, [snap], populateOpt, trans);
 
-      await deleteRelations(model, { entry: doc, ref }, wrapper);
+      await deleteRelations(model, { entry: doc, ref }, trans);
 
-      await model.delete(ref, wrapper);
-      wrapper.doWrites();
-
+      await model.delete(ref, trans);
       return doc;
     });
   }
@@ -376,22 +374,21 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
   async function search(params: any, populate?: string[]) {
     const populateOpt = populate || model.defaultPopulate;
 
-    return await model.firestore.runTransaction(async trans => {
-      const wrapper = new TransactionWrapper(trans, model.firestore);
+    return await model.runTransaction(async trans => {
       let docs: Snapshot[];
       if (model.hasPK(params)) {
         const ref = model.doc(model.getPK(params));
-        const snap = await wrapper.get(ref);
+        const snap = await trans.get(ref);
         if (!snap.exists) {
           docs = [];
         } else {
           docs = [snap];
         }
       } else {
-        docs = await runFirestoreQuery(params, params._q, wrapper);
+        docs = await runFirestoreQuery(params, params._q, trans);
       }
 
-      return await populateDocs(model, docs, populateOpt, wrapper);
+      return await populateDocs(model, docs, populateOpt, trans);
     });
   }
 
@@ -401,7 +398,7 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
     return docs.length;
   }
 
-  return {
+  const queries: StrapiQuery = {
     findOne,
     find,
     create,
@@ -411,6 +408,7 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
     search,
     countSearch,
   };
+  return queries;
 };
 
 /**

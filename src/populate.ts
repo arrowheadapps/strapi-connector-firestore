@@ -28,7 +28,7 @@ function assignMeta(model: FirestoreConnectorModel, docSnap: PartialDocumentSnap
 }
 
 
-export async function populateDocs(model: FirestoreConnectorModel, docs: PartialDocumentSnapshot[], populateFields: string [], transaction: TransactionWrapper) {
+export async function populateDocs(model: FirestoreConnectorModel, docs: PartialDocumentSnapshot[], populateFields: string[], transaction: TransactionWrapper) {
   const docsData: any[] = [];
   const subDocs: { doc: Reference, data?: any, assign: (snap: PartialDocumentSnapshot) => void }[] = [];
 

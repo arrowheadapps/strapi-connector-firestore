@@ -6,7 +6,7 @@ import { QueryableFirestoreCollection } from './utils/queryable-firestore-collec
 import { QueryableFlatCollection } from './utils/queryable-flat-collection';
 import { parseDeepReference } from './utils/doc-ref';
 import type { FirestoreConnectorContext, FirestoreConnectorModel, ModelOptions } from './types';
-import { TransactionWrapper } from './utils/transaction-wrapper';
+import { TransactionWrapper, TransactionWrapperImpl } from './utils/transaction-wrapper';
 import { populateDocs } from './populate';
 
 export const DEFAULT_CREATE_TIME_KEY = 'createdAt';
@@ -75,15 +75,15 @@ export function mountModels(models: FirestoreConnectorContext[]) {
       model.firestore = instance;
       model.runTransaction = (fn) => {
         return instance.runTransaction(async (trans) => {
-          const wrapper = new TransactionWrapper(trans, instance);
+          const wrapper = new TransactionWrapperImpl(trans, instance);
           const result = await fn(wrapper);
           wrapper.doWrites();
           return result;
         });
       };
 
-      model.populate = (data, transaction) => {
-        return populateDocs(model, [data], model.defaultPopulate, transaction);
+      model.populate = (data, transaction, populateFields) => {
+        return populateDocs(model, [data], (populateFields as string[]) || model.defaultPopulate, transaction);
       };
 
       if (flattenedKey) {
@@ -169,7 +169,7 @@ export function mountModels(models: FirestoreConnectorContext[]) {
           if (trans) {
             // Batch all writes to documents in this flattened
             // collection and do it only once
-            trans.addKeyedWrite(doc.path, 
+            (trans as TransactionWrapperImpl).addKeyedWrite(doc.path, 
               (ctx) => Object.assign(ctx || {}, data),
               (trans, ctx) => {
                 trans.update(doc, ctx);
