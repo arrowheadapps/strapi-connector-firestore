@@ -90,13 +90,13 @@ function coerceValueImpl(relation: StrapiRelation, value: any): any {
 
       case 'boolean':
         if (typeof value !== 'boolean') {
-          try {
-            value = JSON.parse(value);
-            if (typeof value !== 'boolean') {
+          switch ((typeof value === 'string') && value.toLowerCase()) {
+            case 'true':
+              value = true;
+            case 'false':
+              value = false;
+            default:
               throw err();
-            }
-          } catch {
-            throw err();
           }
         }
         break;
