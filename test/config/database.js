@@ -30,7 +30,6 @@ module.exports = ({ env }) => ({
       },
       options: {
         useEmulator: true,
-        allowNonNativeQueries: true,
         
         // Use flattening config from env variable
         // Default to no flattening

@@ -63,8 +63,8 @@ module.exports = ({ env }) => ({
         // Connect to a local running Firestore emulator
         // when running in development mode
         useEmulator: env('NODE_ENV') == 'development',
-        // Enable search and non-native queries on all models (use with caution)
-        allowNonNativeQueries: true
+        // Disable search and non-native queries on all models (not compatible with strapi-admin)
+        allowNonNativeQueries: false
       }
     }
   },
@@ -90,7 +90,7 @@ These are the available options to be specified in the Strapi database configura
 | `options.useEmulator`   | `string`    | `false`     | Connect to a local Firestore emulator instead of the production database. You must start a local emulator yourself using `firebase emulators:start --only firestore` before you start Strapi. See https://firebase.google.com/docs/emulator-suite/install_and_configure. |
 | `options.singleId`      | `string`    | `"default"` | The document ID to used for `singleType` models and flattened models. |
 | `options.flattenModels` | `(string \| RegExp \| { test: string \| RegExp, doc: (model: StrapiModel) => string })[]`   | `[]` | An array of `RegExp`'s that are matched against the `uid` property of each model to determine if it should be flattened (see [collection flattening](#collection-flattening)). Alternatively, and array of objects with `test` and `doc` properties, where `test` is the aforementioned `RegExp` and `doc` is a function taking the model instance and returning a document path where the collection should be stored.<br><br>This is useful for flattening models built-in models or plugin models where you don't have access to the model configuration. Defaults an empty array (no flattening). |
-| `options.allowNonNativeQueries` | `boolean` | `false` | Allow the connector to manually perform search and other query types than are not natively supported by Firestore (see [Search and non-native queries](#search-and-non-native-queries)). These can have poor performance and higher usage costs. If disabled, then search |
+| `options.allowNonNativeQueries` | `boolean` | `true` | Allow the connector to manually perform search and other query types than are not natively supported by Firestore (see [Search and non-native queries](#search-and-non-native-queries)). These can have poor performance and higher usage costs. If disabled, then search will not function. Defaults to `true` because the `strapi-admin` package uses non-native queries. |
 
 ### Model options
 
@@ -129,7 +129,7 @@ Firestore does not natively support search. Nor does it support several Strapi f
 
 This connector manually implements search and these other filters by reading the Firestore collection in blocks without any filters, and then manually filtering the results. This can cause poor performance, and also increased usage costs, because more documents are read from Firestore.
 
-You can enable search and manual query implementations using the `allowNonNativeQueries` option, which is disabled by default. It is recommended that you only enable this if necessary, or only enable it on the specific models that you need.
+You can disable search and manual query implementations using the `allowNonNativeQueries` option, which is enabled by default. It is recommended that you do on specific models where you may be concerned about usage cost exposure. The current implementation of `strapi-admin` (as of `3.1.0`) actually uses non-native queries on it's models so it must be enabled on those modules for Strapi to function.
 
 Flattened models support all of these filters including search, because the collection is fetched as a whole anyway.
 
@@ -183,8 +183,8 @@ module.exports = ({ env }) => ({
           }
         ],
 
-        // Enable search and non-native queries on all models (use with caution)
-        allowNonNativeQueries: true
+        // Disable search and non-native queries on all models (not compatible with strapi-admin)
+        allowNonNativeQueries: false
       }
     }
   },
@@ -226,7 +226,7 @@ You can also overrive the connector's `allowNonNativeQueries` option:
   "kind": "collectionType",
   "collectioName": "myCollection",
   "options": {
-    "allowNonNativeQueries": true
+    "allowNonNativeQueries": false
   }
 }
 ```
