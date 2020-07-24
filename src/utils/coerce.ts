@@ -12,7 +12,7 @@ export function coerceModel(model: FirestoreConnectorModel, values: any, coerceF
 
   const result = {};
   Object.keys(model.attributes).forEach(key => {
-    result[key] = coerceAttribute(model.attributes[key], values[key]);
+    result[key] = coerceAttribute(model.attributes[key], values[key], coerceFn);
   });
   return result;
 }
@@ -22,14 +22,14 @@ export function coerceValue(model: FirestoreConnectorModel, field: string, value
     return value;
   }
 
-  return coerceAttribute(model.attributes[field], value);
+  return coerceAttribute(model.attributes[field], value, coerceFn);
 }
 
 export function coerceAttribute(relation: StrapiRelation, value: any, coerceFn = toFirestore) {
   if (_.isArray(value)) {
-    value = value.map(v => toFirestore(relation, v));
+    value = value.map(v => coerceFn(relation, v));
   } else {
-    value = toFirestore(relation, value);
+    value = coerceFn(relation, value);
   }
   return value;
 }
