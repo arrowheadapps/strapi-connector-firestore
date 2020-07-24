@@ -5,14 +5,6 @@ import type { FirestoreConnectorModel } from '../types';
 import type { Reference, DeepReference } from './queryable-collection';
 
 
-export function getModel(model: string, plugin: string | undefined): FirestoreConnectorModel | undefined {
-  return (
-    _.get(strapi.plugins, [plugin || '', 'models', model]) ||
-    _.get(strapi, ['models', model]) ||
-    undefined
-  );
-};
-
 export function refEquals(a: Reference | null, b: Reference | null): boolean {
   if (typeof a === 'string') {
     return a === b;

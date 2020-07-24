@@ -72,7 +72,7 @@ module.exports = ({ rq }) => {
     await waitRestart();
   }
 
-  async function deleteContentType(model) {
+  async function deleteContentType() {
     // Just stop Strapi and clean the entire config
     // Don't bother to manually remove each content type
     await stopStrapi();
@@ -86,7 +86,7 @@ module.exports = ({ rq }) => {
     // await waitRestart();
   }
 
-  async function deleteContentTypes(models) {
+  async function deleteContentTypes() {
     await deleteContentType();
 
     // for (let model of models) {

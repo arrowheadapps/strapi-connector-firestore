@@ -1,5 +1,5 @@
 import * as _ from 'lodash';
-import { getModel, coerceToReference } from './doc-ref';
+import { coerceToReference } from './doc-ref';
 import type { FirestoreConnectorModel, StrapiRelation } from "../types";
 import * as parseType from 'strapi-utils/lib/parse-type';
 import { Timestamp, DocumentReference } from '@google-cloud/firestore';
@@ -136,7 +136,7 @@ export function toFirestore(relation: Partial<StrapiRelation>, value: any): any 
     // into Firestore as a string
     const target = relation.model || relation.collection;
     if (target) {
-      const assocModel = getModel(target, relation.plugin);
+      const assocModel = strapi.db.getModel(target, relation.plugin);
       if (assocModel) {
         value = coerceToReference(value, assocModel);
       }

@@ -13,7 +13,7 @@
     "jest": "^26.1.0",
     "patch-package": "^6.2.2",
     "remap-istanbul": "^0.13.0",
-    "request-promise-native": "^1.0.8",
+    "request-promise-native": "^1.0.9",
     "rimraf": "^3.0.2",
     "strapi": "^3.1.1",
     "strapi-admin": "^3.1.1",

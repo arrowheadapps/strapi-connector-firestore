@@ -1,8 +1,8 @@
 diff --git a/node_modules/strapi/lib/Strapi.js b/node_modules/strapi/lib/Strapi.js
-index 16be314..b20781e 100644
+index dc5db66..a8d29f2 100644
 --- a/node_modules/strapi/lib/Strapi.js
 +++ b/node_modules/strapi/lib/Strapi.js
-@@ -246,7 +246,7 @@ class Strapi {
+@@ -251,7 +251,7 @@ class Strapi {
      }
  
      // Kill process.

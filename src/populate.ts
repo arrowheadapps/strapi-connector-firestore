@@ -1,5 +1,5 @@
 import * as _ from 'lodash';
-import { coerceToReference, getModel, parseRef } from './utils/doc-ref';
+import { coerceToReference, parseRef } from './utils/doc-ref';
 import { getComponentModel } from './utils/validate-components';
 import type { FirestoreConnectorModel } from './types';
 import type { TransactionWrapper } from './utils/transaction-wrapper';
@@ -37,7 +37,7 @@ function assignMeta(model: FirestoreConnectorModel, docSnap: PartialDocumentSnap
 }
 
 
-export async function populateDocs(model: FirestoreConnectorModel, docs: PartialDocumentSnapshot[], populateFields: string [], transaction: TransactionWrapper) {
+export async function populateDocs(model: FirestoreConnectorModel, docs: PartialDocumentSnapshot[], populateFields: string[], transaction: TransactionWrapper) {
   const docsData: any[] = [];
   const subDocs: { doc: Reference, data?: any, assign: (snap: PartialDocumentSnapshot) => void }[] = [];
 
@@ -52,7 +52,7 @@ export async function populateDocs(model: FirestoreConnectorModel, docs: Partial
 
     const populateData = async (model: FirestoreConnectorModel, f: string, data: any) => {
       const details = model.associations.find(assoc => assoc.alias === f)!;
-      const assocModel = getModel(details.model || details.collection, details.plugin);
+      const assocModel = strapi.db.getModelByAssoc(details);
     
       if (!assocModel) {
         // TODO:

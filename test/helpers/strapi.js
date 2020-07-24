@@ -1,5 +1,3 @@
-const Strapi = require('strapi');
-
 let instance;
 
 async function startStrapi() {
@@ -12,7 +10,7 @@ async function startStrapi() {
     jest.resetModules();
 
     /** the following code in copied from `./node_modules/strapi/lib/Strapi.js` */
-    await Strapi().load();
+    await require('strapi')().load();
     instance = strapi; // strapi is global now
 
     await new Promise(async (resolve, reject) => {

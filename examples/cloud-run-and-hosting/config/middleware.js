@@ -1,6 +1,8 @@
 module.exports = ({ env }) => ({
-  logger: {
-    level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
-    requests: false,
+  settings: {
+    logger: {
+      level: env('NODE_ENV') === 'production' ? 'info' : 'debug',
+      requests: false,
+    },
   },
 });

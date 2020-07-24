@@ -65,7 +65,7 @@ export interface Strapi {
   models: StrapiModelRecord
   admin: Readonly<StrapiPlugin>
   plugins: Record<string, Readonly<StrapiPlugin>>
-  db: any
+  db: StrapiDatabaseManager
   log: Logger
 
   getModel(ref, source): Readonly<FirestoreConnectorModel>
@@ -78,18 +78,25 @@ export type StrapiModelRecord = {
   [modelKel in keyof StrapiModelMap]: Readonly<FirestoreConnectorModel<StrapiModelMap[modelKel]>>
 };
 
+export interface StrapiDatabaseManager {
+  getModel(name: string, plugin: string | undefined): FirestoreConnectorModel | undefined
+  getModelByAssoc(assoc: StrapiRelation): FirestoreConnectorModel | undefined
+  getModelByCollectionName(collectionName: string): FirestoreConnectorModel | undefined
+  getModelByGlobalId(globalId: string): FirestoreConnectorModel | undefined
+}
+
 export interface StrapiPlugin {
   models: StrapiModelRecord
 }
 
 export interface StrapiQuery<T = DocumentData> {
-  find(params?: any): Promise<T[]>
-  findOne(params?: any): Promise<T>
-  create(values: T): Promise<T>
-  update(params: any, values: T): Promise<T>
-  delete(params: any): Promise<T>
+  find(params?: any, populate?: (keyof T)[]): Promise<T[]>
+  findOne(params?: any, populate?: (keyof T)[]): Promise<T>
+  create(values: T, populate?: (keyof T)[]): Promise<T>
+  update(params: any, values: T, merge?: boolean, populate?: (keyof T)[]): Promise<T>
+  delete(params: any, populate?: (keyof T)[]): Promise<T>
   count(params?: any): Promise<number>
-  search(params: any): Promise<T[]>
+  search(params: any, populate?: (keyof T)[]): Promise<T[]>
   countSearch(params: any): Promise<number>
 }
 
@@ -172,13 +179,13 @@ export interface FirestoreConnectorModel<T = DocumentData> extends StrapiModel {
   doc(): Reference<T>;
   doc(id: string): Reference<T>;
   create(ref: Reference<T>, data: T, transaction: TransactionWrapper | undefined): Promise<void>;
-  update(ref: Reference<T>, data: T, transaction: TransactionWrapper | undefined): Promise<void>;
-  setMerge(ref: Reference<T>, data: T, transaction: TransactionWrapper | undefined): Promise<void>;
+  update(ref: Reference<T>, data: Partial<T>, transaction: TransactionWrapper | undefined): Promise<void>;
+  setMerge(ref: Reference<T>, data: Partial<T>, transaction: TransactionWrapper | undefined): Promise<void>;
   delete(ref: Reference<T>, transaction: TransactionWrapper | undefined): Promise<void>;
 
   runTransaction<TResult>(fn: (transaction: TransactionWrapper) => Promise<TResult>): Promise<TResult>;
 
-  populate(data: Snapshot<T>, transaction: TransactionWrapper): Promise<T>
+  populate(data: Snapshot<T>, transaction: TransactionWrapper, populate?: (keyof T)[]): Promise<T>
 
   assocKeys: string[];
   componentKeys: string[];

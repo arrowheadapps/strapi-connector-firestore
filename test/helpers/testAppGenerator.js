@@ -26,32 +26,28 @@ const flattenExcludes = {
   ]
 };
 
-/**
- * Delete the testApp folder
- * @param {string} appName - name of the app / folder where the app is located
- */
-const cleanTestApp = async appName => {
+const cleanTestApp = async () => {
   await Promise.all([
-    rm(path.resolve(appName, '.cache')),
-    rm(path.resolve(appName, '.temp')),
-    rm(path.resolve(appName, 'public')),
-    rm(path.resolve(appName, 'build')),
-    rm(path.resolve(appName, 'api')),
-    rm(path.resolve(appName, 'extensions')),
-    rm(path.resolve(appName, 'components')),
+    rm('.cache'),
+    rm('.temp'),
+    rm('public'),
+    rm('build'),
+    rm('api'),
+    rm('extensions'),
+    rm( 'components'),
   ]);
 
   await fs.mkdir('api');
   await fs.mkdir('extensions');
 };
 
-const cleanTests = async appName => {
-  await rm(path.resolve(appName, testsDir));
+const cleanTests = async () => {
+  await rm(path.resolve(testsDir));
 };
 
-const copyTests = async appName => {
+const copyTests = async () => {
   const strapiDir = path.dirname(require.resolve('strapi/package.json'));
-  const rootDir = path.resolve(appName);
+  const rootDir = path.resolve();
   const dest = path.join(rootDir, testsDir);
 
   await fs.emptyDir(dest);
