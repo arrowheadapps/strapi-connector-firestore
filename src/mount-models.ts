@@ -89,24 +89,13 @@ export function mountModels(models: FirestoreConnectorContext[]) {
 
       if (flattenedKey) {
 
+        const converter = {
+          toFirestore: data => _.mapValues(data, d => coerceModel(model, d, toFirestore)),
+          fromFirestore: data => _.mapValues(data.data(), d => coerceModel(model, d, fromFirestore)),
+        };
         const flatDoc = instance
           .doc(flattenedKey)
-          .withConverter({
-            toFirestore: data => {
-              const result = {};
-              Object.keys(data).forEach(id => {
-                result[id] = coerceModel(model, data[id], toFirestore);
-              });
-              return result;
-            },
-            fromFirestore: data => {
-              const result = {};
-              Object.keys(data).forEach(id => {
-                result[id] = coerceModel(model, data[id], fromFirestore);
-              });
-              return result;
-            },
-          });
+          .withConverter(converter);
         const collection = flatDoc.parent;
 
         model.db = new QueryableFlatCollection(flatDoc);
@@ -187,15 +176,15 @@ export function mountModels(models: FirestoreConnectorContext[]) {
           if (trans) {
             // Batch all writes to documents in this flattened
             // collection and do it only once
-            trans.addKeyedWrite(doc.path, 
+            trans.addKeyedWrite(flatDoc.path, 
               (ctx) => Object.assign(ctx || {}, data),
               (trans, ctx) => {
-                trans.update(doc, ctx);
+                trans.update(flatDoc, ctx);
               }
             );
           } else {
             // Do the write immediately
-            await doc.update(data);
+            await flatDoc.update(data);
           }
         };
 
@@ -205,7 +194,7 @@ export function mountModels(models: FirestoreConnectorContext[]) {
           .collection(collectionName)
           .withConverter({
             toFirestore: data => coerceModel(model, data, toFirestore),
-            fromFirestore: data => coerceModel(model, data, fromFirestore),
+            fromFirestore: snap => coerceModel(model, snap.data(), fromFirestore),
           });
         model.db = new QueryableFirestoreCollection(collection, model.options.allowNonNativeQueries);
         model.doc = (id?: string) => id ? collection.doc(id.toString()) : collection.doc();

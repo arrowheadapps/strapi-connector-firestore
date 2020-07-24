@@ -2,8 +2,9 @@ import * as _ from 'lodash';
 import { getModel, coerceToReference } from './doc-ref';
 import type { FirestoreConnectorModel, StrapiRelation } from "../types";
 import * as parseType from 'strapi-utils/lib/parse-type';
-import { Timestamp } from '@google-cloud/firestore';
+import { Timestamp, DocumentReference } from '@google-cloud/firestore';
 import { getComponentModel } from './validate-components';
+import { DeepReference } from './queryable-collection';
 
 export function coerceModel(model: FirestoreConnectorModel, values: any, coerceFn = toFirestore) {
   if (!model) {
@@ -131,6 +132,8 @@ export function toFirestore(relation: Partial<StrapiRelation>, value: any): any 
   } else {
 
     // Convert reference ID to document reference if it is one
+    // DeepReference instances are augmented to be serialised 
+    // into Firestore as a string
     const target = relation.model || relation.collection;
     if (target) {
       const assocModel = getModel(target, relation.plugin);
@@ -169,6 +172,17 @@ export function fromFirestore(relation: Partial<StrapiRelation>, value: any): an
     // Firestore returns Timestamp for all Date values
   if (value instanceof Timestamp) {
     return value.toDate();
+  }
+
+  // TODO:
+  // Reconstruct DeepReference instances from string
+  if (relation.model) {
+    if (value instanceof DocumentReference) {
+
+    } else {
+      // This must be a DeepReference
+      value = DeepReference.parse(value, );
+    }
   }
 
   // References will come out as references unchanged
