@@ -62,7 +62,7 @@ module.exports = ({ env }) => ({
       options: {
         // Connect to a local running Firestore emulator
         // when running in development mode
-        useEmulator: process.env.NODE_ENV == 'development',
+        useEmulator: env('NODE_ENV') == 'development',
         // Enable search and non-native queries on all models (use with caution)
         allowNonNativeQueries: true
       }
@@ -168,7 +168,7 @@ module.exports = ({ env }) => ({
       options: {
         // Connect to a local running Firestore emulator
         // when running in development mode
-        useEmulator: process.env.NODE_ENV == 'development',
+        useEmulator: env('NODE_ENV') == 'development',
         singleId: 'default',
 
         // Flatten internal Strapi models (as an example)

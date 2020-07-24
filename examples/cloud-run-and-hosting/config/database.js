@@ -4,7 +4,7 @@ module.exports = ({ env }) => ({
     default: {
       connector: 'firestore',
       options: {
-        useEmulator: process.env.NODE_ENV !== 'production'
+        useEmulator: env('NODE_ENV') !== 'production'
       }
     }
   },

@@ -65,7 +65,7 @@ export interface Strapi {
   models: StrapiModelRecord
   admin: Readonly<StrapiPlugin>
   plugins: Record<string, Readonly<StrapiPlugin>>
-  db: any
+  db: StrapiDatabaseManager
   log: Logger
 
   getModel(ref, source): Readonly<FirestoreConnectorModel>
@@ -77,6 +77,13 @@ export interface Strapi {
 export type StrapiModelRecord = {
   [modelKel in keyof StrapiModelMap]: Readonly<FirestoreConnectorModel<StrapiModelMap[modelKel]>>
 };
+
+export interface StrapiDatabaseManager {
+  getModel(name: string, plugin: string | undefined): FirestoreConnectorModel | undefined
+  getModelByAssoc(assoc: StrapiRelation): FirestoreConnectorModel | undefined
+  getModelByCollectionName(collectionName: string): FirestoreConnectorModel | undefined
+  getModelByGlobalId(globalId: string): FirestoreConnectorModel | undefined
+}
 
 export interface StrapiPlugin {
   models: StrapiModelRecord

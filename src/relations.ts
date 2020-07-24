@@ -1,5 +1,5 @@
 import * as _ from 'lodash';
-import { coerceToReference, getModel, refEquals } from './utils/doc-ref'
+import { coerceToReference, refEquals } from './utils/doc-ref'
 import { FieldValue, DocumentReference } from '@google-cloud/firestore';;
 import type { FirestoreConnectorModel } from './types';
 import type { TransactionWrapper } from './utils/transaction-wrapper';
@@ -65,7 +65,7 @@ export async function updateRelations(model: FirestoreConnectorModel, params: { 
     const details = model.attributes[attribute];
     const association = model.associations.find(x => x.alias === attribute)!;
 
-    const assocModel = getModel(details.model || details.collection, details.plugin);
+    const assocModel = strapi.db.getModelByAssoc(details);
     if (!assocModel) {
       throw new Error('Associated model no longer exists');
     }
@@ -208,7 +208,7 @@ export async function updateRelations(model: FirestoreConnectorModel, params: { 
         const toAdd = _.differenceWith(newIds, currentIds, refEquals);
         const toRemove = _.differenceWith(currentIds, currentIds, refEquals);
 
-        const morphModel = getModel(details.model || details.collection, details.plugin);
+        const morphModel = strapi.db.getModelByAssoc(details);
 
         _.set(data, attribute, newIds);
 
@@ -255,7 +255,7 @@ export async function deleteRelations(model: FirestoreConnectorModel, params: { 
   // to search for them manually
   const relatedAssocAsync = Promise.all(
     model.relatedNonDominantAttrs.map(async ({ key, attr, modelKey }) => {
-      const relatedModel = getModel(modelKey, undefined as any)!;
+      const relatedModel = strapi.db.getModelByGlobalId(modelKey);
       if (!relatedModel) {
         // Silently ignore non-existent models
         return;
@@ -281,7 +281,7 @@ export async function deleteRelations(model: FirestoreConnectorModel, params: { 
       const { nature, via, dominant, alias } = association;
       const details = model.attributes[alias];
   
-      const assocModel = getModel(details.model || details.collection, details.plugin);
+      const assocModel = strapi.db.getModelByAssoc(details);
       if (!assocModel) {
         throw new Error('Associated model no longer exists');
       }
@@ -325,10 +325,7 @@ export async function deleteRelations(model: FirestoreConnectorModel, params: { 
         case 'oneToManyMorph':
         case 'manyToManyMorph': {
           // delete relation inside of the ref model
-          const targetModel: FirestoreConnectorModel = strapi.db.getModel(
-            association.model || association.collection,
-            association.plugin
-          );
+          const targetModel = strapi.db.getModelByAssoc(details);
 
           // ignore them ghost relations
           if (!targetModel) return;
@@ -350,7 +347,7 @@ export async function deleteRelations(model: FirestoreConnectorModel, params: { 
           if (Array.isArray(entry[association.alias])) {
             return Promise.all(
               entry[association.alias].map(async val => {
-                const targetModel: FirestoreConnectorModel = strapi.db.getModelByGlobalId(val.kind);
+                const targetModel = strapi.db.getModelByGlobalId(val.kind);
 
                 // ignore them ghost relations
                 if (!targetModel) return;

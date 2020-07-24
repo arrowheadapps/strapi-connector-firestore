@@ -4,7 +4,7 @@
 
 import * as _ from 'lodash';
 import { populateDocs } from './populate';
-import { coerceToReference, getModel } from './utils/doc-ref';
+import { coerceToReference } from './utils/doc-ref';
 import { convertRestQueryParams } from 'strapi-utils';
 import type { StrapiQueryParams, StrapiFilter, StrapiQuery } from './types';
 import { StatusError } from './utils/status-error';
@@ -68,7 +68,7 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
     return query.whereAny(filters);
   };
 
-  function buildFirestoreQuery(params, searchQuery: string | null, query: QueryableCollection) {
+  function buildFirestoreQuery(params, searchQuery: string | null, query: QueryableCollection): QueryableCollection | null {
     // Remove any search query
     // because we extract and handle it separately
     // Otherwise `convertRestQueryParams` will also handle it
@@ -78,7 +78,15 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
     if (searchQuery) {
       query = buildSearchQuery(searchQuery, query);
     } else {
-      (filters.where || []).forEach(({ field, operator, value }) => {
+      for (let { field, operator, value } of (filters.where || [])) {
+        if ((operator === 'in') && (!_.isArray(value) || (value.length === 0))) {
+          // Special case: empty query
+          return null;
+        }
+        if ((operator === 'nin') && (!_.isArray(value) || (value.length === 0))) {
+          // Special case: no effect
+          continue;
+        }
 
         // Coerce to the appropriate types
         // Because values from querystring will always come in as strings
@@ -137,7 +145,7 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
 
               case 'password':
                 // Disable queries on password fields
-                return;
+                continue;
 
 
               default:
@@ -150,7 +158,7 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
 
             // Convert reference ID to document reference if it is one
             if (details.model || details.collection) {
-              const assocModel = getModel(details.model || details.collection, details.plugin);
+              const assocModel = strapi.db.getModelByAssoc(details);
               if (assocModel) {
                 value = coerceToReference(value, assocModel);
               }
@@ -159,7 +167,7 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
         }
 
         query = query.where(field, operator, value);
-      });
+      }
     }
 
 
@@ -183,6 +191,10 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
 
   async function runFirestoreQuery(params, searchQuery: string | null, transaction: TransactionWrapper | undefined) {
     const query = buildFirestoreQuery(params, searchQuery, model.db);
+    if (!query) {
+      return [];
+    }
+
     const result = await (transaction ? transaction.get(query) : query.get());
     return result.docs;
   }

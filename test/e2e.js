@@ -3,12 +3,9 @@ const execa = require('execa');
 const { cleanTestApp, copyTests } = require('./helpers/testAppGenerator');
 const { stopStrapi } = require('./helpers/strapi');
 
-const appName = '.';
-
 const test = async () => {
   return execa('npm', ['run', '-s', 'test:e2e'], {
     stdio: 'inherit',
-    cwd: path.resolve(appName),
   });
 };
 
@@ -16,11 +13,11 @@ const main = async () => {
 
   try {
     // Clean the app
-    await cleanTestApp(appName);
+    await cleanTestApp();
 
     // Required because Jest seemingly refuses to run 
     // tests located underneath node_modules
-    await copyTests(appName);
+    await copyTests();
 
     await test();
 
@@ -38,7 +35,7 @@ const main = async () => {
 
   // Clean again on completion
   try {
-    await cleanTestApp(appName);
+    await cleanTestApp();
   } catch {
   }
 };

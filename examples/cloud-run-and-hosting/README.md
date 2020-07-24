@@ -18,6 +18,7 @@
 2. Insert your Firebase/GCP project ID at `{PROJECT_ID}` in `./config/plugins.js` and `.firebaserc`.
 3. Create and deploy a Cloud Run service called `api-admin` using the [Google Cloud Platform Console](https://console.cloud.google.com/run). You can use any image to begin with, we just need to get the URL to the Cloud Run service first.
 4. Insert the URL of the Cloud Run service at `{YOUR_CLOUD_RUN_URL}` in `./config/server.js`.
+5. Configure the admin JWT secret, as outlined [here](https://strapi.io/documentation/v3.x/migration-guide/migration-guide-3.0.x-to-3.1.x.html#_2-define-the-admin-jwt-token).
 
 ## Run locally
 

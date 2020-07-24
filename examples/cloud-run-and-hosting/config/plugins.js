@@ -1,7 +1,7 @@
 module.exports = ({ env }) => {
   
   // Use Cloud Storage for production environment only
-  const upload = process.env.NODE_ENV === 'production'
+  const upload = env('NODE_ENV') === 'production'
     ? {
       provider: 'google-cloud-storage',
       providerOptions: {

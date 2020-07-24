@@ -335,7 +335,7 @@ export function mountModels(models: FirestoreConnectorContext[]) {
           model.relatedNonDominantAttrs.push({
             key,
             attr,
-            modelKey: connection.modelName
+            modelKey: connection.globalId
           });
         }
       });
