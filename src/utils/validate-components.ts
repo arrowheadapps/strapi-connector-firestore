@@ -1,15 +1,19 @@
 import * as _ from 'lodash';
 import type { FirestoreConnectorModel, StrapiRelation } from "../types";
 import { StatusError } from "./status-error";
-import { coerceModel } from './coerce';
 
 export interface Component {
   value: any
   model: FirestoreConnectorModel
 }
 
-export function getComponentModel(hostModel: FirestoreConnectorModel, key: string, value: any): FirestoreConnectorModel {
-  const modelName = value.__component || hostModel.attributes[key].component;
+export function getComponentModel(componentName: string): FirestoreConnectorModel
+export function getComponentModel(hostModel: FirestoreConnectorModel, key: string, value: any): FirestoreConnectorModel
+export function getComponentModel(hostModelOrName: FirestoreConnectorModel | string, key?: string, value?: any): FirestoreConnectorModel {
+  const modelName = typeof hostModelOrName === 'string'
+    ? hostModelOrName
+    : value.__component || hostModelOrName.attributes[key!].component;
+  
   return strapi.components[modelName];
 }
 
@@ -54,13 +58,10 @@ export function validateComponents(values, model: FirestoreConnectorModel): Comp
     }
   }
 
-  return components.map(c => {
-    const m = getComponentModel(model, c.key, c.value);
-    return {
-      value: coerceModel(m, c.value),
-      model: m
-    };
-  });
+  return components.map(c => ({
+    value: c.value,
+    model: getComponentModel(model, c.key, c.value)
+  }));
 }
 
 

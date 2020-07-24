@@ -2,29 +2,43 @@ import * as _ from 'lodash';
 import { getModel, coerceToReference } from './doc-ref';
 import type { FirestoreConnectorModel, StrapiRelation } from "../types";
 import { parseType } from 'strapi-utils/lib/parse-type';
+import { Timestamp } from '@google-cloud/firestore';
+import { getComponentModel } from './validate-components';
 
-export function coerceModel(model: FirestoreConnectorModel, values: any) {
+export function coerceModel(model: FirestoreConnectorModel, values: any, coerceFn = toFirestore) {
+  if (!model) {
+    return values;
+  }
+
+  const result = {};
   Object.keys(model.attributes).forEach(key => {
-    values[key] = coerceAttribute(model.attributes[key], values[key]);
+    result[key] = coerceAttribute(model.attributes[key], values[key]);
   });
-  return values;
+  return result;
 }
 
-export function coerceValue(model: FirestoreConnectorModel, field: string, value: any) {
+export function coerceValue(model: FirestoreConnectorModel, field: string, value: any, coerceFn = toFirestore) {
+  if (!model) {
+    return value;
+  }
+
   return coerceAttribute(model.attributes[field], value);
 }
 
-export function coerceAttribute(relation: StrapiRelation, value: any) {
+export function coerceAttribute(relation: StrapiRelation, value: any, coerceFn = toFirestore) {
   if (_.isArray(value)) {
-    value = value.map(v => coerceValueImpl(relation, v));
+    value = value.map(v => toFirestore(relation, v));
   } else {
-    value = coerceValueImpl(relation, value);
+    value = toFirestore(relation, value);
   }
   return value;
 }
 
-function coerceValueImpl(relation: StrapiRelation, value: any): any {
-  // Don't coerce unknown field
+export function toFirestore(relation: Partial<StrapiRelation>, value: any): any {
+  
+  // Allow unknown field without coersion
+  // Rely on controllers and lifecycles to enforce
+  // any policies on sanitisation
   if (!relation) {
     return value;
   }
@@ -32,6 +46,26 @@ function coerceValueImpl(relation: StrapiRelation, value: any): any {
   // Allow null or undefined on any type
   if ((value === null) || (value === undefined)) {
     return value;
+  }
+
+  // Recursively coerce components
+  // type == 'component'
+  if (relation.component) {
+    const componentModel = getComponentModel(relation.component);
+    if (_.isArray(value)) {
+      return value.map(v => coerceModel(componentModel, v, toFirestore));
+    } else {
+      return coerceModel(componentModel, value, toFirestore);
+    }
+  }
+
+  // Recursively coerce dynamiczone
+  // type == 'dynamiczone'
+  if (relation.components) {
+    return _.castArray(value).forEach(v => {
+      const componentModel = getComponentModel(v.__component);
+      return coerceModel(componentModel, v, toFirestore);
+    });
   }
 
   if (relation.type) {
@@ -97,13 +131,49 @@ function coerceValueImpl(relation: StrapiRelation, value: any): any {
   } else {
 
     // Convert reference ID to document reference if it is one
-    if (relation.model || relation.collection) {
-      const assocModel = getModel(relation.model || relation.collection, relation.plugin);
+    const target = relation.model || relation.collection;
+    if (target) {
+      const assocModel = getModel(target, relation.plugin);
       if (assocModel) {
         value = coerceToReference(value, assocModel);
       }
     }
   }
 
+  return value;
+}
+
+export function fromFirestore(relation: Partial<StrapiRelation>, value: any): any {
+  // Don't coerce unknown field
+  if (!relation) {
+    return value;
+  }
+
+  // Allow null or undefined on any type
+  if ((value === null) || (value === undefined)) {
+    return value;
+  }
+
+  // Restore number fields back
+  // Because Firestore returns BigInt for all integer values
+  // BigInt fields will come out as native BigInt
+  // but will be serialised to JSON as a string
+  if ((typeof value === 'bigint') && (relation.type !== 'biginteger')) {
+    return Number(value);
+  }
+
+  if ((typeof value !== 'string') && (relation.type === 'json')) {
+    return JSON.stringify(value);
+  }
+
+    // Firestore returns Timestamp for all Date values
+  if (value instanceof Timestamp) {
+    return value.toDate();
+  }
+
+  // References will come out as references unchanged
+  // but will be serialised to JSON as path string value
+  // Strings will come out as strings unchanged
+  // Arrays will come out as arrays
   return value;
 }

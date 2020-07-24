@@ -5,9 +5,9 @@ import type { FirestoreConnectorModel } from '../types';
 import type { Reference, DeepReference } from './queryable-collection';
 
 
-export function getModel(model: string, plugin: string): FirestoreConnectorModel | undefined {
+export function getModel(model: string, plugin: string | undefined): FirestoreConnectorModel | undefined {
   return (
-    _.get(strapi.plugins, [plugin, 'models', model]) ||
+    _.get(strapi.plugins, [plugin || '', 'models', model]) ||
     _.get(strapi, ['models', model]) ||
     undefined
   );

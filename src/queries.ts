@@ -33,18 +33,9 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
         case 'integer':
         case 'float':
         case 'decimal':
-          const number = _.toNumber(value);
-          if (!_.isNaN(number)) {
-            filters.push(convertWhere(field, 'eq', number, 'manualOnly'));
-          }
-          break;
-        
         case 'biginteger':
-          try {
-            const bigint = BigInt(value);
-            filters.push(convertWhere(field, 'eq', bigint, 'manualOnly'));
-          } catch {
-          }
+          // Use equality operator for numbers
+          filters.push(convertWhere(field, 'eq', coerceValue(model, field, value), 'manualOnly'));
           break;
 
         case 'string':
@@ -53,7 +44,8 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
         case 'email':
         case 'enumeration':
         case 'uid':
-          filters.push(convertWhere(field, 'contains', value?.toString(), 'manualOnly'));
+          // User contains operator for strings
+          filters.push(convertWhere(field, 'contains', coerceValue(model, field, value), 'manualOnly'));
           break;
 
         case 'date':
@@ -67,7 +59,7 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
           
         default:
           // Unsupported field type for search
-          // Just ignore
+          // Don't search in these fields
           break;
       }
     });

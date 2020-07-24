@@ -8,6 +8,7 @@ import { parseDeepReference } from './utils/doc-ref';
 import type { FirestoreConnectorContext, FirestoreConnectorModel, ModelOptions } from './types';
 import { TransactionWrapper } from './utils/transaction-wrapper';
 import { populateDocs } from './populate';
+import { coerceModel, toFirestore, fromFirestore } from './utils/coerce';
 
 export const DEFAULT_CREATE_TIME_KEY = 'createdAt';
 export const DEFAULT_UPDATE_TIME_KEY = 'updatedAt';
@@ -88,7 +89,24 @@ export function mountModels(models: FirestoreConnectorContext[]) {
 
       if (flattenedKey) {
 
-        const flatDoc = instance.doc(flattenedKey);
+        const flatDoc = instance
+          .doc(flattenedKey)
+          .withConverter({
+            toFirestore: data => {
+              const result = {};
+              Object.keys(data).forEach(id => {
+                result[id] = coerceModel(model, data[id], toFirestore);
+              });
+              return result;
+            },
+            fromFirestore: data => {
+              const result = {};
+              Object.keys(data).forEach(id => {
+                result[id] = coerceModel(model, data[id], fromFirestore);
+              });
+              return result;
+            },
+          });
         const collection = flatDoc.parent;
 
         model.db = new QueryableFlatCollection(flatDoc);
@@ -183,7 +201,12 @@ export function mountModels(models: FirestoreConnectorContext[]) {
 
       } else {
 
-        const collection = instance.collection(collectionName);
+        const collection = instance
+          .collection(collectionName)
+          .withConverter({
+            toFirestore: data => coerceModel(model, data, toFirestore),
+            fromFirestore: data => coerceModel(model, data, fromFirestore),
+          });
         model.db = new QueryableFirestoreCollection(collection, model.options.allowNonNativeQueries);
         model.doc = (id?: string) => id ? collection.doc(id.toString()) : collection.doc();
 
