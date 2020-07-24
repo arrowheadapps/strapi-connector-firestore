@@ -1,7 +1,7 @@
 import * as _ from 'lodash';
 import { getModel, coerceToReference } from './doc-ref';
 import type { FirestoreConnectorModel, StrapiRelation } from "../types";
-import { parseType } from 'strapi-utils/lib/parse-type';
+import * as parseType from 'strapi-utils/lib/parse-type';
 import { Timestamp } from '@google-cloud/firestore';
 import { getComponentModel } from './validate-components';
 
