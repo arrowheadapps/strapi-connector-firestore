@@ -68,10 +68,10 @@ export interface Strapi {
   db: StrapiDatabaseManager
   log: Logger
 
-  getModel(ref, source): Readonly<FirestoreConnectorModel>
+  getModel(modelKey: string, plugin?: string): Readonly<FirestoreConnectorModel>
 
-  query<K extends keyof StrapiModelMap>(modelKey: K): StrapiQuery<StrapiModelMap[K]>
-  query(modelKey: string): StrapiQuery
+  query<K extends keyof StrapiModelMap>(entity: K, plugin?: string): StrapiQuery<StrapiModelMap[K]>
+  query(entity: string, plugin?: string): StrapiQuery
 }
 
 export type StrapiModelRecord = {
