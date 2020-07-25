@@ -1,5 +1,4 @@
 import * as _ from 'lodash';
-import { coerceToReference, parseRef } from './utils/doc-ref';
 import { getComponentModel } from './utils/validate-components';
 import type { FirestoreConnectorModel } from './types';
 import type { TransactionWrapper } from './utils/transaction-wrapper';

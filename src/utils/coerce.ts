@@ -1,10 +1,10 @@
 import * as _ from 'lodash';
-import { coerceToReference } from './doc-ref';
 import type { FirestoreConnectorModel, StrapiRelation } from "../types";
 import * as parseType from 'strapi-utils/lib/parse-type';
 import { Timestamp, DocumentReference } from '@google-cloud/firestore';
 import { getComponentModel } from './validate-components';
-import { DeepReference } from './queryable-collection';
+import { Reference } from './queryable-collection';
+import { DeepReference } from './deep-reference';
 
 export function coerceModel(model: FirestoreConnectorModel, values: any, coerceFn = toFirestore) {
   if (!model) {
@@ -138,7 +138,7 @@ export function toFirestore(relation: Partial<StrapiRelation>, value: any): any 
     if (target) {
       const assocModel = strapi.db.getModel(target, relation.plugin);
       if (assocModel) {
-        value = coerceToReference(value, assocModel);
+        value = coerceReference(value, assocModel);
       }
     }
   }
@@ -174,14 +174,21 @@ export function fromFirestore(relation: Partial<StrapiRelation>, value: any): an
     return value.toDate();
   }
 
-  // TODO:
   // Reconstruct DeepReference instances from string
-  if (relation.model) {
-    if (value instanceof DocumentReference) {
-
+  if (relation.model || relation.collection) {
+    const toRef = (v) => {
+      if (value instanceof DocumentReference) {
+        // No coersion needed
+        return v;
+      } else {
+        // This must be a DeepReference
+        return DeepReference.parse(v);
+      }
+    }
+    if (_.isArray(value)) {
+      value = value.map(toRef);
     } else {
-      // This must be a DeepReference
-      value = DeepReference.parse(value, );
+      value = toRef(value);
     }
   }
 
@@ -190,4 +197,43 @@ export function fromFirestore(relation: Partial<StrapiRelation>, value: any): an
   // Strings will come out as strings unchanged
   // Arrays will come out as arrays
   return value;
+}
+
+
+/**
+ * Coerces a value to a `Reference` if it is one.
+ */
+export function coerceReference(value: any, to: FirestoreConnectorModel): Reference | Reference[] | null {
+  if (_.isArray(value)) {
+    return value.map(v => coerceToReferenceSingle(v, to)!).filter(Boolean);
+  } else {
+    return coerceToReferenceSingle(value, to);
+  }
+}
+
+function coerceToReferenceSingle(value: any, to: FirestoreConnectorModel): Reference | null {
+  if (value instanceof DocumentReference) {
+    return value;
+  }
+  if (value instanceof DeepReference) {
+    return value;
+  }
+
+  const id = (typeof value === 'string') 
+    ? value 
+    : to.getPK(value);
+
+  if (id) {
+    const parts = id.split('/');
+    if (parts.length === 1) {
+      // No path separators so it is just an ID
+      return to.doc(id);
+    }
+
+    // TODO:
+    // Verify that the path actually refers to the target model
+    return to.doc(parts[parts.length - 1]);
+  }
+  
+  return null;
 }

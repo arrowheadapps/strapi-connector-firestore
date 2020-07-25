@@ -1,9 +1,9 @@
 import * as _ from 'lodash';
-import * as path from 'path';
 import { getFieldPath, convertWhere, ManualFilter } from './convert-where';
 import { DocumentReference, OrderByDirection, Transaction, FieldPath, WhereFilterOp, DocumentData } from '@google-cloud/firestore';
 import type { QueryableCollection, QuerySnapshot, Snapshot } from './queryable-collection';
 import type { StrapiWhereOperator } from '../types';
+import { DeepReference } from './deep-reference';
 
 
 export class QueryableFlatCollection<T = DocumentData> implements QueryableCollection<T> {
@@ -39,7 +39,7 @@ export class QueryableFlatCollection<T = DocumentData> implements QueryableColle
       // and at least one 'OR' filter (if any exists)
       const snap: Snapshot<T> = {
         id,
-        ref: path.posix.join(this.doc.path, id),
+        ref: new DeepReference(this.doc, id),
         exists: data != null,
         data: () => data,
       };

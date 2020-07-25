@@ -1,7 +1,7 @@
 import * as _ from 'lodash';
-import { DocumentReference, DocumentSnapshot, Transaction, DocumentData, Firestore, Query } from '@google-cloud/firestore';
+import { DocumentReference, DocumentSnapshot, Transaction, DocumentData, Query } from '@google-cloud/firestore';
 import type { QueryableCollection, Snapshot, QuerySnapshot, Reference } from './queryable-collection';
-import { parseDeepReference, parseRef } from './doc-ref';
+import { DeepReference } from './deep-reference';
 
 export interface TransactionWrapper {
 
@@ -20,9 +20,8 @@ export class TransactionWrapperImpl implements TransactionWrapper {
   private readonly keyedContext: Record<string, DocumentData> = {};
   private readonly docReads: Record<string, Promise<DocumentSnapshot>> = {};
 
-  constructor(transaction: Transaction, private readonly instance: Firestore) {
+  constructor(transaction: Transaction) {
     this.transaction = transaction;
-    this.instance = instance;
   }
 
   /**
@@ -64,8 +63,8 @@ export class TransactionWrapperImpl implements TransactionWrapper {
   get<T>(query: QueryableCollection<T>): Promise<QuerySnapshot<T>>;
   async get(val: Reference | QueryableCollection): Promise<any> {
     // Deep reference to flat collection
-    if (typeof val === 'string') {
-      const { doc, id } = parseDeepReference(val, this.instance);
+    if (val instanceof DeepReference) {
+      const { doc, id } = val;
       const flatDoc = await this._get(doc);
       const data = flatDoc.data()?.[id];
       const snap: Snapshot = {
@@ -94,13 +93,12 @@ export class TransactionWrapperImpl implements TransactionWrapper {
     const docs: DocumentReference<T>[] = new Array(refs.length);
     const ids: (string | null)[] = new Array(refs.length);
     refs.forEach((ref, i) => {
-      const r = parseRef<T>(ref, this.instance);
-      if (r instanceof DocumentReference) {
-        docs[i] = r;
+      if (ref instanceof DocumentReference) {
+        docs[i] = ref;
         ids[i] = null;
       } else {
-        docs[i] = r.doc as DocumentReference<T>;
-        ids[i] = r.id;
+        docs[i] = ref.doc;
+        ids[i] = ref.id;
       }
     });
 
