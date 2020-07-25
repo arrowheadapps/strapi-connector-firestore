@@ -9,7 +9,11 @@ export interface Component {
 
 export function getComponentModel(hostModel: FirestoreConnectorModel, key: string, value: any): FirestoreConnectorModel {
   const modelName = value.__component || hostModel.attributes[key].component;
-  return strapi.components[modelName];
+  const model = strapi.components[modelName];
+  if (!model) {
+    throw new Error(`Cannot find model for component "${modelName}"`);
+  }
+  return model;
 }
 
 export function validateComponents(values, model: FirestoreConnectorModel): Component[] {
