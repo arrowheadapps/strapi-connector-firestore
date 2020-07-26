@@ -186,6 +186,7 @@ export interface FirestoreConnectorModel<T = DocumentData> extends StrapiModel {
   runTransaction<TResult>(fn: (transaction: TransactionWrapper) => Promise<TResult>): Promise<TResult>;
 
   populate(data: Snapshot<T>, transaction: TransactionWrapper, populate?: (keyof T)[]): Promise<T>
+  populateAll(datas: Snapshot<T>[], transaction: TransactionWrapper, populate?: (keyof T)[]): Promise<T[]>
 
   assocKeys: string[];
   componentKeys: string[];
