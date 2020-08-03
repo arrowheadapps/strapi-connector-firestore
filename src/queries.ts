@@ -78,7 +78,10 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
     if (searchQuery) {
       query = buildSearchQuery(searchQuery, query);
     } else {
-      for (let { field, operator, value } of (filters.where || [])) {
+      for (const where of (filters.where || [])) {
+        let { operator, value } = where;
+        let field: string | FieldPath = where.field;
+
         if ((operator === 'in') && (!_.isArray(value) || (value.length === 0))) {
           // Special case: empty query
           return null;
@@ -90,77 +93,82 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
 
         // Coerce to the appropriate types
         // Because values from querystring will always come in as strings
-        const details = model.attributes[field];
-        if (details) {
-          if (details.type) {
-            switch (details.type) {
-              case 'integer':
-              case 'float':
-              case 'decimal':
-                if (_.isArray(value)) {
-                  value = value.map(toNumber);
-                } else {
-                  value = toNumber(value);
-                }
-                break;
-
-              case 'biginteger': // biginteger stored as a string
-              case 'string':
-              case 'text':
-              case 'richtext':
-              case 'email':
-              case 'enumeration':
-              case 'uid':
-                if (_.isArray(value)) {
-                  value = value.map(v => v?.toString());
-                } else {
-                  value = value?.toString();
-                }
-                break;
-
-              case 'date':
-              case 'time':
-              case 'datetime':
-                // TODO:
-                // To we need to coerce this to a Date object?
-                break;
-
-              case 'json':
-              case 'boolean':
-                if (_.isArray(value)) {
-                  value = value.map(v => {
-                    try {
-                      return JSON.parse(value);
-                    } catch {
-                      return value;
-                    }
-                  });
-                } else {
-                  try {
-                    value = JSON.parse(value);
-                  } catch {
+        if ((field === model.primaryKey) || (field === 'id')) {
+          value = value?.toString();
+          field = FieldPath.documentId();
+        } else {
+          const details = model.attributes[field];
+          if (details) {
+            if (details.type) {
+              switch (details.type) {
+                case 'integer':
+                case 'float':
+                case 'decimal':
+                  if (_.isArray(value)) {
+                    value = value.map(toNumber);
+                  } else {
+                    value = toNumber(value);
                   }
+                  break;
+
+                case 'biginteger': // biginteger stored as a string
+                case 'string':
+                case 'text':
+                case 'richtext':
+                case 'email':
+                case 'enumeration':
+                case 'uid':
+                  if (_.isArray(value)) {
+                    value = value.map(v => v?.toString());
+                  } else {
+                    value = value?.toString();
+                  }
+                  break;
+
+                case 'date':
+                case 'time':
+                case 'datetime':
+                  // TODO:
+                  // To we need to coerce this to a Date object?
+                  break;
+
+                case 'json':
+                case 'boolean':
+                  if (_.isArray(value)) {
+                    value = value.map(v => {
+                      try {
+                        return JSON.parse(value);
+                      } catch {
+                        return value;
+                      }
+                    });
+                  } else {
+                    try {
+                      value = JSON.parse(value);
+                    } catch {
+                    }
+                  }
+                  break;
+
+                case 'password':
+                  // Disable queries on password fields
+                  continue;
+
+
+                default:
+                  // Unknown field (or it's a relation)
+                  // Don't coerce
+                  break;
+
+              }
+            } else {
+
+              // Convert reference ID to document reference if it is one
+              if (details.model || details.collection) {
+                const assocModel = strapi.db.getModelByAssoc(details);
+                if (assocModel) {
+                  value = coerceToReference(value, assocModel);
                 }
-                break;
-
-              case 'password':
-                // Disable queries on password fields
-                continue;
-
-
-              default:
-                // Unknown field (or it's a relation)
-                // Don't coerce
-                break;
-
-            }
-          } else {
-
-            // Convert reference ID to document reference if it is one
-            if (details.model || details.collection) {
-              const assocModel = strapi.db.getModelByAssoc(details);
-              if (assocModel) {
-                value = coerceToReference(value, assocModel);
               }
             }
           }
