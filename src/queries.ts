@@ -94,7 +94,9 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
         // Coerce to the appropriate types
         // Because values from querystring will always come in as strings
         if ((field === model.primaryKey) || (field === 'id')) {
-          value = value?.toString();
+          value = _.isArray(value)
+            ? value.map(v => v?.toString())
+            : value?.toString();
           field = FieldPath.documentId();
         } else {
           const details = model.attributes[field];
