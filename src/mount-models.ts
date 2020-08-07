@@ -103,6 +103,8 @@ export function mountModels(models: FirestoreConnectorContext[]) {
           .withConverter(converter);
         const collection = flatDoc.parent;
 
+        (model as any).flatDoc = flatDoc;
+
         model.db = new QueryableFlatCollection(flatDoc);
         model.doc = (id?: string) => {
           return new DeepReference(flatDoc, id?.toString() || collection.doc().id);

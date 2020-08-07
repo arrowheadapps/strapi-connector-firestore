@@ -1,6 +1,6 @@
 import * as path from 'path';
-import type { DocumentData, DocumentReference, WriteResult, SetOptions, Precondition, FieldPath } from "@google-cloud/firestore";
-import type { QueryableCollection, Snapshot } from "./queryable-collection";
+import type { DocumentData, DocumentReference } from "@google-cloud/firestore";
+import type { QueryableCollection } from "./queryable-collection";
 
 /**
  * References an item in a flattened collection 
@@ -14,7 +14,7 @@ export class DeepReference<T = DocumentData> {
     }
   }
 
-  static parse(path: string) {
+  static parse(path: string): DeepReference {
     if (typeof path !== 'string') {
       throw new Error(`Can only parse a DeepReference from a string, received: "${typeof path}".`);
     }
@@ -31,9 +31,7 @@ export class DeepReference<T = DocumentData> {
       throw new Error(`Could not find model referred to by "${targetCollectionName}"`);
     }
 
-    const doc = targetModel.doc(id);
-
-    return new DeepReference(doc, id);
+    return targetModel.doc(id) as DeepReference;
   }
 
   get path() {
@@ -45,19 +43,19 @@ export class DeepReference<T = DocumentData> {
     return this.doc.firestore;
   }
 
-  get parent(): QueryableCollection;
+  get parent(): QueryableCollection {
+    return strapi.db.getModelByCollectionName(this.doc.parent.path)!.db;
+  }
 
-  collection(collectionPath: string): QueryableCollection<DocumentData>;
-
-  listCollections(): Promise<Array<QueryableCollection<DocumentData>>>;
-
-  create(data: T): Promise<WriteResult>;
-  set(data: Partial<T>, options: SetOptions): Promise<WriteResult>;
-  set(data: T): Promise<WriteResult>;
-  update(data: Partial<T>, precondition?: Precondition): Promise<WriteResult>;
-  update(field: string | FieldPath, value: any, ...moreFieldsOrPrecondition: any[]): Promise<WriteResult>;
-  delete(precondition?: Precondition): Promise<WriteResult>;
-  get(): Promise<Snapshot<T>>;
+  // collection(collectionPath: string): QueryableCollection<DocumentData>;
+  // listCollections(): Promise<Array<QueryableCollection<DocumentData>>>;
+  // create(data: T): Promise<WriteResult>;
+  // set(data: Partial<T>, options: SetOptions): Promise<WriteResult>;
+  // set(data: T): Promise<WriteResult>;
+  // update(data: Partial<T>, precondition?: Precondition): Promise<WriteResult>;
+  // update(field: string | FieldPath, value: any, ...moreFieldsOrPrecondition: any[]): Promise<WriteResult>;
+  // delete(precondition?: Precondition): Promise<WriteResult>;
+  // get(): Promise<Snapshot<T>>;
 
   isEqual(other: DeepReference<T>) {
     return (this === other) || 
