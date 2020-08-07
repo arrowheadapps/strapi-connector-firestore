@@ -83,8 +83,13 @@ export function mountModels(models: FirestoreConnectorContext[]) {
         });
       };
 
-      model.populate = (data, transaction, populateFields) => {
-        return populateDocs(model, [data], (populateFields as string[]) || model.defaultPopulate, transaction);
+      model.populate = async (data, transaction, populateFields) => {
+        const [result] = await populateDocs(model, [data], (populateFields as string[]) || model.defaultPopulate, transaction);
+        return result;
+      };
+
+      model.populateAll = (datas, transaction, populateFields) => {
+        return populateDocs(model, datas, (populateFields as string[]) || model.defaultPopulate, transaction);
       };
 
       if (flattenedKey) {

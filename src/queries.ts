@@ -77,7 +77,10 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
     if (searchQuery) {
       query = buildSearchQuery(searchQuery, query);
     } else {
-      for (let { field, operator, value } of (filters.where || [])) {
+      for (const where of (filters.where || [])) {
+        let { operator, value } = where;
+        let field: string | FieldPath = where.field;
+
         if ((operator === 'in') && (!_.isArray(value) || (value.length === 0))) {
           // Special case: empty query
           return null;
@@ -89,9 +92,19 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
 
         // Coerce to the appropriate types
         // Because values from querystring will always come in as strings
-        // Don't coerce the 'null' operatore because the value is true/false
-        // not the type of the field
-        if (operator !== 'null') {
+        
+        if ((field === model.primaryKey) || (field === 'id')) {
+          // Detect and enable filtering on document ID
+          // FIXME:
+          // Does the value need to be coerceed to a DocumentReference? 
+          value = _.isArray(value)
+            ? value.map(v => v?.toString())
+            : value?.toString();
+          field = FieldPath.documentId();
+
+        } else if (operator !== 'null') {
+          // Don't coerce the 'null' operatore because the value is true/false
+          // not the type of the field
           value = coerceValue(model, field, value);
         }
 

@@ -1,6 +1,6 @@
 {
   "name": "strapi-connector-firestore",
-  "version": "3.0.0-alpha.11",
+  "version": "3.0.0-alpha.15",
   "description": "Strapi database connector for Firestore database on Google Cloud Platform.",
   "keywords": [
     "firestore",
@@ -27,14 +27,14 @@
     "combine": "cd input && istanbul-combine -d ../coverage -p detail -r json **/*.json"
   },
   "dependencies": {
-    "@google-cloud/firestore": "^4.1.1",
+    "@google-cloud/firestore": "^4.1.2",
+    "@types/pino": "^6.3.0",
     "lodash": "^4.17.19",
-    "strapi-utils": "^3.1.1"
+    "strapi-utils": "^3.1.3"
   },
   "devDependencies": {
     "@types/lodash": "^4.14.158",
-    "@types/node": "^14.0.26",
-    "@types/pino": "^6.3.0",
+    "@types/node": "^14.0.27",
     "typescript": "^3.9.7"
   }
 }

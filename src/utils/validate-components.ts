@@ -14,7 +14,11 @@ export function getComponentModel(hostModelOrName: FirestoreConnectorModel | str
     ? hostModelOrName
     : value.__component || hostModelOrName.attributes[key!].component;
   
-  return strapi.components[modelName];
+  const model = strapi.components[modelName];
+  if (!model) {
+    throw new Error(`Cannot find model for component "${modelName}"`);
+  }
+  return model;
 }
 
 export function validateComponents(values, model: FirestoreConnectorModel): Component[] {
