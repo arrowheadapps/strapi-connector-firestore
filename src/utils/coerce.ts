@@ -10,12 +10,25 @@ export function coerceModel(model: FirestoreConnectorModel, values: any, coerceF
   if (!model) {
     return values;
   }
+  
+  return coerceModelRecursive(model, values, null, coerceFn);
+}
 
-  const result = {};
-  Object.keys(model.attributes).forEach(key => {
-    result[key] = coerceAttribute(model.attributes[key], values[key], coerceFn);
+function coerceModelRecursive(model: FirestoreConnectorModel, values: any, parentPath: string | null, coerceFn = toFirestore) {
+  return _.cloneDeepWith(values, (value, key) => {
+    if (key === undefined) {
+      // Root object, pass through
+      return undefined;
+    }
+
+    const path = parentPath ? parentPath + '.' + key : key as string;
+    if (_.isPlainObject(value)) {
+      return coerceModelRecursive(model, value, path, coerceFn);
+    }
+
+    const attr = model.attributes[path];
+    return coerceAttribute(attr, value, coerceFn);
   });
-  return result;
 }
 
 export function coerceValue(model: FirestoreConnectorModel, field: string, value: any, coerceFn = toFirestore) {
@@ -124,7 +137,7 @@ export function toFirestore(relation: Partial<StrapiRelation>, value: any): any 
       case 'timestamp':
       default:
         // These types can be handled by built-in Strapi utils
-        value = parseType(relation.type);
+        value = parseType({ type: relation.type, value });
         break;
 
     }
@@ -147,6 +160,11 @@ export function toFirestore(relation: Partial<StrapiRelation>, value: any): any 
 }
 
 export function fromFirestore(relation: Partial<StrapiRelation>, value: any): any {
+  // Firestore returns Timestamp for all Date values
+  if (value instanceof Timestamp) {
+    return value.toDate();
+  }
+  
   // Don't coerce unknown field
   if (!relation) {
     return value;
@@ -167,11 +185,6 @@ export function fromFirestore(relation: Partial<StrapiRelation>, value: any): an
 
   if ((typeof value !== 'string') && (relation.type === 'json')) {
     return JSON.stringify(value);
-  }
-
-    // Firestore returns Timestamp for all Date values
-  if (value instanceof Timestamp) {
-    return value.toDate();
   }
 
   // Reconstruct DeepReference instances from string

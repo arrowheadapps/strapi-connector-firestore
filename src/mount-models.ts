@@ -1,7 +1,7 @@
 import * as _ from 'lodash';
 import * as utils from 'strapi-utils';
 import * as path from 'path';
-import { DocumentReference, FieldValue } from '@google-cloud/firestore';
+import { DocumentReference, FieldValue, FirestoreDataConverter, DocumentData } from '@google-cloud/firestore';
 import { QueryableFirestoreCollection } from './utils/queryable-firestore-collection';
 import { QueryableFlatCollection } from './utils/queryable-flat-collection';
 import type { FirestoreConnectorContext, FirestoreConnectorModel, ModelOptions } from './types';
@@ -94,13 +94,11 @@ export function mountModels(models: FirestoreConnectorContext[]) {
 
       if (flattenedKey) {
 
-        const converter = {
+        const conv: FirestoreDataConverter<DocumentData> = {
           toFirestore: data => _.mapValues(data, d => coerceModel(model, d, toFirestore)),
           fromFirestore: data => _.mapValues(data.data(), d => coerceModel(model, d, fromFirestore)),
         };
-        const flatDoc = instance
-          .doc(flattenedKey)
-          .withConverter(converter);
+        const flatDoc = instance.doc(flattenedKey).withConverter(conv);
         const collection = flatDoc.parent;
 
         (model as any).flatDoc = flatDoc;
@@ -177,6 +175,13 @@ export function mountModels(models: FirestoreConnectorContext[]) {
           // This costs one write operation at startup only
           await ensureDocument();
 
+
+
+          // HACK:
+          // It seems that Firestore does not call the converter
+          // for update operations?
+          data = conv.toFirestore(data);
+
           if (trans) {
             // Batch all writes to documents in this flattened
             // collection and do it only once
@@ -194,12 +199,12 @@ export function mountModels(models: FirestoreConnectorContext[]) {
 
       } else {
 
-        const collection = instance
-          .collection(collectionName)
-          .withConverter({
-            toFirestore: data => coerceModel(model, data, toFirestore),
-            fromFirestore: snap => coerceModel(model, snap.data(), fromFirestore),
-          });
+        const conv: FirestoreDataConverter<DocumentData> = {
+          toFirestore: data => coerceModel(model, data, toFirestore),
+          fromFirestore: snap => coerceModel(model, snap.data(), fromFirestore),
+        };
+
+        const collection = instance.collection(collectionName).withConverter(conv);
         model.db = new QueryableFirestoreCollection(collection, model.options.allowNonNativeQueries);
         model.doc = (id?: string) => id ? collection.doc(id.toString()) : collection.doc();
 
@@ -229,6 +234,12 @@ export function mountModels(models: FirestoreConnectorContext[]) {
           if (!(ref instanceof DocumentReference)) {
             throw new Error('Non-flattened collection must have reference of type `DocumentReference`');
           }
+
+          // HACK:
+          // It seems that Firestore does not call the converter
+          // for update operations?
+          data = conv.toFirestore(data);
+
           if (trans) {
             trans.addWrite((trans)  => trans.update(ref, data));
           } else {
