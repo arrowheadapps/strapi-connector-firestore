@@ -18,14 +18,21 @@ export class DeepReference<T = DocumentData> {
     if (typeof path !== 'string') {
       throw new Error(`Can only parse a DeepReference from a string, received: "${typeof path}".`);
     }
+
+    // A deep reference is in the format
+    // {collectionPath}/{docId}/{id}
+    // e.g.
+    //  - "collectionName/default/abcd123"
+    //  - "collectionName/defg456/subCollection/default/abcd123"
     
     const lastSlash = path.lastIndexOf('/');
+    const secondToLastSlash = path.lastIndexOf('/', lastSlash - 1);
     const id = path.slice(lastSlash + 1);
-    if ((lastSlash === -1) || !id) {
+    const targetCollectionName = path.slice(0, secondToLastSlash);
+    if ((lastSlash === -1) || (secondToLastSlash === -1) || !id || !targetCollectionName) {
       throw new Error('Reference has invalid format');
     }
 
-    const targetCollectionName = path.slice(0, lastSlash);
     const targetModel = strapi.db.getModelByCollectionName(targetCollectionName);
     if (!targetModel) {
       throw new Error(`Could not find model referred to by "${targetCollectionName}"`);
