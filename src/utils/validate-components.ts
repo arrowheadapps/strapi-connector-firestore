@@ -34,7 +34,7 @@ export function validateComponents(values, model: FirestoreConnectorModel): Comp
       }
 
       if (!_.has(values, key)) continue;
-      const componentValue = values[key];
+      const componentValue = _.get(values, key);
 
       if (repeatable === true) {
         validateRepeatableInput(componentValue, { key, ...attr });
@@ -53,7 +53,7 @@ export function validateComponents(values, model: FirestoreConnectorModel): Comp
       }
 
       if (!_.has(values, key)) continue;
-      const dynamiczoneValues = values[key];
+      const dynamiczoneValues = _.get(values, key);
 
       validateDynamiczoneInput(dynamiczoneValues, { key, ...attr });
       components.push(...(dynamiczoneValues as any[]).map(value => ({ value, key })));

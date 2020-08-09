@@ -84,7 +84,7 @@ export function toFirestore(relation: Partial<StrapiRelation>, value: any): any 
 
   if (relation.type) {
     const v = value;
-    const err = () => new Error(`Invalid value provided. Could not coerce to "${relation.type}" from "${v}".`);
+    const err = () => new Error(`Invalid value provided. Could not coerce to type "${relation.type}" from value "${v}".`);
 
     switch (relation.type) {
       case 'integer':
@@ -122,7 +122,7 @@ export function toFirestore(relation: Partial<StrapiRelation>, value: any): any 
 
       case 'json':
         try {
-          value = typeof value === 'string'
+          value = ((typeof value === 'string') && value.startsWith('{'))
             ? JSON.parse(value)
             : value;
         } catch {
@@ -225,6 +225,10 @@ export function coerceReference(value: any, to: FirestoreConnectorModel): Refere
 }
 
 function coerceToReferenceSingle(value: any, to: FirestoreConnectorModel): Reference | null {
+  if ((value === undefined) || (value === null)) {
+    return value;
+  }
+
   if (value instanceof DocumentReference) {
     return value;
   }
