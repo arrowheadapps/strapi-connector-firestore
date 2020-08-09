@@ -50,6 +50,10 @@ export function coerceAttribute(relation: StrapiRelation, value: any, coerceFn =
 
 export function toFirestore(relation: Partial<StrapiRelation>, value: any): any {
   
+  if (value instanceof DeepReference) {
+    return value.toFirestoreValue();
+  }
+
   // Allow unknown field without coersion
   // Rely on controllers and lifecycles to enforce
   // any policies on sanitisation

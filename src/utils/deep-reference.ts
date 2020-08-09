@@ -72,11 +72,10 @@ export class DeepReference<T = DocumentData> {
   }
 
   /**
-   * Allow serialising to Firestore.
+   * Returns a value that can be serialised
+   * to Firestore.
    */
-  toProto() {
-    return {
-      stringValue: this.path
-    };
+  toFirestoreValue() {
+    return this.path;
   }
 };
