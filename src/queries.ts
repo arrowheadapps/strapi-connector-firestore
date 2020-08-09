@@ -34,8 +34,12 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
         case 'float':
         case 'decimal':
         case 'biginteger':
-          // Use equality operator for numbers
-          filters.push(convertWhere(field, 'eq', coerceValue(model, field, value), 'manualOnly'));
+          try {
+            // Use equality operator for numbers
+            filters.push(convertWhere(field, 'eq', coerceValue(model, field, value), 'manualOnly'));
+          } catch {
+            // Ignore if the query can't be coerced to this type
+          }
           break;
 
         case 'string':
@@ -44,8 +48,12 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
         case 'email':
         case 'enumeration':
         case 'uid':
-          // User contains operator for strings
-          filters.push(convertWhere(field, 'contains', coerceValue(model, field, value), 'manualOnly'));
+          try {
+            // User contains operator for strings
+            filters.push(convertWhere(field, 'contains', coerceValue(model, field, value), 'manualOnly'));
+          } catch {
+            // Ignore if the query can't be coerced to this type
+          }
           break;
 
         case 'date':
