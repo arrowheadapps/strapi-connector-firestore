@@ -99,8 +99,8 @@ export function mountModels(models: FirestoreConnectorContext[]) {
       if (flattenedKey) {
 
         const conv: FirestoreDataConverter<DocumentData> = {
-          toFirestore: data => userConverter.toFirestore(_.mapValues(data, d => coerceModel(model, d, toFirestore))),
-          fromFirestore: data => _.mapValues(userConverter.fromFirestore(data.data()), d => coerceModel(model, d, fromFirestore)),
+          toFirestore: data => _.mapValues(data, d => userConverter.toFirestore(coerceModel(model, d, toFirestore))),
+          fromFirestore: data => _.mapValues(data.data(), d => coerceModel(model, userConverter.fromFirestore(d), fromFirestore)),
         };
         const flatDoc = instance.doc(flattenedKey).withConverter(conv);
         const collection = flatDoc.parent;
