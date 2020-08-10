@@ -62,7 +62,11 @@ export function mountModels(models: FirestoreConnectorContext[]) {
     if (model.options.allowNonNativeQueries === undefined) {
       model.options.allowNonNativeQueries = options.allowNonNativeQueries;
     }
-
+    
+    const userConverter = model.options.converter || { 
+      toFirestore: data => data,
+      fromFirestore: data => data,
+    };
 
     const singleKey = model.kind === 'singleType' ? model.options.singleId : '';
     const flattenedKey = model.options.flatten ? path.posix.join(collectionName, model.options.singleId) : '';
@@ -95,8 +99,8 @@ export function mountModels(models: FirestoreConnectorContext[]) {
       if (flattenedKey) {
 
         const conv: FirestoreDataConverter<DocumentData> = {
-          toFirestore: data => _.mapValues(data, d => coerceModel(model, d, toFirestore)),
-          fromFirestore: data => _.mapValues(data.data(), d => coerceModel(model, d, fromFirestore)),
+          toFirestore: data => userConverter.toFirestore(_.mapValues(data, d => coerceModel(model, d, toFirestore))),
+          fromFirestore: data => _.mapValues(userConverter.fromFirestore(data.data()), d => coerceModel(model, d, fromFirestore)),
         };
         const flatDoc = instance.doc(flattenedKey).withConverter(conv);
         const collection = flatDoc.parent;
@@ -200,8 +204,8 @@ export function mountModels(models: FirestoreConnectorContext[]) {
       } else {
 
         const conv: FirestoreDataConverter<DocumentData> = {
-          toFirestore: data => coerceModel(model, data, toFirestore),
-          fromFirestore: snap => coerceModel(model, snap.data(), fromFirestore),
+          toFirestore: data => userConverter.toFirestore(coerceModel(model, data, toFirestore)),
+          fromFirestore: snap => coerceModel(model, userConverter.fromFirestore(snap.data()), fromFirestore),
         };
 
         const collection = instance.collection(collectionName).withConverter(conv);

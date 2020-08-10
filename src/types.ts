@@ -24,7 +24,7 @@ export interface ConnectorOptions {
   allowNonNativeQueries: boolean
 }
 
-export interface ModelOptions {
+export interface ModelOptions<T = any, R = any> {
   timestamps?: boolean | [string, string]
   singleId?: string
 
@@ -45,6 +45,17 @@ export interface ModelOptions {
    */
   allowNonNativeQueries?: boolean
 
+  /**
+   * Converter that is run upon data immediately before it
+   * is stored in Firestore, and immediately after it is
+   * retrieved from Firestore.
+   */
+  converter?: Converter<T, R>
+}
+
+export interface Converter<T, R> {
+  toFirestore: (data: Partial<T>) => R
+  fromFirestore: (data: R) => Partial<T>
 }
 
 declare global {
@@ -193,7 +204,7 @@ export interface FirestoreConnectorModel<T = DocumentData> extends StrapiModel {
   idKeys: string[];
   excludedKeys: string[];
   defaultPopulate: string[];
-  options: ModelOptions
+  options: ModelOptions<T>
 
   /**
    * Set of relations on other models that relate to this
