@@ -89,13 +89,19 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
         let { operator, value } = where;
         let field: string | FieldPath = where.field;
 
-        if ((operator === 'in') && (!_.isArray(value) || (value.length === 0))) {
-          // Special case: empty query
-          return null;
+        if (operator === 'in') {
+          value = _.castArray(value);
+          if ((value as Array<any>).length === 0) {
+            // Special case: empty query
+            return null;
+          }
         }
-        if ((operator === 'nin') && (!_.isArray(value) || (value.length === 0))) {
-          // Special case: no effect
-          continue;
+        if (operator === 'nin') {
+          value = _.castArray(value);
+          if ((value as Array<any>).length === 0) {
+            // Special case: no effect
+            continue;
+          }
         }
 
         // Coerce to the appropriate types
