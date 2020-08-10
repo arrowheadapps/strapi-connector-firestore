@@ -1,9 +1,10 @@
 import * as _ from 'lodash';
-import { coerceToReference, refEquals } from './utils/doc-ref'
 import { FieldValue, DocumentReference } from '@google-cloud/firestore';;
 import type { FirestoreConnectorModel } from './types';
 import type { TransactionWrapper } from './utils/transaction-wrapper';
 import type { Reference } from './utils/queryable-collection';
+import { DeepReference } from './utils/deep-reference';
+import { coerceReference } from './utils/coerce';
 
 interface MorphDef {
   id?: Reference
@@ -12,6 +13,16 @@ interface MorphDef {
   ref: string
   field: string
   filter: string
+}
+
+function refEquals(a: Reference | null, b: Reference | null): boolean {
+  if (a instanceof DocumentReference) {
+    return a.isEqual(b as any);
+  }
+  if (a instanceof DeepReference) {
+    return a.isEqual(b as any);
+  }
+  return false;
 }
 
 const removeUndefinedKeys = (obj: any) => _.pickBy(obj, _.negate(_.isUndefined));
@@ -70,8 +81,8 @@ export async function updateRelations(model: FirestoreConnectorModel, params: { 
       throw new Error('Associated model no longer exists');
     }
 
-    const currentRef = coerceToReference(data[attribute], assocModel);
-    const newRef = coerceToReference(values[attribute], assocModel);
+    const currentRef = coerceReference(data[attribute], assocModel);
+    const newRef = coerceReference(values[attribute], assocModel);
 
     switch (association.nature) {
       case 'oneWay': {
@@ -101,7 +112,7 @@ export async function updateRelations(model: FirestoreConnectorModel, params: { 
         relationUpdates.push(transaction.get(newRef).then(async snap => {
           const d = snap.data();
           if (d && d[details.via]) {
-            const oldLink = coerceToReference(d[details.via], assocModel);
+            const oldLink = coerceReference(d[details.via], assocModel);
             if (oldLink) {
               await assocModel.setMerge(oldLink as DocumentReference, { [attribute]: null }, transaction);
             }
@@ -285,7 +296,7 @@ export async function deleteRelations(model: FirestoreConnectorModel, params: { 
       if (!assocModel) {
         throw new Error('Associated model no longer exists');
       }
-      const currentValue = coerceToReference(entry[alias], assocModel);
+      const currentValue = coerceReference(entry[alias], assocModel);
 
       // TODO: delete all the ref to the model
 

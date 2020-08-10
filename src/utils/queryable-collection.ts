@@ -1,15 +1,10 @@
 import * as _ from 'lodash';
 import type { OrderByDirection, DocumentData, DocumentReference, Transaction, FieldPath, WhereFilterOp } from '@google-cloud/firestore';
-import type { StrapiWhereOperator } from '../types';
+import type { StrapiWhereOperator, } from '../types';
 import type { ManualFilter } from './convert-where';
+import type { DeepReference } from './deep-reference';
 
-export type Reference<T = DocumentData> = DocumentReference<T> | DeepReference;
-
-/**
- * References a field within a document.
- * In the format: `"collection/doc/field"`
- */
-export type DeepReference = string;
+export type Reference<T = DocumentData> = DocumentReference<T> | DeepReference<T>;
 
 
 export interface Snapshot<T = DocumentData> {

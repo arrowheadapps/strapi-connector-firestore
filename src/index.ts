@@ -25,9 +25,15 @@ const isFirestoreConnection = ({ connector }: StrapiModel) => connector === 'fir
 
 module.exports = function(strapi: Strapi) {
 
+  // Patch BigInt to allow JSON serialization
+  if (!(BigInt.prototype as any).toJSON) {
+    (BigInt.prototype as any).toJSON = function() { return this.toString() };
+  }
+
   // Allow some types to be serialised in JSON responses
   (DocumentReference.prototype as any).toJSON = function() { return this.path; };
   (Timestamp.prototype as any).toJSON = function() { return this.toDate().toJSON(); };
+
 
   function initialize() {
     const { connections } = strapi.config;
@@ -42,6 +48,7 @@ module.exports = function(strapi: Strapi) {
 
         const settings: Settings = {
           ignoreUndefinedProperties: true,
+          useBigInt: true,
           ...connection.settings,
         };
 

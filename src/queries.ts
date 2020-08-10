@@ -4,7 +4,6 @@
 
 import * as _ from 'lodash';
 import { populateDocs } from './populate';
-import { coerceToReference } from './utils/doc-ref';
 import { convertRestQueryParams } from 'strapi-utils';
 import type { StrapiQueryParams, StrapiFilter, StrapiQuery } from './types';
 import { StatusError } from './utils/status-error';
@@ -14,6 +13,7 @@ import { validateComponents } from './utils/validate-components';
 import { TransactionWrapper } from './utils/transaction-wrapper';
 import type { Snapshot, QueryableCollection, Reference } from './utils/queryable-collection';
 import { ManualFilter, convertWhere } from './utils/convert-where';
+import { coerceValue } from './utils/coerce';
 
 
 
@@ -33,20 +33,27 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
         case 'integer':
         case 'float':
         case 'decimal':
-          const number = _.toNumber(value);
-          if (!_.isNaN(number)) {
-            filters.push(convertWhere(field, 'eq', number, 'manualOnly'));
+        case 'biginteger':
+          try {
+            // Use equality operator for numbers
+            filters.push(convertWhere(field, 'eq', coerceValue(model, field, value), 'manualOnly'));
+          } catch {
+            // Ignore if the query can't be coerced to this type
           }
           break;
 
-        case 'biginteger': // biginteger stored as a string
         case 'string':
         case 'text':
         case 'richtext':
         case 'email':
         case 'enumeration':
         case 'uid':
-          filters.push(convertWhere(field, 'contains', value?.toString(), 'manualOnly'));
+          try {
+            // User contains operator for strings
+            filters.push(convertWhere(field, 'contains', coerceValue(model, field, value), 'manualOnly'));
+          } catch {
+            // Ignore if the query can't be coerced to this type
+          }
           break;
 
         case 'date':
@@ -60,7 +67,7 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
           
         default:
           // Unsupported field type for search
-          // Just ignore
+          // Don't search in these fields
           break;
       }
     });
@@ -82,98 +89,37 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
         let { operator, value } = where;
         let field: string | FieldPath = where.field;
 
-        if ((operator === 'in') && (!_.isArray(value) || (value.length === 0))) {
-          // Special case: empty query
-          return null;
+        if (operator === 'in') {
+          value = _.castArray(value);
+          if ((value as Array<any>).length === 0) {
+            // Special case: empty query
+            return null;
+          }
         }
-        if ((operator === 'nin') && (!_.isArray(value) || (value.length === 0))) {
-          // Special case: no effect
-          continue;
+        if (operator === 'nin') {
+          value = _.castArray(value);
+          if ((value as Array<any>).length === 0) {
+            // Special case: no effect
+            continue;
+          }
         }
 
         // Coerce to the appropriate types
         // Because values from querystring will always come in as strings
+        
         if ((field === model.primaryKey) || (field === 'id')) {
+          // Detect and enable filtering on document ID
+          // FIXME:
+          // Does the value need to be coerceed to a DocumentReference? 
           value = _.isArray(value)
             ? value.map(v => v?.toString())
             : value?.toString();
           field = FieldPath.documentId();
-        } else {
-          const details = model.attributes[field];
-          if (details) {
-            if (details.type) {
-              switch (details.type) {
-                case 'integer':
-                case 'float':
-                case 'decimal':
-                  if (_.isArray(value)) {
-                    value = value.map(toNumber);
-                  } else {
-                    value = toNumber(value);
-                  }
-                  break;
 
-                case 'biginteger': // biginteger stored as a string
-                case 'string':
-                case 'text':
-                case 'richtext':
-                case 'email':
-                case 'enumeration':
-                case 'uid':
-                  if (_.isArray(value)) {
-                    value = value.map(v => v?.toString());
-                  } else {
-                    value = value?.toString();
-                  }
-                  break;
-
-                case 'date':
-                case 'time':
-                case 'datetime':
-                  // TODO:
-                  // To we need to coerce this to a Date object?
-                  break;
-
-                case 'json':
-                case 'boolean':
-                  if (_.isArray(value)) {
-                    value = value.map(v => {
-                      try {
-                        return JSON.parse(value);
-                      } catch {
-                        return value;
-                      }
-                    });
-                  } else {
-                    try {
-                      value = JSON.parse(value);
-                    } catch {
-                    }
-                  }
-                  break;
-
-                case 'password':
-                  // Disable queries on password fields
-                  continue;
-
-
-                default:
-                  // Unknown field (or it's a relation)
-                  // Don't coerce
-                  break;
-
-              }
-            } else {
-
-              // Convert reference ID to document reference if it is one
-              if (details.model || details.collection) {
-                const assocModel = strapi.db.getModelByAssoc(details);
-                if (assocModel) {
-                  value = coerceToReference(value, assocModel);
-                }
-              }
-            }
-          }
+        } else if (operator !== 'null') {
+          // Don't coerce the 'null' operatore because the value is true/false
+          // not the type of the field
+          value = coerceValue(model, field, value);
         }
 
         query = query.where(field, operator, value);
@@ -432,16 +378,3 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
   };
   return queries;
 };
-
-/**
- * Coerce to a number only if it is a number.
- * If not a number, then return original value.
- */
-function toNumber(value: any) {
-  const n = _.toNumber(value);
-  if (_.isNaN(n)) {
-    return value;
-  } else {
-    return n;
-  }
-}

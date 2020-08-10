@@ -1,13 +1,14 @@
 import * as _ from 'lodash';
 import * as utils from 'strapi-utils';
 import * as path from 'path';
-import { DocumentReference, FieldValue } from '@google-cloud/firestore';
+import { DocumentReference, FieldValue, FirestoreDataConverter, DocumentData } from '@google-cloud/firestore';
 import { QueryableFirestoreCollection } from './utils/queryable-firestore-collection';
 import { QueryableFlatCollection } from './utils/queryable-flat-collection';
-import { parseDeepReference } from './utils/doc-ref';
 import type { FirestoreConnectorContext, FirestoreConnectorModel, ModelOptions } from './types';
 import { TransactionWrapper, TransactionWrapperImpl } from './utils/transaction-wrapper';
 import { populateDocs } from './populate';
+import { coerceModel, toFirestore, fromFirestore } from './utils/coerce';
+import { DeepReference } from './utils/deep-reference';
 
 export const DEFAULT_CREATE_TIME_KEY = 'createdAt';
 export const DEFAULT_UPDATE_TIME_KEY = 'updatedAt';
@@ -75,7 +76,7 @@ export function mountModels(models: FirestoreConnectorContext[]) {
       model.firestore = instance;
       model.runTransaction = (fn) => {
         return instance.runTransaction(async (trans) => {
-          const wrapper = new TransactionWrapperImpl(trans, instance);
+          const wrapper = new TransactionWrapperImpl(trans);
           const result = await fn(wrapper);
           wrapper.doWrites();
           return result;
@@ -93,12 +94,18 @@ export function mountModels(models: FirestoreConnectorContext[]) {
 
       if (flattenedKey) {
 
-        const flatDoc = instance.doc(flattenedKey);
+        const conv: FirestoreDataConverter<DocumentData> = {
+          toFirestore: data => _.mapValues(data, d => coerceModel(model, d, toFirestore)),
+          fromFirestore: data => _.mapValues(data.data(), d => coerceModel(model, d, fromFirestore)),
+        };
+        const flatDoc = instance.doc(flattenedKey).withConverter(conv);
         const collection = flatDoc.parent;
+
+        (model as any).flatDoc = flatDoc;
 
         model.db = new QueryableFlatCollection(flatDoc);
         model.doc = (id?: string) => {
-          return path.posix.join(flatDoc.path, id?.toString() || collection.doc().id)
+          return new DeepReference(flatDoc, id?.toString() || collection.doc().id);
         };
 
         model.delete = async (ref, trans) => {
@@ -139,31 +146,28 @@ export function mountModels(models: FirestoreConnectorContext[]) {
         };
         
         const set = async (ref, data, trans: TransactionWrapper | undefined, merge: boolean) => {
-          if (typeof ref !== 'string') {
-            throw new Error('Flattened collection must have reference of type `String`');
+          if (!(ref instanceof DeepReference)) {
+            throw new Error('Flattened collection must have reference of type `DeepReference`');
           }
-
-          const { doc, id } = parseDeepReference(ref, instance);
-          if (!doc.isEqual(flatDoc)) {
+          if (!ref.doc.isEqual(flatDoc)) {
             throw new Error('Reference points to a different model');
           }
-
           if (!data || (typeof data !== 'object')) {
             throw new Error(`Invalid data provided to Firestore. It must be an object but it was: ${JSON.stringify(data)}`);
           }
           
           if (FieldValue.delete().isEqual(data)) {
-            data = { [id]: FieldValue.delete() };
+            data = { [ref.id]: FieldValue.delete() };
           } else {
             if (merge) {
               // Flatten into key-value pairs to merge the fields
               const pairs = _.toPairs(data);
               data = {};
               pairs.forEach(([path, val]) => {
-                data[`${id}.${path}`] = val;
+                data[`${ref.id}.${path}`] = val;
               });
             } else {
-              data = { [id]: data };
+              data = { [ref.id]: data };
             }
           }
 
@@ -171,24 +175,36 @@ export function mountModels(models: FirestoreConnectorContext[]) {
           // This costs one write operation at startup only
           await ensureDocument();
 
+
+
+          // HACK:
+          // It seems that Firestore does not call the converter
+          // for update operations?
+          data = conv.toFirestore(data);
+
           if (trans) {
             // Batch all writes to documents in this flattened
             // collection and do it only once
-            (trans as TransactionWrapperImpl).addKeyedWrite(doc.path, 
+            (trans as TransactionWrapperImpl).addKeyedWrite(flatDoc.path, 
               (ctx) => Object.assign(ctx || {}, data),
               (trans, ctx) => {
-                trans.update(doc, ctx);
+                trans.update(flatDoc, ctx);
               }
             );
           } else {
             // Do the write immediately
-            await doc.update(data);
+            await flatDoc.update(data);
           }
         };
 
       } else {
 
-        const collection = instance.collection(collectionName);
+        const conv: FirestoreDataConverter<DocumentData> = {
+          toFirestore: data => coerceModel(model, data, toFirestore),
+          fromFirestore: snap => coerceModel(model, snap.data(), fromFirestore),
+        };
+
+        const collection = instance.collection(collectionName).withConverter(conv);
         model.db = new QueryableFirestoreCollection(collection, model.options.allowNonNativeQueries);
         model.doc = (id?: string) => id ? collection.doc(id.toString()) : collection.doc();
 
@@ -218,6 +234,12 @@ export function mountModels(models: FirestoreConnectorContext[]) {
           if (!(ref instanceof DocumentReference)) {
             throw new Error('Non-flattened collection must have reference of type `DocumentReference`');
           }
+
+          // HACK:
+          // It seems that Firestore does not call the converter
+          // for update operations?
+          data = conv.toFirestore(data);
+
           if (trans) {
             trans.addWrite((trans)  => trans.update(ref, data));
           } else {

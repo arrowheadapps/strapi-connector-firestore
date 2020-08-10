@@ -1,6 +1,6 @@
 import * as _ from 'lodash';
-import { coerceToReference, parseRef } from './utils/doc-ref';
 import { getComponentModel } from './utils/validate-components';
+import { coerceReference } from './utils/coerce';
 import type { FirestoreConnectorModel } from './types';
 import type { TransactionWrapper } from './utils/transaction-wrapper';
 import type { Reference } from './utils/queryable-collection';
@@ -18,13 +18,22 @@ function convertTimestampToDate(data: any, key: string) {
 }
 
 function assignMeta(model: FirestoreConnectorModel, docSnap: PartialDocumentSnapshot, docData: any) {
-  docData[model.primaryKey] = parseRef(docSnap.ref, model.firestore).id;
+  docData[model.primaryKey] = docSnap.ref.id;
 
   if (_.isArray(model.options.timestamps)) {
     const [createdAtKey, updatedAtKey] = model.options.timestamps;
     convertTimestampToDate(docData, createdAtKey);
     convertTimestampToDate(docData, updatedAtKey);
   }
+
+  // Firestore returns all integers as BigInt
+  // Convert back to number unless it is supposed to be BigInt
+  Object.keys(model.attributes).forEach(key => {
+    const attr = model.attributes[key];
+    if ((typeof docData[key] === 'bigint') && (attr.type !== 'biginteger')) {
+      docData[key] = Number(docData[key]);
+    }
+  });
 }
 
 
@@ -35,7 +44,7 @@ export async function populateDocs(model: FirestoreConnectorModel, docs: Partial
   await Promise.all(docs.map(doc => {
     const data = Object.assign({}, doc.data());
     if (!data) {
-      throw new Error(`Document not found: ${parseRef(doc.ref, model.firestore).path}`);
+      throw new Error(`Document not found: ${doc.ref.path}`);
     }
 
     assignMeta(model, doc, data);
@@ -96,7 +105,7 @@ export async function populateDocs(model: FirestoreConnectorModel, docs: Partial
         // Expects array of DocumentReference instances
         data[f].forEach(ref => {
           subDocs.push({
-            doc: coerceToReference(ref, assocModel) as Reference,
+            doc: coerceReference(ref, assocModel) as Reference,
             assign: (snap) => {
               data[f].push(processPopulatedDoc(snap));
             }
@@ -108,7 +117,7 @@ export async function populateDocs(model: FirestoreConnectorModel, docs: Partial
       } else {
         // oneToOne or manyToOne etc
         subDocs.push({
-          doc: coerceToReference(data[f], assocModel) as Reference,
+          doc: coerceReference(data[f], assocModel) as Reference,
           assign: (snap) => {
             data[f] = processPopulatedDoc(snap);
           }

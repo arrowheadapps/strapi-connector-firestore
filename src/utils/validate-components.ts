@@ -7,8 +7,13 @@ export interface Component {
   model: FirestoreConnectorModel
 }
 
-export function getComponentModel(hostModel: FirestoreConnectorModel, key: string, value: any): FirestoreConnectorModel {
-  const modelName = value.__component || hostModel.attributes[key].component;
+export function getComponentModel(componentName: string): FirestoreConnectorModel
+export function getComponentModel(hostModel: FirestoreConnectorModel, key: string, value: any): FirestoreConnectorModel
+export function getComponentModel(hostModelOrName: FirestoreConnectorModel | string, key?: string, value?: any): FirestoreConnectorModel {
+  const modelName = typeof hostModelOrName === 'string'
+    ? hostModelOrName
+    : value.__component || hostModelOrName.attributes[key!].component;
+  
   const model = strapi.components[modelName];
   if (!model) {
     throw new Error(`Cannot find model for component "${modelName}"`);
@@ -29,7 +34,7 @@ export function validateComponents(values, model: FirestoreConnectorModel): Comp
       }
 
       if (!_.has(values, key)) continue;
-      const componentValue = values[key];
+      const componentValue = _.get(values, key);
 
       if (repeatable === true) {
         validateRepeatableInput(componentValue, { key, ...attr });
@@ -48,7 +53,7 @@ export function validateComponents(values, model: FirestoreConnectorModel): Comp
       }
 
       if (!_.has(values, key)) continue;
-      const dynamiczoneValues = values[key];
+      const dynamiczoneValues = _.get(values, key);
 
       validateDynamiczoneInput(dynamiczoneValues, { key, ...attr });
       components.push(...(dynamiczoneValues as any[]).map(value => ({ value, key })));
