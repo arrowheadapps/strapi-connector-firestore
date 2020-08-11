@@ -24,7 +24,7 @@ export interface ConnectorOptions {
   allowNonNativeQueries: boolean
 }
 
-export interface ModelOptions<T = any, R = any> {
+export interface ModelOptions {
   timestamps?: boolean | [string, string]
   singleId?: string
 
@@ -44,6 +44,10 @@ export interface ModelOptions<T = any, R = any> {
    * Defaults to `undefined` (use connector setting).
    */
   allowNonNativeQueries?: boolean
+}
+
+
+export interface ModelConfig<T = any, R = any> {
 
   /**
    * Converter that is run upon data immediately before it
@@ -204,7 +208,8 @@ export interface FirestoreConnectorModel<T = DocumentData> extends StrapiModel {
   idKeys: string[];
   excludedKeys: string[];
   defaultPopulate: string[];
-  options: ModelOptions<T>
+  options: ModelOptions;
+  config: ModelConfig<T>
 
   /**
    * Set of relations on other models that relate to this

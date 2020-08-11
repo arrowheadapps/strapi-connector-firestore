@@ -191,6 +191,26 @@ export function fromFirestore(relation: Partial<StrapiRelation>, value: any): an
     return JSON.stringify(value);
   }
 
+  // Recursively coerce components
+  // type == 'component'
+  if (relation.component) {
+    const componentModel = getComponentModel(relation.component);
+    if (_.isArray(value)) {
+      return value.map(v => coerceModel(componentModel, v, fromFirestore));
+    } else {
+      return coerceModel(componentModel, value, fromFirestore);
+    }
+  }
+
+  // Recursively coerce dynamiczone
+  // type == 'dynamiczone'
+  if (relation.components) {
+    return _.castArray(value).forEach(v => {
+      const componentModel = getComponentModel(v.__component);
+      return coerceModel(componentModel, v, fromFirestore);
+    });
+  }
+
   // Reconstruct DeepReference instances from string
   if (relation.model || relation.collection) {
     const toRef = (v) => {

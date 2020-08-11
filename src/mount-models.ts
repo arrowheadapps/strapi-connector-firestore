@@ -63,7 +63,7 @@ export function mountModels(models: FirestoreConnectorContext[]) {
       model.options.allowNonNativeQueries = options.allowNonNativeQueries;
     }
     
-    const userConverter = model.options.converter || { 
+    const userConverter = model.config?.converter || { 
       toFirestore: data => data,
       fromFirestore: data => data,
     };
