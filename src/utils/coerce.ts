@@ -214,14 +214,14 @@ export function fromFirestore(relation: Partial<StrapiRelation>, value: any): an
   // Reconstruct DeepReference instances from string
   if (relation.model || relation.collection) {
     const toRef = (v) => {
-      if (value instanceof DocumentReference) {
+      if (v instanceof DocumentReference) {
         // No coersion needed
         return v;
       } else {
         // This must be a DeepReference
         return DeepReference.parse(v);
       }
-    }
+    };
     if (_.isArray(value)) {
       value = value.map(toRef);
     } else {
