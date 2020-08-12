@@ -22,11 +22,12 @@ function coerceModelRecursive(model: FirestoreConnectorModel, values: any, paren
     }
 
     const path = parentPath ? parentPath + '.' + key : key as string;
-    if (_.isPlainObject(value)) {
+    const attr = model.attributes[path];
+
+    if (!attr && _.isPlainObject(value)) {
       return coerceModelRecursive(model, value, path, coerceFn);
     }
 
-    const attr = model.attributes[path];
     return coerceAttribute(attr, value, coerceFn);
   });
 }
@@ -80,10 +81,15 @@ export function toFirestore(relation: Partial<StrapiRelation>, value: any): any 
   // Recursively coerce dynamiczone
   // type == 'dynamiczone'
   if (relation.components) {
-    return _.castArray(value).forEach(v => {
-      const componentModel = getComponentModel(v.__component);
-      return coerceModel(componentModel, v, toFirestore);
-    });
+    if (_.isArray(value)) {
+      return value.map(v => {
+        const componentModel = getComponentModel(v.__component);
+        return coerceModel(componentModel, v, toFirestore);
+      });
+    } else {
+      const componentModel = getComponentModel(value.__component);
+      return coerceModel(componentModel, value, toFirestore);
+    }
   }
 
   if (relation.type) {
@@ -149,13 +155,21 @@ export function toFirestore(relation: Partial<StrapiRelation>, value: any): any 
   } else {
 
     // Convert reference ID to document reference if it is one
-    // DeepReference instances are augmented to be serialised 
-    // into Firestore as a string
     const target = relation.model || relation.collection;
     if (target) {
       const assocModel = strapi.db.getModel(target, relation.plugin);
       if (assocModel) {
         value = coerceReference(value, assocModel);
+
+        // Convert DeepReference instances to a string value
+        // that can be serialised to Firestore
+        if (_.isArray(value)) {
+          value = value.map(v => {
+            return v instanceof DeepReference ? v.toFirestoreValue() : v;
+          });
+        } else {
+          value = value instanceof DeepReference ? value.toFirestoreValue(): value;
+        }
       }
     }
   }
@@ -205,10 +219,15 @@ export function fromFirestore(relation: Partial<StrapiRelation>, value: any): an
   // Recursively coerce dynamiczone
   // type == 'dynamiczone'
   if (relation.components) {
-    return _.castArray(value).forEach(v => {
-      const componentModel = getComponentModel(v.__component);
-      return coerceModel(componentModel, v, fromFirestore);
-    });
+    if (_.isArray(value)) {
+      return value.map(v => {
+        const componentModel = getComponentModel(v.__component);
+        return coerceModel(componentModel, v, fromFirestore);
+      });
+    } else {
+      const componentModel = getComponentModel(value.__component);
+      return coerceModel(componentModel, value, fromFirestore);
+    }
   }
 
   // Reconstruct DeepReference instances from string
