@@ -127,6 +127,7 @@ export interface StrapiModel {
   primaryKey: string
   primaryKeyType: string
   attributes: Record<string, StrapiRelation>
+  privateAttributes: Record<string, StrapiRelation>
   collectionName: string
   kind: 'collectionType' | 'singleType'
   globalId: string

@@ -15,14 +15,14 @@
     "remap-istanbul": "^0.13.0",
     "request-promise-native": "^1.0.9",
     "rimraf": "^3.0.2",
-    "strapi": "^3.2.0",
-    "strapi-admin": "^3.2.0",
+    "strapi": "^3.2.1",
+    "strapi-admin": "^3.2.1",
     "strapi-connector-firestore": "file:..",
-    "strapi-plugin-content-manager": "^3.2.0",
-    "strapi-plugin-content-type-builder": "^3.2.0",
-    "strapi-plugin-upload": "^3.2.0",
-    "strapi-plugin-users-permissions": "^3.2.0",
-    "strapi-utils": "^3.2.0",
+    "strapi-plugin-content-manager": "^3.2.1",
+    "strapi-plugin-content-type-builder": "^3.2.1",
+    "strapi-plugin-upload": "^3.2.1",
+    "strapi-plugin-users-permissions": "^3.2.1",
+    "strapi-utils": "^3.2.1",
     "wait-on": "^5.2.0"
   }
 }

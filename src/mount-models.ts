@@ -334,7 +334,7 @@ export function mountModels(models: FirestoreConnectorContext[]) {
       utils.models.defineAssociations(modelKey.toLowerCase(), model, model.attributes[name], name);
     });
 
-
+    model.privateAttributes = utils.contentTypes.getPrivateAttributes(model);
     model.assocKeys = model.associations.map(ast => ast.alias);
     model.componentKeys = Object.keys(model.attributes).filter(key =>
       ['component', 'dynamiczone'].includes(model.attributes[key].type)
