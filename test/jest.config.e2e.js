@@ -16,7 +16,8 @@ module.exports = {
     // When tests are copied over from the strapi module
     // the relative imports are broken
     // So map them to the correct place
-    '^\\.\\./\\.\\./\\.\\./test/(.*)': '<rootDir>/test/$1'
+    '^\\.\\./\\.\\./\\.\\./test/(.*)': '<rootDir>/test/$1',
+    '^\\.\\./\\.\\./\\.\\./\\.\\./test/(.*)': '<rootDir>/test/$1',
   },
   transform: {},
 };

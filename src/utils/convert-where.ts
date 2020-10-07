@@ -52,19 +52,15 @@ export function convertWhere(field: string | FieldPath, operator: WhereFilterOp 
         break;
       }
 
+    case '!=':
     case 'ne':
       if (_.isArray(value)) {
         // Not equals any (OR)
         // I.e. "nin"
         return convertWhere(field, 'nin', value, mode);
       } else {
-        // NO NATIVE SUPPORT
         // Not equal
-
-        // TODO: 
-        // Can we improve performance and support 'nativeOnly'
-        // by combining native '<' and '>' queries?
-        op = manualWhere(field, ne(value));
+        op = (mode === 'manualOnly') ? manualWhere(field, ne(value)) : '!=';
         break;
       }
 
@@ -75,12 +71,12 @@ export function convertWhere(field: string | FieldPath, operator: WhereFilterOp 
       op = (mode === 'manualOnly') ? manualWhere(field, v => value.some(eq(v))) : 'in';
       break;
 
+    case 'not-in':
     case 'nin':
-      // NO NATIVE SUPPORT
-      // Included in an array of values
+      // Not included in an array of values
       // `value` must be an array
       value = _.castArray(value);
-      op = manualWhere(field, v => value.every(ne(v)));
+      op = (mode === 'manualOnly') ? manualWhere(field, v => value.every(ne(v))) : 'not-in';
       break;
 
     case 'contains':
