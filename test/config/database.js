@@ -30,6 +30,9 @@ module.exports = ({ env }) => ({
       },
       options: {
         useEmulator: true,
+
+        // Allow on all except internal Strapi models
+        allowNonNativeQueries: /^(?!strapi::).*/,
         
         // Use flattening config from env variable
         // Default to no flattening

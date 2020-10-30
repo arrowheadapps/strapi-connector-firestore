@@ -60,7 +60,8 @@ export function mountModels(models: FirestoreConnectorContext[]) {
       }
     }
     if (model.options.allowNonNativeQueries === undefined) {
-      model.options.allowNonNativeQueries = options.allowNonNativeQueries;
+      const rootAllow = options.allowNonNativeQueries;
+      model.options.allowNonNativeQueries = (rootAllow instanceof RegExp) ? rootAllow.test(model.uid) : rootAllow;
     }
     
     const userConverter = model.config?.converter || { 

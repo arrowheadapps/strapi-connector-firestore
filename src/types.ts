@@ -21,7 +21,7 @@ export interface ConnectorOptions {
    * These are implemented manually and will have poor performance,
    * and potentially expensive resource usage.
    */
-  allowNonNativeQueries: boolean
+  allowNonNativeQueries: boolean | RegExp
 }
 
 export interface ModelOptions {
