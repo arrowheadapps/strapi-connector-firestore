@@ -3,6 +3,8 @@ import { WhereFilterOp, FieldPath, DocumentReference } from '@google-cloud/fires
 import type { Snapshot } from './queryable-collection';
 import type { StrapiWhereOperator } from '../types';
 
+const FIRESTORE_MAX_ARRAY_ELEMENTS = 10;
+
 export type ManualFilter = ((data: Snapshot) => boolean);
 
 export interface WhereFilter {
@@ -68,7 +70,7 @@ export function convertWhere(field: string | FieldPath, operator: WhereFilterOp 
       // Included in an array of values
       // `value` must be an array
       value = _.castArray(value);
-      op = (mode === 'manualOnly') ? manualWhere(field, v => value.some(eq(v))) : 'in';
+      op = ((mode === 'manualOnly') || ((value as any[]).length > FIRESTORE_MAX_ARRAY_ELEMENTS)) ? manualWhere(field, v => value.some(eq(v))) : 'in';
       break;
 
     case 'not-in':
@@ -76,7 +78,7 @@ export function convertWhere(field: string | FieldPath, operator: WhereFilterOp 
       // Not included in an array of values
       // `value` must be an array
       value = _.castArray(value);
-      op = (mode === 'manualOnly') ? manualWhere(field, v => value.every(ne(v))) : 'not-in';
+      op = ((mode === 'manualOnly') || ((value as any[]).length > FIRESTORE_MAX_ARRAY_ELEMENTS)) ? manualWhere(field, v => value.every(ne(v))) : 'not-in';
       break;
 
     case 'contains':
