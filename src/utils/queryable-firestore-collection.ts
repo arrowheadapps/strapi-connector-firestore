@@ -25,12 +25,16 @@ export class QueryableFirestoreCollection<T = DocumentData> implements Queryable
     } else {
       this.query = other;
       this.allowNonNativeQueries = allowNonNativeQueries || false;
-      this.orderBy(FieldPath.documentId(), 'asc');
     }
   }
 
   get(trans?: Transaction): Promise<QuerySnapshot<T>> {
-    return manualQuery(this.query, this.manualFilters, this._limit || 0, this._offset || 0, trans);
+    if (this.manualFilters.length) {
+      // Only use manual implementation when manual filters are presents
+      return manualQuery(this.query, this.manualFilters, this._limit || 0, this._offset || 0, trans);
+    } else {
+      return trans ? trans.get(this.query) : this.query.get();
+    }
   }
 
   where(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator | RegExp, value: any): QueryableCollection<T> {
@@ -88,6 +92,12 @@ async function manualQuery<T>(baseQuery: Query<T>, manualFilters: ManualFilter[]
       baseQuery = baseQuery.limit(Math.max(10, limit));
     }
     if (cursor) {
+      // WARNING:
+      // Usage of a cursor implicitly applies field ordering by document ID
+      // and this can cause queries to fail
+      // E.g. inequality filters require the first sort field to be the same
+      // field as the inequality filter (see issue #29)
+      // This scenario only manifests when manual queries are used
       baseQuery = baseQuery.startAfter(cursor);
     }
 
