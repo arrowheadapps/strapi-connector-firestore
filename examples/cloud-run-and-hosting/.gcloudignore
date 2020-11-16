@@ -22,7 +22,6 @@ firebase.json
 # Other exclusions
 node_modules
 *-debug.log
-Dockerfile
 .dockerignore
 .git
 .gitignore

@@ -1,18 +1,16 @@
 module.exports = ({ env }) => {
-  
-  // Use Cloud Storage for production environment only
-  const upload = env('NODE_ENV') === 'production'
-    ? {
-      provider: 'google-cloud-storage',
-      providerOptions: {
-        bucketName: '{PROJECT_ID}.appspot.com',
-        basePath: '/',
-        publicFiles: true,
-      },
-    }
-    : {};
 
-  return {
-    upload
-  };
+  // Use Cloud Storage for production environment only
+  if (env('NODE_ENV') === 'production') {
+    return {
+      upload: {
+        provider: 'google-cloud-storage',
+        providerOptions: {
+          bucketName: `${env('npm_package_project_id')}.appspot.com`,
+          basePath: '/',
+          publicFiles: true,
+        },
+      },
+    };
+  }
 };

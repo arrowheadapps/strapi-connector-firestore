@@ -1,1 +1,1 @@
-> This file exists to prevent Strapi crash while compiling
+> This directory exists to prevent Strapi crash while compiling

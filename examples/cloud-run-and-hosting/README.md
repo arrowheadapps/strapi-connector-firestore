@@ -2,6 +2,7 @@
 
 - [x] The Strapi backend/API is deployed to Google Cloud Run
 - [x] The Strapi front-end is deployed to Firebase Hosting
+- [x] The backend is aliased at `/api` in Firebase Hosting (see `middlewares/api/index.js`, currently a patch to Strapi is required for this functionality)
 - [x] The database is configured to use Firestore
 - [x] The upload plugin is configured to use Google Cloud Storage
 
@@ -15,10 +16,9 @@
 ## How to use
 
 1. Create a Firebase project.
-2. Insert your Firebase/GCP project ID at `{PROJECT_ID}` in `./config/plugins.js` and `.firebaserc`.
+2. Insert your Firebase/GCP project ID at `{PROJECT_ID}` in `package.json` and `.firebaserc`.
 3. Create and deploy a Cloud Run service called `api-admin` using the [Google Cloud Platform Console](https://console.cloud.google.com/run). You can use any image to begin with, we just need to get the URL to the Cloud Run service first.
-4. Insert the URL of the Cloud Run service at `{YOUR_CLOUD_RUN_URL}` in `./config/server.js`.
-5. Configure the admin JWT secret, as outlined [here](https://strapi.io/documentation/v3.x/migration-guide/migration-guide-3.0.x-to-3.1.x.html#_2-define-the-admin-jwt-token).
+4. Configure the admin JWT secret, as outlined [here](https://strapi.io/documentation/v3.x/migration-guide/migration-guide-3.0.x-to-3.1.x.html#_2-define-the-admin-jwt-token), but also apply it to the Cloud Run container using the GCP console. If this is a new container, you may need to deploy it first before assigning the environment variable, and the first deploy will fail to start without the environment variable. 
 
 ## Run locally
 
@@ -38,6 +38,8 @@ Deploys only the files required to run the Strapi backend to a Cloud Run contain
 1. Build the image (two options)
 2. Deploy to Cloud Run (excluding the front-end files)
 
+> NOTE: The example package.json includes scripts to automate deployment. You can try running `$ npm run deploy:back`
+
 **Build using Docker**
 
 `$ docker build . --tag gcr.io/{PROJECT_ID}/api-admin`
@@ -52,7 +54,7 @@ Deploys only the files required to run the Strapi backend to a Cloud Run contain
 
 **Deploy to Cloud Run**
 
-`$ gcloud run deploy --image gcr.io/PROJECT-ID/api-admin --project {PROJECT_ID} --platform managed --region us-central1 --allow-unauthenticated`
+`$ gcloud run deploy api-admin --image gcr.io/{PROJECT-ID}/api-admin --project {PROJECT_ID} --platform managed --region us-central1 --allow-unauthenticated`
 
 
 
@@ -62,6 +64,8 @@ Deploys a production build of the Strapi front-end to to Firebase Hosting.
 
 1. Build the front-end
 2. Deploy to Firebase Hosting (only the contents of `./build/`)
+
+> NOTE: The example package.json includes scripts to automate deployment. You can try running `$ npm run deploy:front`
 
 `$ npm run build:prod`
 

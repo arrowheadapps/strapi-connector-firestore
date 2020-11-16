@@ -1,0 +1,8 @@
+node_modules/
+build/
+.cache/
+.temp/
+.firebase/
+.strapi-updater.json
+.env
+*-debug.log

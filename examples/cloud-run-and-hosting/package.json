@@ -1,24 +1,32 @@
 {
+  "name": "api-admin",
+  "project_id": "{PROJECT_ID}",
   "private": true,
   "scripts": {
     "develop": "npm run clean && strapi develop",
     "emulator": "firebase emulators:start --only firestore",
     "start": "NODE_ENV=production strapi start",
     "build": "strapi build",
-    "build:prod": "npm run clean && NODE_ENV=production strapi build",
+    "build:prod": "npm run clean && patch-package && NODE_ENV=production strapi build",
+    "deploy": "deploy:front && deploy:back",
+    "deploy:front": "npm run build:prod && firebase deploy --only hosting",
+    "deploy:back": "gcloud builds submit --tag gcr.io/$npm_package_project_id/$npm_package_name --project $npm_package_project_id && gcloud run deploy $npm_package_name --quiet --image gcr.io/$npm_package_project_id/$npm_package_name --project $npm_package_project_id --platform managed --region us-central1 --allow-unauthenticated",
     "strapi": "strapi",
     "clean": "rm -rf .temp .cache build"
   },
   "dependencies": {
-    "strapi": "^3.0.5",
-    "strapi-admin": "^3.0.5",
-    "strapi-connector-firestore": "^3.0.0-alpha.8",
-    "strapi-plugin-content-manager": "^3.0.5",
-    "strapi-plugin-content-type-builder": "^3.0.5",
-    "strapi-plugin-email": "^3.0.5",
-    "strapi-plugin-upload": "^3.0.5",
-    "strapi-plugin-users-permissions": "^3.0.5",
-    "strapi-provider-upload-google-cloud-storage": "^3.0.5",
-    "strapi-utils": "^3.0.5"
+    "strapi": "^3.3.2",
+    "strapi-admin": "^3.3.2",
+    "strapi-connector-firestore": "^3.0.0-alpha.22",
+    "strapi-plugin-content-manager": "^3.3.2",
+    "strapi-plugin-content-type-builder": "^3.3.2",
+    "strapi-plugin-email": "^3.3.2",
+    "strapi-plugin-upload": "^3.3.2",
+    "strapi-plugin-users-permissions": "^3.3.2",
+    "strapi-provider-upload-google-cloud-storage": "^3.1.6",
+    "strapi-utils": "^3.3.2"
+  },
+  "devDependencies": {
+    "patch-package": "^6.2.2"
   }
 }

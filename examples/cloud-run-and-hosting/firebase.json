@@ -1,15 +1,20 @@
 {
-  "hosting": [
-    {
-      "public": "build",
-      "rewrites": [
-        {
-          "source": "**",
-          "destination": "/index.html"
+  "hosting": {
+    "public": "build",
+    "rewrites": [
+      {
+        "source": "/api/**",
+        "run": {
+          "serviceId": "api-admin",
+          "region": "us-central1"
         }
-      ]
-    }
-  ],
+      },
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  },
   "storage": {
     "rules": "storage.rules"
   },
