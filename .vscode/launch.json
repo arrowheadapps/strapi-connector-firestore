@@ -10,6 +10,17 @@
       "console": "integratedTerminal",
       "internalConsoleOptions": "neverOpen",
       "autoAttachChildProcesses": true
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Debug example",
+      "cwd": "${workspaceFolder}/examples/cloud-run-and-hosting",
+      "program": "${workspaceFolder}/examples/cloud-run-and-hosting/node_modules/.bin/strapi",
+      "args": [
+        "develop"
+      ],
+      "autoAttachChildProcesses": true
     }
   ]
 }

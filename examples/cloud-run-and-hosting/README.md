@@ -16,7 +16,7 @@
 ## How to use
 
 1. Create a Firebase project.
-2. Insert your Firebase/GCP project ID at `{PROJECT_ID}` in `package.json` and `.firebaserc`.
+2. Insert your Firebase/GCP project ID at `project-id` in `package.json` and `.firebaserc`.
 3. Create and deploy a Cloud Run service called `api-admin` using the [Google Cloud Platform Console](https://console.cloud.google.com/run). You can use any image to begin with, we just need to get the URL to the Cloud Run service first.
 4. Configure the admin JWT secret, as outlined [here](https://strapi.io/documentation/v3.x/migration-guide/migration-guide-3.0.x-to-3.1.x.html#_2-define-the-admin-jwt-token), but also apply it to the Cloud Run container using the GCP console. If this is a new container, you may need to deploy it first before assigning the environment variable, and the first deploy will fail to start without the environment variable. 
 

@@ -1,6 +1,6 @@
 {
   "name": "api-admin",
-  "project_id": "{PROJECT_ID}",
+  "project_id": "project-id",
   "private": true,
   "scripts": {
     "develop": "npm run clean && strapi develop",
@@ -15,16 +15,16 @@
     "clean": "rm -rf .temp .cache build"
   },
   "dependencies": {
-    "strapi": "^3.3.2",
-    "strapi-admin": "^3.3.2",
+    "strapi": "^3.3.3",
+    "strapi-admin": "^3.3.3",
     "strapi-connector-firestore": "^3.0.0-alpha.22",
-    "strapi-plugin-content-manager": "^3.3.2",
-    "strapi-plugin-content-type-builder": "^3.3.2",
-    "strapi-plugin-email": "^3.3.2",
-    "strapi-plugin-upload": "^3.3.2",
-    "strapi-plugin-users-permissions": "^3.3.2",
+    "strapi-plugin-content-manager": "^3.3.3",
+    "strapi-plugin-content-type-builder": "^3.3.3",
+    "strapi-plugin-email": "^3.3.3",
+    "strapi-plugin-upload": "^3.3.3",
+    "strapi-plugin-users-permissions": "^3.3.3",
     "strapi-provider-upload-google-cloud-storage": "^3.1.6",
-    "strapi-utils": "^3.3.2"
+    "strapi-utils": "^3.3.3"
   },
   "devDependencies": {
     "patch-package": "^6.2.2"

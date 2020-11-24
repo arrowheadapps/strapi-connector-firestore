@@ -3,6 +3,7 @@ build/
 .cache/
 .temp/
 .firebase/
+extensions/**/jwt.js
 .strapi-updater.json
 .env
 *-debug.log

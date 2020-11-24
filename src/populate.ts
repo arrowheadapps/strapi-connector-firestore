@@ -72,7 +72,12 @@ export async function populateDocs(model: FirestoreConnectorModel, docs: Partial
       }
     
       if (!data[f]) {
-        if (!details.dominant) {
+        // TODO: In theory we only populate relations that aren't dominant
+        // but there are some cases where we need to (e.g. oneToMany)
+        // Not sure what needs to be done here but for now, just populate everything
+        // that has been requested
+        const dominant = false; //details.dominant
+        if (!dominant) {
           const via = details.via || details.alias;
           const assocDetails = assocModel.associations.find(assoc => assoc.alias === via);
           if (!assocDetails) {
