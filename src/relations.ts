@@ -5,6 +5,40 @@ import type { TransactionWrapper } from './utils/transaction-wrapper';
 import type { Reference } from './utils/queryable-collection';
 import { DeepReference } from './utils/deep-reference';
 import { coerceReference } from './utils/coerce';
+import { PartialSnapshot } from './populate';
+
+
+/**
+ * Parse relation attributes on this updated model and update the referred-to
+ * models accordingly.
+ */
+export async function relationsUpdate(model: FirestoreConnectorModel, snap: PartialSnapshot, transaction: TransactionWrapper) {
+  const data = snap.data();
+  const relations = model.pickRelations(data);
+
+}
+
+/**
+ * When this model is being deleted, parse and update the referred-to models
+ * accordingly.
+ */
+export async function relationsDelete(model: FirestoreConnectorModel, snap: PartialSnapshot, transaction: TransactionWrapper) {
+  const data = snap.data();
+  const relations = model.pickRelations(data);
+  
+}
+
+
+
+
+
+
+
+
+
+
+
+
 
 interface MorphDef {
   id?: Reference
@@ -66,7 +100,7 @@ const removeRelationMorph = async (model: FirestoreConnectorModel, params: Morph
 };
 
 
-export async function updateRelations(model: FirestoreConnectorModel, params: { data, values, ref: Reference }, transaction: TransactionWrapper) {
+export async function _updateRelations(model: FirestoreConnectorModel, params: { data, values, ref: Reference }, transaction: TransactionWrapper) {
 
   const { data, ref, values } = params;
   const relationUpdates: Promise<any>[] = [];
@@ -257,7 +291,7 @@ export async function updateRelations(model: FirestoreConnectorModel, params: { 
   await Promise.all(relationUpdates);
 }
 
-export async function deleteRelations(model: FirestoreConnectorModel, params: { entry: any, ref: Reference}, transaction: TransactionWrapper) {
+export async function _deleteRelations(model: FirestoreConnectorModel, params: { entry: any, ref: Reference}, transaction: TransactionWrapper) {
   const { entry, ref } = params;
 
   // Update oneWay and manyWay relations from other models

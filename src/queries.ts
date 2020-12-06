@@ -7,7 +7,7 @@ import { populateDoc, populateDocs } from './populate';
 import { convertRestQueryParams } from 'strapi-utils';
 import type { StrapiQueryParams, StrapiFilter, StrapiQuery } from './types';
 import { StatusError } from './utils/status-error';
-import { deleteRelations, updateRelations } from './relations';
+import { relationsUpdate, relationsDelete } from './relations';
 import { FieldPath } from '@google-cloud/firestore';
 import { validateComponents } from './utils/validate-components';
 import { TransactionWrapper } from './utils/transaction-wrapper';
@@ -197,7 +197,6 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
     const components = validateComponents(values, model);
 
     // Extract values related to relational data.
-    const relations = model.pickRelations(values);
     const data = model.omitExernalValues(values);
 
     // Add timestamp data
@@ -216,19 +215,11 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
       
       // Update components
       await Promise.all(components.map(async ({ model, value }) => {
-        await updateRelations(model, {
-          values: model.pickRelations(value),
-          data: value,
-          ref
-        }, trans);
+        await relationsUpdate(model, { ref, data: () => value }, trans);
       }));
       
       // Update relations
-      await updateRelations(model, {
-        values: relations,
-        data,
-        ref
-      }, trans);
+      await relationsUpdate(model, { ref, data: () => data }, trans);
       
       // Populate relations
       const entry = await populateDoc(model, { ref, data: () => data }, populateOpt, trans);
@@ -245,7 +236,6 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
     const components = validateComponents(values, model);
 
     // Extract values related to relational data.
-    const relations = model.pickRelations(values);
     const data = model.omitExernalValues(values);
 
     // Add timestamp data
@@ -276,19 +266,11 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
 
       // Update components
       await Promise.all(components.map(async ({ model, value }) => {
-        await updateRelations(model, {
-          values: model.pickRelations(value),
-          data: value,
-          ref
-        }, trans);
+        await relationsUpdate(model, { ref, data: () => value }, trans);
       }));
 
       // Update relations
-      await updateRelations(model, {
-        values: relations,
-        data,
-        ref
-      }, trans);
+      await relationsUpdate(model, { ref, data: () => data }, trans);
 
       // Populate relations
       const entry = await populateDoc(model, { ref, data: () => data }, populateOpt, trans);
@@ -325,14 +307,13 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
 
       const ref = model.doc(id);
       const snap = await trans.get(ref);
-      const entry = snap.data();
-      if (!entry) {
+      if (!snap.exists) {
         throw new StatusError('entry.notFound', 404);
       }
 
       const doc = await populateDoc(model, snap, populateOpt, trans);
 
-      await deleteRelations(model, { entry: doc, ref }, trans);
+      await relationsDelete(model, snap, trans);
 
       await model.delete(ref, trans);
       return doc;
