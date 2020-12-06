@@ -7,22 +7,22 @@
     "test:e2e": "jest --config jest.config.e2e.js --runInBand --verbose --forceExit --detectOpenHandles"
   },
   "dependencies": {
-    "execa": "^4.1.0",
-    "firebase-tools": "^8.14.1",
+    "execa": "^5.0.0",
+    "firebase-tools": "^8.17.0",
     "fs-extra": "^9.0.1",
-    "jest": "^26.6.1",
+    "jest": "^26.6.3",
     "patch-package": "^6.2.2",
     "remap-istanbul": "^0.13.0",
     "request-promise-native": "^1.0.9",
     "rimraf": "^3.0.2",
-    "strapi": "^3.2.5",
-    "strapi-admin": "^3.2.5",
+    "strapi": "^3.3.4",
+    "strapi-admin": "^3.3.4",
     "strapi-connector-firestore": "file:..",
-    "strapi-plugin-content-manager": "^3.2.5",
-    "strapi-plugin-content-type-builder": "^3.2.5",
-    "strapi-plugin-upload": "^3.2.5",
-    "strapi-plugin-users-permissions": "^3.2.5",
-    "strapi-utils": "^3.2.5",
+    "strapi-plugin-content-manager": "^3.3.4",
+    "strapi-plugin-content-type-builder": "^3.3.4",
+    "strapi-plugin-upload": "^3.3.4",
+    "strapi-plugin-users-permissions": "^3.3.4",
+    "strapi-utils": "^3.3.4",
     "wait-on": "^5.2.0"
   }
 }

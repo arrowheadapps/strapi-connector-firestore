@@ -20,6 +20,7 @@
       "args": [
         "develop"
       ],
+      "envFile": "${workspaceFolder}/examples/cloud-run-and-hosting/.env",
       "autoAttachChildProcesses": true
     }
   ]

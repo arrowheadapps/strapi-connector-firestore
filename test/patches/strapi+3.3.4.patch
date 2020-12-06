@@ -34,10 +34,10 @@ index 7e5b2b0..d369511 100644
      fabricThickness: 1.0001,
    },
 diff --git a/node_modules/strapi/lib/Strapi.js b/node_modules/strapi/lib/Strapi.js
-index 9fed1a8..ecc0119 100644
+index bca04a9..394abcb 100644
 --- a/node_modules/strapi/lib/Strapi.js
 +++ b/node_modules/strapi/lib/Strapi.js
-@@ -272,7 +272,7 @@ class Strapi {
+@@ -275,7 +275,7 @@ class Strapi {
      }
  
      // Kill process.

@@ -1,20 +1,54 @@
 import * as _ from 'lodash';
 import type { FirestoreConnectorModel, StrapiRelation } from "../types";
 import * as parseType from 'strapi-utils/lib/parse-type';
-import { Timestamp, DocumentReference } from '@google-cloud/firestore';
+import { Timestamp, DocumentReference, DocumentData } from '@google-cloud/firestore';
 import { getComponentModel } from './validate-components';
 import { Reference } from './queryable-collection';
 import { DeepReference } from './deep-reference';
 
-export function coerceModel(model: FirestoreConnectorModel, values: any, coerceFn = toFirestore) {
-  if (!model) {
+export interface CoerceFn {
+  (relation: Partial<StrapiRelation> | undefined, value: unknown): unknown
+}
+
+
+/**
+ * Coerces an entire document to Firestore based on the model schema.
+ */
+export function coerceModelToFirestore(model: FirestoreConnectorModel, values: DocumentData): DocumentData {
+  return coerceModel(model, undefined, values, toFirestore);
+}
+
+/**
+ * Coerces an entire document from Firestore based on the model schema.
+ */
+export function coerceModelFromFirestore(model: FirestoreConnectorModel, docId: string, values: DocumentData): DocumentData {
+  return coerceModel(model, docId, values, fromFirestore);
+}
+
+
+/**
+ * Coerces an entire document based on the model schema.
+ * @param model The model schema.
+ * @param docId If provided, then it is assigned to the object's `primaryKey`, otherwise any `primaryKey` is deleted.
+ * @param values The document data.
+ * @param coerceFn The coerce function `toFirestore` or `fromFirestore` depending
+ * on which direction the document should be coerced.
+ */
+function coerceModel(model: FirestoreConnectorModel, docId: string | undefined, values: DocumentData, coerceFn: CoerceFn): DocumentData {
+  if (!model || !values) {
     return values;
   }
   
-  return coerceModelRecursive(model, values, null, coerceFn);
+  const root = coerceModelRecursive(model, values, null, coerceFn);
+  if (docId) {
+    root[model.primaryKey] = docId;
+  } else {
+    delete root[model.primaryKey];
+  }
+  return root;
 }
 
-function coerceModelRecursive(model: FirestoreConnectorModel, values: any, parentPath: string | null, coerceFn = toFirestore) {
+function coerceModelRecursive(model: FirestoreConnectorModel, values: DocumentData, parentPath: string | null, coerceFn: CoerceFn) {
   return _.cloneDeepWith(values, (value, key) => {
     if (key === undefined) {
       // Root object, pass through
@@ -32,7 +66,7 @@ function coerceModelRecursive(model: FirestoreConnectorModel, values: any, paren
   });
 }
 
-export function coerceValue(model: FirestoreConnectorModel, field: string, value: any, coerceFn = toFirestore) {
+export function coerceValue(model: FirestoreConnectorModel, field: string, value: unknown, coerceFn: CoerceFn) {
   if (!model) {
     return value;
   }
@@ -40,7 +74,7 @@ export function coerceValue(model: FirestoreConnectorModel, field: string, value
   return coerceAttribute(model.attributes[field], value, coerceFn);
 }
 
-export function coerceAttribute(relation: StrapiRelation, value: any, coerceFn = toFirestore) {
+export function coerceAttribute(relation: StrapiRelation | undefined, value: unknown, coerceFn: CoerceFn) {
   if (_.isArray(value)) {
     value = value.map(v => coerceFn(relation, v));
   } else {
@@ -49,7 +83,14 @@ export function coerceAttribute(relation: StrapiRelation, value: any, coerceFn =
   return value;
 }
 
-export function toFirestore(relation: Partial<StrapiRelation>, value: any): any {
+/**
+ * Coerces a given attribute value to the correct data type for storage in Firestore
+ * based on the given attribute schema.
+ * 
+ * **Note:**
+ * This will automatically generate IDs for embedded components if they don't already have IDs.
+ */
+export function toFirestore(relation: Partial<StrapiRelation> | undefined, value: unknown): unknown {
   
   if (value instanceof DeepReference) {
     return value.toFirestoreValue();
@@ -72,9 +113,18 @@ export function toFirestore(relation: Partial<StrapiRelation>, value: any): any 
   if (relation.component) {
     const componentModel = getComponentModel(relation.component);
     if (_.isArray(value)) {
-      return value.map(v => coerceModel(componentModel, v, toFirestore));
+      // Generate ID if setting dictates
+      return value.map(v => coerceModel(componentModel, getIdOrAuto(componentModel, v), v, toFirestore));
     } else {
-      return coerceModel(componentModel, value, toFirestore);
+      if (value) {
+        if (typeof value !== 'object') {
+          throw new Error('Invalid value provided. Component must be an array or an object.');
+        }
+        // Generate ID if setting dictates
+        return coerceModel(componentModel, getIdOrAuto(componentModel, value), value!, toFirestore);
+      } else {
+        return null;
+      }
     }
   }
 
@@ -83,12 +133,21 @@ export function toFirestore(relation: Partial<StrapiRelation>, value: any): any 
   if (relation.components) {
     if (_.isArray(value)) {
       return value.map(v => {
+        // Generate ID if setting dictates
         const componentModel = getComponentModel(v.__component);
-        return coerceModel(componentModel, v, toFirestore);
+        return coerceModel(componentModel, getIdOrAuto(componentModel, v), v, toFirestore);
       });
     } else {
-      const componentModel = getComponentModel(value.__component);
-      return coerceModel(componentModel, value, toFirestore);
+      if (value) {
+        if (typeof value !== 'object') {
+          throw new Error('Invalid value provided. Component must be an array or an object.');
+        }
+        // Generate ID if setting dictates
+        const componentModel = getComponentModel((value as any).__component);
+        return coerceModel(componentModel, getIdOrAuto(componentModel, value), value!, toFirestore);
+      } else {
+        return null;
+      }
     }
   }
 
@@ -126,7 +185,7 @@ export function toFirestore(relation: Partial<StrapiRelation>, value: any): any 
       case 'enumeration':
       case 'uid':
         if (typeof value !== 'string') {
-          value = value?.toString();
+          value = (value as any)?.toString();
         }
         break;
 
@@ -177,13 +236,26 @@ export function toFirestore(relation: Partial<StrapiRelation>, value: any): any 
   return value;
 }
 
-export function fromFirestore(relation: Partial<StrapiRelation>, value: any): any {
+/**
+ * Coerces a given attribute value to out of the value stored in Firestore to the
+ * value expected by the given attribute schema.
+ */
+export function fromFirestore(relation: Partial<StrapiRelation> | undefined, value: unknown): unknown {
   // Firestore returns Timestamp for all Date values
   if (value instanceof Timestamp) {
     return value.toDate();
   }
+
+  // Restore number fields back
+  // Because Firestore returns BigInt for all integer values
+  // Do this by default for all bigints unless the attribute is specifically a BigInt
+  // BigInt fields will come out as native BigInt but will be serialised to JSON as a string
+  if ((typeof value === 'bigint') && (relation?.type !== 'biginteger')) {
+    return Number(value);
+  }
+
   
-  // Don't coerce unknown field
+  // Don't coerce unknown fields further
   if (!relation) {
     return value;
   }
@@ -191,14 +263,6 @@ export function fromFirestore(relation: Partial<StrapiRelation>, value: any): an
   // Allow null or undefined on any type
   if ((value === null) || (value === undefined)) {
     return value;
-  }
-
-  // Restore number fields back
-  // Because Firestore returns BigInt for all integer values
-  // BigInt fields will come out as native BigInt
-  // but will be serialised to JSON as a string
-  if ((typeof value === 'bigint') && (relation.type !== 'biginteger')) {
-    return Number(value);
   }
 
   if ((typeof value !== 'string') && (relation.type === 'json')) {
@@ -210,9 +274,20 @@ export function fromFirestore(relation: Partial<StrapiRelation>, value: any): an
   if (relation.component) {
     const componentModel = getComponentModel(relation.component);
     if (_.isArray(value)) {
-      return value.map(v => coerceModel(componentModel, v, fromFirestore));
+      // Keep primary key coming out of Firestore if it exists
+      return value.map(v => coerceModel(componentModel, v[componentModel.primaryKey], v, fromFirestore));
     } else {
-      return coerceModel(componentModel, value, fromFirestore);
+      if (value) {
+        if (typeof value === 'object') {
+          // Keep primary key coming out of Firestore if it exists
+          return coerceModel(componentModel, value![componentModel.primaryKey], value!, fromFirestore);
+        } else {
+          strapi.log.warn(`Invalid value in place of component "${relation.component}"`);
+          return null;
+        }
+      } else {
+        return null;
+      }
     }
   }
 
@@ -221,12 +296,23 @@ export function fromFirestore(relation: Partial<StrapiRelation>, value: any): an
   if (relation.components) {
     if (_.isArray(value)) {
       return value.map(v => {
+        // Keep primary key coming out of Firestore if it exists
         const componentModel = getComponentModel(v.__component);
-        return coerceModel(componentModel, v, fromFirestore);
+        return coerceModel(componentModel, v[componentModel.primaryKey], v, fromFirestore);
       });
     } else {
-      const componentModel = getComponentModel(value.__component);
-      return coerceModel(componentModel, value, fromFirestore);
+      if (value) {
+        if (typeof value === 'object') {
+          // Keep primary key coming out of Firestore if it exists
+          const componentModel = getComponentModel((value as any).__component);
+          return coerceModel(componentModel, value![componentModel.primaryKey], value!, fromFirestore);
+        } else {
+          strapi.log.warn(`Invalid value in place of components ${JSON.stringify(relation.components)}`);
+          return null;
+        }
+      } else {
+        return null;
+      }
     }
   }
 
@@ -273,9 +359,19 @@ function coerceToReferenceSingle(value: any, to: FirestoreConnectorModel): Refer
   }
 
   if (value instanceof DocumentReference) {
-    return value;
+    // When deserialised from Firestore it comes without any converters
+    // We want to get the appropraite converters so we reinstantiate it
+    const newRef = to.doc(value.id);
+    if (newRef.path !== value.path) {
+      strapi.log.warn(`Reference is pointing to the wrong wrong model. Expected "${newRef.path}", got "${value.path}".`);
+      return null;
+    }
+    return newRef;
   }
   if (value instanceof DeepReference) {
+    // DeepReference is not native to Firestore
+    // to it has already been instantiated with 
+    // the appropriate converters
     return value;
   }
 
@@ -296,4 +392,14 @@ function coerceToReferenceSingle(value: any, to: FirestoreConnectorModel): Refer
   }
   
   return null;
+}
+
+function getIdOrAuto(model: FirestoreConnectorModel, value: any): string | undefined {
+  if (model.options.ensureCompnentIds) {
+    // Ensure there is a gauranteed ID
+    return value[model.primaryKey] || model.autoId();
+  } else {
+    // Don't delete it if it already exists
+    return value[model.primaryKey];
+  }
 }

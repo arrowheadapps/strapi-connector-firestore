@@ -3,7 +3,7 @@
  */
 
 import * as _ from 'lodash';
-import { populateDocs } from './populate';
+import { populateDoc, populateDocs } from './populate';
 import { convertRestQueryParams } from 'strapi-utils';
 import type { StrapiQueryParams, StrapiFilter, StrapiQuery } from './types';
 import { StatusError } from './utils/status-error';
@@ -13,7 +13,7 @@ import { validateComponents } from './utils/validate-components';
 import { TransactionWrapper } from './utils/transaction-wrapper';
 import type { Snapshot, QueryableCollection, Reference } from './utils/queryable-collection';
 import { ManualFilter, convertWhere } from './utils/convert-where';
-import { coerceValue } from './utils/coerce';
+import { coerceValue, toFirestore } from './utils/coerce';
 
 
 
@@ -36,7 +36,7 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
         case 'biginteger':
           try {
             // Use equality operator for numbers
-            filters.push(convertWhere(field, 'eq', coerceValue(model, field, value), 'manualOnly'));
+            filters.push(convertWhere(field, 'eq', coerceValue(model, field, value, toFirestore), 'manualOnly'));
           } catch {
             // Ignore if the query can't be coerced to this type
           }
@@ -50,7 +50,7 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
         case 'uid':
           try {
             // User contains operator for strings
-            filters.push(convertWhere(field, 'contains', coerceValue(model, field, value), 'manualOnly'));
+            filters.push(convertWhere(field, 'contains', coerceValue(model, field, value, toFirestore), 'manualOnly'));
           } catch {
             // Ignore if the query can't be coerced to this type
           }
@@ -119,7 +119,7 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
         } else if (operator !== 'null') {
           // Don't coerce the 'null' operatore because the value is true/false
           // not the type of the field
-          value = coerceValue(model, field, value);
+          value = coerceValue(model, field, value, toFirestore);
         }
 
         query = query.where(field, operator, value);
@@ -158,8 +158,8 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
 
 
 
-  async function find(params: any, populate?: string[]) {
-    const populateOpt = populate || model.defaultPopulate;
+  async function find(params: any, populateFields?: string[]) {
+    const populateOpt = populateFields || model.defaultPopulate;
 
     return await model.runTransaction(async trans => {
       let docs: Snapshot[];
@@ -179,12 +179,12 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
     });
   }
 
-  async function findOne(params: any, populate?: string[]) {
-    const entries = await find({ ...params, _limit: 1 }, populate);
+  async function findOne(params: any, populateFields?: string[]) {
+    const entries = await find({ ...params, _limit: 1 }, populateFields);
     return entries[0] || null;
   }
 
-  async function count(params: any) {
+  async function count(params: any): Promise<number> {
     // Don't populate any fields, we are just counting
     const docs = await runFirestoreQuery(params, null, undefined);
     return docs.length;
@@ -231,15 +231,15 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
       }, trans);
       
       // Populate relations
-      const [entry] = await populateDocs(model, [{ ref, data: () => data }], populateOpt, trans);
+      const entry = await populateDoc(model, { ref, data: () => data }, populateOpt, trans);
 
       await model.create(ref, data, trans);
       return entry;
     });
   }
 
-  async function update(params: any, values: any, merge = false, populate?: string[]) {
-    const populateOpt = populate || model.defaultPopulate;
+  async function update(params: any, values: any, merge = false, populateFields?: string[]) {
+    const populateOpt = populateFields || model.defaultPopulate;
 
     // Validate components dynamiczone
     const components = validateComponents(values, model);
@@ -291,7 +291,7 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
       }, trans);
 
       // Populate relations
-      const [entry] = await populateDocs(model, [{ ref, data: () => data }], populateOpt, trans);
+      const entry = await populateDoc(model, { ref, data: () => data }, populateOpt, trans);
 
       // Update entry without relational data.
       if (merge) {
@@ -318,8 +318,8 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
     }
   }
 
-  async function deleteOne(id: string, populate: string[] | undefined) {
-    const populateOpt = populate || model.defaultPopulate;
+  async function deleteOne(id: string, populateFields: string[] | undefined) {
+    const populateOpt = populateFields || model.defaultPopulate;
 
     return await model.runTransaction(async trans => {
 
@@ -330,7 +330,7 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
         throw new StatusError('entry.notFound', 404);
       }
 
-      const [doc] = await populateDocs(model, [snap], populateOpt, trans);
+      const doc = await populateDoc(model, snap, populateOpt, trans);
 
       await deleteRelations(model, { entry: doc, ref }, trans);
 

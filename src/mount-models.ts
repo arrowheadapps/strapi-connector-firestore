@@ -7,7 +7,7 @@ import { QueryableFlatCollection } from './utils/queryable-flat-collection';
 import type { FirestoreConnectorContext, FirestoreConnectorModel, ModelOptions } from './types';
 import { TransactionWrapper, TransactionWrapperImpl } from './utils/transaction-wrapper';
 import { populateDocs } from './populate';
-import { coerceModel, toFirestore, fromFirestore } from './utils/coerce';
+import { coerceModelFromFirestore, coerceModelToFirestore } from './utils/coerce';
 import { DeepReference } from './utils/deep-reference';
 
 export const DEFAULT_CREATE_TIME_KEY = 'createdAt';
@@ -63,6 +63,9 @@ export function mountModels(models: FirestoreConnectorContext[]) {
       const rootAllow = options.allowNonNativeQueries;
       model.options.allowNonNativeQueries = (rootAllow instanceof RegExp) ? rootAllow.test(model.uid) : rootAllow;
     }
+    if (model.options.ensureCompnentIds === undefined) {
+      model.options.ensureCompnentIds = options.ensureCompnentIds;
+    }
     
     const userConverter = model.config?.converter || { 
       toFirestore: data => data,
@@ -100,8 +103,8 @@ export function mountModels(models: FirestoreConnectorContext[]) {
       if (flattenedKey) {
 
         const conv: FirestoreDataConverter<DocumentData> = {
-          toFirestore: data => _.mapValues(data, d => userConverter.toFirestore(coerceModel(model, d, toFirestore))),
-          fromFirestore: data => _.mapValues(data.data(), d => coerceModel(model, userConverter.fromFirestore(d), fromFirestore)),
+          toFirestore: data => _.mapValues(data, d => userConverter.toFirestore(coerceModelToFirestore(model, d))),
+          fromFirestore: data => _.mapValues(data.data(), (d, id) => coerceModelFromFirestore(model, id, userConverter.fromFirestore(d))),
         };
         const flatDoc = instance.doc(flattenedKey).withConverter(conv);
         const collection = flatDoc.parent;
@@ -109,8 +112,9 @@ export function mountModels(models: FirestoreConnectorContext[]) {
         (model as any).flatDoc = flatDoc;
 
         model.db = new QueryableFlatCollection(flatDoc);
+        model.autoId = () => collection.doc().id;
         model.doc = (id?: string) => {
-          return new DeepReference(flatDoc, id?.toString() || collection.doc().id);
+          return new DeepReference(flatDoc, id?.toString() || model.autoId());
         };
 
         model.delete = async (ref, trans) => {
@@ -205,12 +209,13 @@ export function mountModels(models: FirestoreConnectorContext[]) {
       } else {
 
         const conv: FirestoreDataConverter<DocumentData> = {
-          toFirestore: data => userConverter.toFirestore(coerceModel(model, data, toFirestore)),
-          fromFirestore: snap => coerceModel(model, userConverter.fromFirestore(snap.data()), fromFirestore),
+          toFirestore: data => userConverter.toFirestore(coerceModelToFirestore(model, data)),
+          fromFirestore: snap => coerceModelFromFirestore(model, snap.id, userConverter.fromFirestore(snap.data())),
         };
 
         const collection = instance.collection(collectionName).withConverter(conv);
         model.db = new QueryableFirestoreCollection(collection, model.options.allowNonNativeQueries);
+        model.autoId = () => collection.doc().id;
         model.doc = (id?: string) => id ? collection.doc(id.toString()) : collection.doc();
 
         model.delete = async (ref, trans) => {
@@ -263,6 +268,10 @@ export function mountModels(models: FirestoreConnectorContext[]) {
           }
         };
       }
+    } else {
+
+      // Used to generate IDs for embedded components
+      model.autoId = () => instance.collection(model.collectionName).doc().id;
     }
     
 

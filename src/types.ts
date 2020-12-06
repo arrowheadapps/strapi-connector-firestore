@@ -22,6 +22,14 @@ export interface ConnectorOptions {
    * and potentially expensive resource usage.
    */
   allowNonNativeQueries: boolean | RegExp
+
+  /**
+   * If `true`, then IDs are automatically generated and assigned
+   * to embedded components (incl. dynamic zone).
+   * 
+   * Defults to `false`.
+   */
+  ensureCompnentIds?: boolean
 }
 
 export interface ModelOptions {
@@ -44,6 +52,14 @@ export interface ModelOptions {
    * Defaults to `undefined` (use connector setting).
    */
   allowNonNativeQueries?: boolean
+
+
+  /**
+   * Override connector setting per model.
+   * 
+   * Defaults to `undefined` (use connector setting).
+   */
+  ensureCompnentIds?: boolean
 }
 
 
@@ -192,6 +208,7 @@ export interface FirestoreConnectorModel<T = DocumentData> extends StrapiModel {
   firestore: Firestore;
   db: QueryableCollection<T>;
 
+  autoId(): string;
   doc(): Reference<T>;
   doc(id: string): Reference<T>;
   create(ref: Reference<T>, data: T, transaction: TransactionWrapper | undefined): Promise<void>;

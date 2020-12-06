@@ -3,165 +3,132 @@ import { getComponentModel } from './utils/validate-components';
 import { coerceReference } from './utils/coerce';
 import type { FirestoreConnectorModel } from './types';
 import type { TransactionWrapper } from './utils/transaction-wrapper';
-import type { Reference } from './utils/queryable-collection';
+import type { Reference, Snapshot } from './utils/queryable-collection';
+import { StatusError } from './utils/status-error';
 
-export interface PartialDocumentSnapshot {
-  ref: Reference
-  data: () => any
-}
 
-function convertTimestampToDate(data: any, key: string) {
-  const value = data[key];
-  if (value && typeof value.toDate === 'function') {
-    data[key] = value.toDate();
+export type PartialSnapshot = Pick<Snapshot, 'data'> & Pick<Snapshot, 'ref'>
+
+
+/**
+ * Populates all the requested relational field on the given documents.
+ */
+export async function populateDocs(model: FirestoreConnectorModel, docs: PartialSnapshot[], populateFields: string[], transaction: TransactionWrapper) {
+  return await Promise.all(docs.map(doc => populateDoc(model, doc, populateFields, transaction)));
+};
+
+
+/**
+ * Populates all the requested relational field on the given document.
+ */
+export async function populateDoc(model: FirestoreConnectorModel, doc: PartialSnapshot, populateFields: string[], transaction: TransactionWrapper) {
+  const data = Object.assign({}, doc.data());
+  if (!data) {
+    throw new StatusError(`Document not found: ${doc.ref.path}`, 404);
   }
-}
 
-function assignMeta(model: FirestoreConnectorModel, docSnap: PartialDocumentSnapshot, docData: any) {
-  docData[model.primaryKey] = docSnap.ref.id;
+  const relationPromises =  Promise.all(populateFields.map(f => populateField(model, doc.ref, f, data, transaction)));
 
-  if (_.isArray(model.options.timestamps)) {
-    const [createdAtKey, updatedAtKey] = model.options.timestamps;
-    convertTimestampToDate(docData, createdAtKey);
-    convertTimestampToDate(docData, updatedAtKey);
-  }
-
-  // Firestore returns all integers as BigInt
-  // Convert back to number unless it is supposed to be BigInt
-  Object.keys(model.attributes).forEach(key => {
-    const attr = model.attributes[key];
-    if ((typeof docData[key] === 'bigint') && (attr.type !== 'biginteger')) {
-      docData[key] = Number(docData[key]);
-    }
-  });
-}
-
-
-export async function populateDocs(model: FirestoreConnectorModel, docs: PartialDocumentSnapshot[], populateFields: string[], transaction: TransactionWrapper) {
-  const docsData: any[] = [];
-  const subDocs: { doc: Reference, data?: any, assign: (snap: PartialDocumentSnapshot) => void }[] = [];
-
-  await Promise.all(docs.map(doc => {
-    const data = Object.assign({}, doc.data());
-    if (!data) {
-      throw new Error(`Document not found: ${doc.ref.path}`);
-    }
-
-    assignMeta(model, doc, data);
-    docsData.push(data);
-
-    const populateData = async (model: FirestoreConnectorModel, f: string, data: any) => {
-      const details = model.associations.find(assoc => assoc.alias === f)!;
-      const assocModel = strapi.db.getModelByAssoc(details);
-    
-      if (!assocModel) {
-        // TODO:
-        // This seems to happen for polymorphic relations such as images
-        // Can we just safely ignore this?
-        //throw new Error(`Associated model not found for model: "${details.model || details.collection}" plugin: "${details.plugin}"`);
-
-        return;
-      }
-
-      const processPopulatedDoc = (snap: PartialDocumentSnapshot) => {
-        const data = snap.data();
-        if (data) {
-          assignMeta(assocModel, snap, data);
+  const componentPromises = Promise.all(model.componentKeys.map(async componentKey => {
+    const component = data[componentKey];
+    if (component) {
+      await Promise.all(_.castArray(component).map(async c => {
+        if (c) {
+          const componentModel = getComponentModel(model, componentKey, c);
+          await Promise.all(componentModel.defaultPopulate.map(async field => {
+            await populateField(componentModel, doc.ref, field, c, transaction);
+          }));
         }
-        return data;
-      }
-    
-      if (!data[f]) {
-        // TODO: In theory we only populate relations that aren't dominant
-        // but there are some cases where we need to (e.g. oneToMany)
-        // Not sure what needs to be done here but for now, just populate everything
-        // that has been requested
-        const dominant = false; //details.dominant
-        if (!dominant) {
-          const via = details.via || details.alias;
-          const assocDetails = assocModel.associations.find(assoc => assoc.alias === via);
-          if (!assocDetails) {
-            throw new Error(`No configuration found for attribute "${via}"`);
-          }
-
-          // If the attribe in the related model has `model`
-          // then it is a one-way relation
-          // otherwise it has `collection` and it is a multi-way relation
-          const q = assocDetails.model
-            ? assocModel.db.where(via, '==', doc.ref)
-            : assocModel.db.where(via, 'array-contains', doc.ref);
-
-          const snaps = (await transaction.get(q)).docs;
-          
-          if (details.model) {
-            // This is a one-way relation
-            data[f] = snaps.length
-              ? processPopulatedDoc(snaps[0])
-              : null;
-          } else {
-            // This is a multi-way relation
-            data[f] = snaps.map(processPopulatedDoc);
-          }
-        }
-        
-      } else if (Array.isArray(data[f])) {
-    
-        // oneToMany or manyToMany etc
-        // Expects array of DocumentReference instances
-        data[f].forEach(ref => {
-          subDocs.push({
-            doc: coerceReference(ref, assocModel) as Reference,
-            assign: (snap) => {
-              data[f].push(processPopulatedDoc(snap));
-            }
-          });
-        });
-        // Erase doc references with empty array
-        // waiting for the document data to be populated
-        data[f] = [];
-      } else {
-        // oneToOne or manyToOne etc
-        subDocs.push({
-          doc: coerceReference(data[f], assocModel) as Reference,
-          assign: (snap) => {
-            data[f] = processPopulatedDoc(snap);
-          }
-        });
-      }
+      }));
     }
-
-    const relationPromises =  Promise.all(populateFields.map(f => populateData(model, f, data)));
-
-    const componentPromises = Promise.all(model.componentKeys.map(async componentKey => {
-      const component = data[componentKey];
-      if (component) {
-        await Promise.all(_.castArray(component).map(async c => {
-          if (c) {
-            const componentModel = getComponentModel(model, componentKey, c);
-            await Promise.all(componentModel.defaultPopulate.map(async field => {
-              await populateData(componentModel, field, c);
-            }));
-          }
-        }));
-      }
-    }));
-
-    return Promise.all([relationPromises, componentPromises]);
   }));
 
-  // Get all the documents all at once
-  const subDocsData = subDocs.length
-    ? await transaction.getAll(...subDocs.map(d => d.doc))
-    : [];
+  await Promise.all([relationPromises, componentPromises]);
 
-  // Assign all the fetched data
-  subDocsData.forEach((subDocSnap, i) => {
-    const { assign } = subDocs[i];
-    if (!subDocSnap.exists) {
-      strapi.log.warn(`Missing relation "${typeof subDocSnap.ref === 'string' ? subDocSnap.ref : subDocSnap.ref.path}"`);
+  return data;
+}
+
+
+export async function populateField(model: FirestoreConnectorModel, docRef: Reference, field: string, data: any, transaction: TransactionWrapper) {
+  const details = model.associations.find(assoc => assoc.alias === field)!;
+  const assocModel = strapi.db.getModelByAssoc(details);
+
+  if (!assocModel) {
+    // TODO:
+    // This seems to happen for polymorphic relations such as images
+    // Can we just safely ignore this?
+    //throw new Error(`Associated model not found for model: "${details.model || details.collection}" plugin: "${details.plugin}"`);
+
+    return;
+  }
+
+  const processPopulatedDoc = (snap: Snapshot) => {
+    const data = snap.data();
+    if (!data) {
+      // TODO:
+      // Should we through an error if the reference can't be found
+      // or just silently omit it?
+      // For now we log a warning
+      strapi.log.warn(`The document referenced by "${snap.ref.path}" no longer exists`);
     }
-    assign(subDocSnap);
-  });
+    return data || null;
+  }
 
-  return docsData;
-};
+
+  if (details.dominant) {
+    // If the attribute is the dominant end of the relation
+    // then its data will contain the reference to the other end
+    const ref = coerceReference(data[field], assocModel);
+    if (ref) {
+      if (Array.isArray(ref)) {
+        data[field] = await transaction.getAll(...ref).then(docs => docs.map(processPopulatedDoc).filter(doc => doc != null));
+      } else {
+        data[field] = processPopulatedDoc(await transaction.get(ref));
+      }
+    } else {
+      if (data[field]) {
+        // Relation has a value but it could not be coerced to a reference
+        throw new Error(`Attribute value for "${field}" could not be coerced to a reference`);
+      } else {
+        // Empty relation
+        if (details.collection) {
+          data[field] = [];
+        } else {
+          data[field] = null;
+        }
+      }
+    }
+
+
+  } else {
+    // I.e. details.dominant == false
+    // If we get here then there was no value populated
+    const via = details.via || details.alias;
+    const assocDetails = assocModel.associations.find(assoc => assoc.alias === via);
+    if (!assocDetails) {
+      throw new Error(`No configuration found to populate attribute "${via}"`);
+    }
+
+    // If the attribe in the related model has `model` then it is a one-way relation
+    // otherwise it has `collection` and it is a multi-way relation
+    // The model's own converters be called
+    let q = assocDetails.model
+      ? assocModel.db.where(via, '==', docRef)
+      : assocModel.db.where(via, 'array-contains', docRef);
+
+    // It's a one-way relation so we only want a single value
+    const oneWay = details.model;
+    if (oneWay) {
+      q = q.limit(1);
+    }
+
+    const { docs } = await transaction.get(q);
+    if (oneWay) {
+      // This is a one-way relation
+      data[field] = docs.length ? processPopulatedDoc(docs[0]) : null;
+    } else {
+      // This is a multi-way relation
+      data[field] = docs.map(processPopulatedDoc);
+    }
+  }
+}

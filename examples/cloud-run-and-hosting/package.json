@@ -15,16 +15,16 @@
     "clean": "rm -rf .temp .cache build"
   },
   "dependencies": {
-    "strapi": "^3.3.3",
-    "strapi-admin": "^3.3.3",
-    "strapi-connector-firestore": "^3.0.0-alpha.22",
-    "strapi-plugin-content-manager": "^3.3.3",
-    "strapi-plugin-content-type-builder": "^3.3.3",
-    "strapi-plugin-email": "^3.3.3",
-    "strapi-plugin-upload": "^3.3.3",
-    "strapi-plugin-users-permissions": "^3.3.3",
+    "strapi": "^3.3.4",
+    "strapi-admin": "^3.3.4",
+    "strapi-connector-firestore": "^3.0.0-alpha.23",
+    "strapi-plugin-content-manager": "^3.3.4",
+    "strapi-plugin-content-type-builder": "^3.3.4",
+    "strapi-plugin-email": "^3.3.4",
+    "strapi-plugin-upload": "^3.3.4",
+    "strapi-plugin-users-permissions": "^3.3.4",
     "strapi-provider-upload-google-cloud-storage": "^3.1.6",
-    "strapi-utils": "^3.3.3"
+    "strapi-utils": "^3.3.4"
   },
   "devDependencies": {
     "patch-package": "^6.2.2"

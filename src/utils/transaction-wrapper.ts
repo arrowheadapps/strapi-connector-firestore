@@ -77,7 +77,7 @@ export class TransactionWrapperImpl implements TransactionWrapper {
     }
 
     if (val instanceof DocumentReference) {
-      return await this.transaction.get(val);
+      return await this._get(val);
     }
 
     if (val instanceof Query) {

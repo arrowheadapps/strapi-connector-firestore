@@ -18,7 +18,8 @@ const defaultOptions: ConnectorOptions = {
   useEmulator: false,
   singleId: 'default',
   flattenModels: [],
-  allowNonNativeQueries: false
+  allowNonNativeQueries: false,
+  ensureCompnentIds: false,
 }
 
 const isFirestoreConnection = ({ connector }: StrapiModel) => connector === 'firestore';
