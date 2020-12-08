@@ -14,16 +14,18 @@ export class QueryableFlatCollection<T = DocumentData> implements QueryableColle
   private _limit?: number
   private _offset?: number
 
-  constructor(other: DocumentReference<T> | QueryableFlatCollection<T>) {
-    if (other instanceof QueryableFlatCollection) {
-      this.doc = other.doc;
+  constructor(doc: DocumentReference<T>)
+  constructor(other: QueryableFlatCollection<T>)
+  constructor(docOrOther: DocumentReference<T> | QueryableFlatCollection<T>) {
+    if (docOrOther instanceof QueryableFlatCollection) {
+      this.doc = docOrOther.doc;
       // Copy the values
-      this._filters = other._filters.slice();
-      this._orderBy = other._orderBy.slice();
-      this._limit = other._limit;
-      this._offset = other._offset;
+      this._filters = docOrOther._filters.slice();
+      this._orderBy = docOrOther._orderBy.slice();
+      this._limit = docOrOther._limit;
+      this._offset = docOrOther._offset;
     } else {
-      this.doc = other;
+      this.doc = docOrOther;
 
       // Default sort by ID
       this.orderBy(FieldPath.documentId(), 'asc');
@@ -69,7 +71,7 @@ export class QueryableFlatCollection<T = DocumentData> implements QueryableColle
     };
   }
 
-  where(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator | RegExp, value: any): QueryableCollection<T> {
+  where(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator | RegExp, value: any): QueryableFlatCollection<T> {
     const other = new QueryableFlatCollection(this);
 
     const filter = convertWhere(field, operator, value, 'manualOnly');
@@ -77,25 +79,25 @@ export class QueryableFlatCollection<T = DocumentData> implements QueryableColle
     return other;
   }
 
-  whereAny(filters: ManualFilter[]): QueryableCollection<T> {
+  whereAny(filters: ManualFilter[]): QueryableFlatCollection<T> {
     const other = new QueryableFlatCollection(this);
     other._filters.push(data => filters.some(f => f(data)));
     return other;
   }
 
-  orderBy(field: string | FieldPath, directionStr: OrderByDirection = 'asc'): QueryableCollection<T> {
+  orderBy(field: string | FieldPath, directionStr: OrderByDirection = 'asc'): QueryableFlatCollection<T> {
     const other = new QueryableFlatCollection(this);
     other._orderBy.push({ field, directionStr });
     return other;
   }
 
-  limit(limit: number): QueryableCollection<T> {
+  limit(limit: number): QueryableFlatCollection<T> {
     const other = new QueryableFlatCollection(this);
     other._limit = limit;
     return other;
   }
 
-  offset(offset: number): QueryableCollection<T> {
+  offset(offset: number): QueryableFlatCollection<T> {
     const other = new QueryableFlatCollection(this);
     other._offset = offset;
     return other;

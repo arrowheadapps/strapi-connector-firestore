@@ -8,16 +8,18 @@ import type { StrapiWhereOperator } from '../types';
 export class QueryableFirestoreCollection<T = DocumentData> implements QueryableCollection<T> {
 
   private allowNonNativeQueries: boolean
+  private maxQuerySize: number
   private query: Query<T>
   private manualFilters: ManualFilter[] = [];
   private _limit?: number;
   private _offset?: number;
 
   constructor(other: QueryableFirestoreCollection<T>)
-  constructor(other: Query<T>, allowNonNativeQueries: boolean)
-  constructor(other: Query<T> | QueryableFirestoreCollection<T>, allowNonNativeQueries?: boolean) {
+  constructor(other: Query<T>, allowNonNativeQueries: boolean, maxQuerySize: number | undefined)
+  constructor(other: Query<T> | QueryableFirestoreCollection<T>, allowNonNativeQueries?: boolean, maxQuerySize?: number) {
     if (other instanceof QueryableFirestoreCollection) {
       this.allowNonNativeQueries = other.allowNonNativeQueries;
+      this.maxQuerySize = other.maxQuerySize;
       this.query = other.query;
       this.manualFilters = other.manualFilters.slice();
       this._limit = other._limit;
@@ -25,19 +27,29 @@ export class QueryableFirestoreCollection<T = DocumentData> implements Queryable
     } else {
       this.query = other;
       this.allowNonNativeQueries = allowNonNativeQueries || false;
+      this.maxQuerySize = maxQuerySize || 0;
+      if (this.maxQuerySize < 0) {
+        throw new Error("maxQuerySize cannot be less than zero");
+      }
     }
   }
 
   get(trans?: Transaction): Promise<QuerySnapshot<T>> {
-    if (this.manualFilters.length) {
-      // Only use manual implementation when manual filters are presents
-      return manualQuery(this.query, this.manualFilters, this._limit || 0, this._offset || 0, trans);
+    // Ensure the maximum limit is set if no limit has been set yet
+    let q: QueryableFirestoreCollection<T> = this;
+    if (this.maxQuerySize && (this._limit === undefined)) {
+      q = q.limit(this.maxQuerySize);
+    }
+
+    if (q.manualFilters.length) {
+      // Only use manual implementation when manual filters are present
+      return manualQuery(q.query, q.manualFilters, q._limit || 0, q._offset || 0, trans);
     } else {
-      return trans ? trans.get(this.query) : this.query.get();
+      return trans ? trans.get(q.query) : q.query.get();
     }
   }
 
-  where(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator | RegExp, value: any): QueryableCollection<T> {
+  where(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator | RegExp, value: any): QueryableFirestoreCollection<T> {
     const filter = convertWhere(field, operator, value, this.allowNonNativeQueries ? 'preferNative' : 'nativeOnly');
     const other = new QueryableFirestoreCollection(this);
     if (typeof filter === 'function') {
@@ -48,7 +60,7 @@ export class QueryableFirestoreCollection<T = DocumentData> implements Queryable
     return other;
   }
 
-  whereAny(filters: ManualFilter[]): QueryableCollection<T> {
+  whereAny(filters: ManualFilter[]): QueryableFirestoreCollection<T> {
     if (!this.allowNonNativeQueries) {
       throw new Error('Search is not natively supported by Firestore. Use the `allowNonNativeQueries` option to enable manual search.');
     }
@@ -57,20 +69,24 @@ export class QueryableFirestoreCollection<T = DocumentData> implements Queryable
     return other;
   }
 
-  orderBy(field: string | FieldPath, directionStr: "desc" | "asc" = 'asc'): QueryableCollection<T> {
+  orderBy(field: string | FieldPath, directionStr: "desc" | "asc" = 'asc'): QueryableFirestoreCollection<T> {
     const other = new QueryableFirestoreCollection(this);
     other.query = this.query.orderBy(field, directionStr);
     return other;
   }
 
-  limit(limit: number): QueryableCollection<T> {
+  limit(limit: number): QueryableFirestoreCollection<T> {
+    if (this.maxQuerySize) {
+      limit = Math.min(limit, this.maxQuerySize);
+    }
+
     const other = new QueryableFirestoreCollection(this);
     other.query = this.query.limit(limit);
     other._limit = limit;
     return other;
   }
 
-  offset(offset: number): QueryableCollection<T> {
+  offset(offset: number): QueryableFirestoreCollection<T> {
     const other = new QueryableFirestoreCollection(this);
     other.query = this.query.offset(offset);
     return other;

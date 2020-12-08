@@ -20,6 +20,7 @@ const defaultOptions: ConnectorOptions = {
   flattenModels: [],
   allowNonNativeQueries: false,
   ensureCompnentIds: false,
+  maxQuerySize: undefined,
 }
 
 const isFirestoreConnection = ({ connector }: StrapiModel) => connector === 'firestore';
