@@ -34,10 +34,21 @@ export class QueryableFirestoreCollection<T = DocumentData> implements Queryable
     }
   }
 
+  private warnQueryLimit(limit: number | 'unlimited') {
+    // Log at debug level
+    strapi.log.debug(
+      `The query limit of "${limit}" has been capped to "${this.maxQuerySize}".` +
+      'Adjust the strapi-connector-firestore \`maxQuerySize\` configuration option ' +
+      'if this is not the desired behaviour.'
+    );
+  }
+
   get(trans?: Transaction): Promise<QuerySnapshot<T>> {
     // Ensure the maximum limit is set if no limit has been set yet
     let q: QueryableFirestoreCollection<T> = this;
     if (this.maxQuerySize && (this._limit === undefined)) {
+      // Log a warning when the limit is applied where no limit was requested
+      this.warnQueryLimit('unlimited');
       q = q.limit(this.maxQuerySize);
     }
 
@@ -76,8 +87,11 @@ export class QueryableFirestoreCollection<T = DocumentData> implements Queryable
   }
 
   limit(limit: number): QueryableFirestoreCollection<T> {
-    if (this.maxQuerySize) {
-      limit = Math.min(limit, this.maxQuerySize);
+    if (this.maxQuerySize && (this.maxQuerySize < limit)) {
+      // Log a warning when a limit is explicitly requested larger
+      // than than the configured limit
+      this.warnQueryLimit(limit);
+      limit = this.maxQuerySize;
     }
 
     const other = new QueryableFirestoreCollection(this);
