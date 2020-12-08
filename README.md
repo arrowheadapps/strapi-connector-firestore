@@ -257,6 +257,18 @@ module.exports = {
 
 ## Considerations
 
+### Strapi components (including dynamic zone, repeatable)
+
+The official Strapi connectors behave in a way where componets are stored separately in their own collections/tables.
+
+However, this connector behaves differently. It embeds all components directly into the parent document, and there are no collections for components. Here are the motivations behind this behaviour:
+- Firestore charges for the number of operations performed, so we typically wish to minimise the number of read operations acrued. Embedding the components means no additional reads are required.
+- Firestore doesn't natively support populating relational data, so embedding components reduces the latency that would be incurred by several round trips of read operations.
+- Typical usage via the Strapi admin front-end doesn't allow reuse of components, meaning all components are unique per parent document anyway, so there is not reason not to embed.
+
+Be aware of the Firestore document size limit, so a single document can contain only a finite number of embedded components.
+
+
 ### Indexes
 
 Firestore requires an index for every query, and it automatically creates indexes for basic queries ([read more](https://firebase.google.com/docs/firestore/query-data/indexing)). 
