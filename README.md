@@ -167,10 +167,14 @@ module.exports = ({ env }) => ({
         projectId: '{YOUR_PROJECT_ID}',
       },
       options: {
+        singleId: 'default',
+
+        // Force all queries to be limited to at most 100
+        maxQuerySize: 100,
+
         // Connect to a local running Firestore emulator
         // when running in development mode
         useEmulator: env('NODE_ENV') == 'development',
-        singleId: 'default',
 
         // Flatten internal Strapi models (as an example)
         // However, flattening the internal Strapi models is
@@ -274,7 +278,9 @@ While Firestore has a free tier, be very careful to consider the potential usage
 
 Be aware that the Strapi Admin console can very quickly consume several thousand read and write operations in just a few minutes of usage.
 
-For more info, read their [pricing calculator](https://firebase.google.com/pricing#blaze-calculator).
+Particularly, when viewing a collection in the Strapi Admin console, the console will count the collection size, which will incur a read operation for every single document in the collection. This would be disasterous for quota usage for large collections. This is why it is highly recommended to apply the `maxQuerySize` setting, and to set it as low as possible.
+
+For more info on pricing, see the [pricing calculator](https://firebase.google.com/pricing#blaze-calculator).
 
 ### Security
 
