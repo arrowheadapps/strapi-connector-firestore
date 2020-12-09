@@ -3,6 +3,7 @@ import type { FirestoreConnectorModel, StrapiRelation } from "../types";
 import { StatusError } from "./status-error";
 
 export interface Component {
+  key: string
   value: any
   model: FirestoreConnectorModel
 }
@@ -63,7 +64,7 @@ export function validateComponents(values, model: FirestoreConnectorModel): Comp
   }
 
   return components.map(c => ({
-    value: c.value,
+    ...c,
     model: getComponentModel(model, c.key, c.value)
   }));
 }

@@ -223,22 +223,10 @@ export interface FirestoreConnectorModel<T = DocumentData> extends StrapiModel {
 
   assocKeys: string[];
   componentKeys: string[];
-  idKeys: string[];
-  excludedKeys: string[];
   defaultPopulate: string[];
   options: ModelOptions;
   config: ModelConfig<T>
-
-  /**
-   * Set of relations on other models that relate to this
-   * model with `oneWay` and `manyWay` relations.
-   * We take note of them here because we will need to search and update
-   * these relations when items in this model are deleted.
-   */
-  relatedNonDominantAttrs: { key: string, attr: StrapiRelation, modelKey: string }[]
   
   hasPK: (obj: any) => boolean;
   getPK: (obj: any) => string;
-  pickRelations: (obj: any) => any;
-  omitExernalValues: (obj: any) => any;
 }

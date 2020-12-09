@@ -11,7 +11,7 @@ import { relationsUpdate, relationsDelete } from './relations';
 import { FieldPath } from '@google-cloud/firestore';
 import { validateComponents } from './utils/validate-components';
 import { TransactionWrapper } from './utils/transaction-wrapper';
-import type { Snapshot, QueryableCollection, Reference } from './utils/queryable-collection';
+import type { Snapshot, QueryableCollection } from './utils/queryable-collection';
 import { ManualFilter, convertWhere } from './utils/convert-where';
 import { coerceValue, toFirestore } from './utils/coerce';
 
@@ -128,7 +128,7 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
 
 
     (filters.sort || []).forEach(({ field, order }) => {
-      if (_.includes(model.idKeys, field)) {
+      if (field === model.primaryKey) {
         query = query.orderBy(FieldPath.documentId() as any, order);
       } else {
         query = query.orderBy(field, order);
@@ -196,15 +196,12 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
     // Validate components dynamiczone
     const components = validateComponents(values, model);
 
-    // Extract values related to relational data.
-    const data = model.omitExernalValues(values);
-
     // Add timestamp data
-    if (_.isArray(model.options.timestamps)) {
+    if (Array.isArray(model.options.timestamps)) {
       const now = new Date();
       const [createdAtKey, updatedAtKey] = model.options.timestamps;
-      data[createdAtKey] = now;
-      data[updatedAtKey] = now;
+      values[createdAtKey] = now;
+      values[updatedAtKey] = now;
     }
 
     // Create entry without relational data
@@ -215,16 +212,16 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
       
       // Update components
       await Promise.all(components.map(async ({ model, value }) => {
-        await relationsUpdate(model, { ref, data: () => value }, trans);
+        await relationsUpdate(model, ref, undefined, value, trans);
       }));
       
       // Update relations
-      await relationsUpdate(model, { ref, data: () => data }, trans);
+      await relationsUpdate(model, ref, undefined, values, trans);
       
       // Populate relations
-      const entry = await populateDoc(model, { ref, data: () => data }, populateOpt, trans);
+      const entry = await populateDoc(model, { ref, data: () => values }, populateOpt, trans);
 
-      await model.create(ref, data, trans);
+      await model.create(ref, values, trans);
       return entry;
     });
   }
@@ -235,51 +232,50 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
     // Validate components dynamiczone
     const components = validateComponents(values, model);
 
-    // Extract values related to relational data.
-    const data = model.omitExernalValues(values);
-
     // Add timestamp data
     if (_.isArray(model.options.timestamps)) {
       const now = new Date();
       const [createdAtKey, updatedAtKey] = model.options.timestamps;
 
       // Prevent creation timestamp from being overwritten
-      delete data[createdAtKey];
-      data[updatedAtKey] = now;
+      delete values[createdAtKey];
+      values[updatedAtKey] = now;
     }
 
     // Run the transaction
     return await model.runTransaction(async trans => {
 
-      let ref: Reference;
+      let snap: Snapshot;
       if (model.hasPK(params)) {
-        ref = model.doc(model.getPK(params));
+        snap = await trans.get(model.doc(model.getPK(params)));
       } else {
         const docs = await runFirestoreQuery({ ...params, _limit: 1 }, null, trans);
-        if (!docs.length) {
-          throw new StatusError('entry.notFound', 404);
-        }
+        snap = docs[0];
+      }
 
-        ref = docs[0].ref;
+      const prevData = snap.data();
+      if (!prevData) {
+        throw new StatusError('entry.notFound', 404);
       }
 
 
       // Update components
-      await Promise.all(components.map(async ({ model, value }) => {
-        await relationsUpdate(model, { ref, data: () => value }, trans);
+      await Promise.all(components.map(async ({ model, key, value }) => {
+        const prevValue = _.castArray(_.get(prevData, key)).find(c => model.getPK(c) === model.getPK(value));
+        await relationsUpdate(model, snap.ref, prevValue, value, trans);
       }));
 
       // Update relations
-      await relationsUpdate(model, { ref, data: () => data }, trans);
+      await relationsUpdate(model, snap.ref, prevData, values, trans);
 
       // Populate relations
-      const entry = await populateDoc(model, { ref, data: () => data }, populateOpt, trans);
+      const entry = await populateDoc(model, { ref: snap.ref, data: () => values }, populateOpt, trans);
 
-      // Update entry without relational data.
+      // Update entry without
       if (merge) {
-        await model.setMerge(ref, data, trans);
+        await model.setMerge(snap.ref, values, trans);
       } else {
-        await model.update(ref, data, trans);
+        await model.update(snap.ref, values, trans);
       }
 
       return entry;
@@ -307,13 +303,14 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
 
       const ref = model.doc(id);
       const snap = await trans.get(ref);
-      if (!snap.exists) {
+      const data = snap.data();
+      if (!data) {
         throw new StatusError('entry.notFound', 404);
       }
 
       const doc = await populateDoc(model, snap, populateOpt, trans);
 
-      await relationsDelete(model, snap, trans);
+      await relationsDelete(model, ref, data, trans);
 
       await model.delete(ref, trans);
       return doc;

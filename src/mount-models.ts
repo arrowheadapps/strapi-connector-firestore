@@ -349,38 +349,12 @@ export function mountModels(models: FirestoreConnectorContext[]) {
     model.componentKeys = Object.keys(model.attributes).filter(key =>
       ['component', 'dynamiczone'].includes(model.attributes[key].type)
     );
-    model.idKeys = ['id', model.primaryKey];
-    model.excludedKeys = model.assocKeys.concat(model.idKeys);
     model.defaultPopulate = model.associations
       .filter(ast => ast.autoPopulate !== false)
       .map(ast => ast.alias);
     
     model.hasPK = (obj: any) => _.has(obj, model.primaryKey) || _.has(obj, 'id') || Boolean(singleKey);
     model.getPK = (obj: any) => singleKey || ((_.has(obj, model.primaryKey) ? obj[model.primaryKey] : obj.id));
-
-    model.pickRelations = values => {
-      return _.pick(values, model.assocKeys);
-    };
-
-    model.omitExernalValues = values => {
-      return _.omit(values, model.excludedKeys);
-    };
-
-    model.relatedNonDominantAttrs = [];
-    models.forEach(({ connection }) => {
-      Object.entries(connection.attributes).forEach(([ key, attr ]) => {
-
-        if (!attr.type && !attr.via && ((attr.model || attr.collection) === modelKey)) {
-          // Relation attribe refers to this models
-          // `via` will be undefined for oneWay and manyWay
-          model.relatedNonDominantAttrs.push({
-            key,
-            attr,
-            modelKey: connection.globalId
-          });
-        }
-      });
-    })
   }
 
   return models.forEach(mountModel);

@@ -347,9 +347,9 @@ export function fromFirestore(relation: Partial<StrapiRelation> | undefined, val
  */
 export function coerceReference(value: any, to: FirestoreConnectorModel, strict?: boolean): Reference | Reference[] | null {
   if (_.isArray(value)) {
-    return value.map(v => coerceToReferenceSingle(v, to)!).filter(Boolean);
+    return value.map(v => coerceToReferenceSingle(v, to, strict)!).filter(Boolean);
   } else {
-    return coerceToReferenceSingle(value, to);
+    return coerceToReferenceSingle(value, to, strict);
   }
 }
 
@@ -387,9 +387,13 @@ export function coerceToReferenceSingle(value: any, to: FirestoreConnectorModel,
 
     // It must be an absolute deep reference path
     // Verify that the path actually refers to the target model
-    const deepRef = to.doc(id.slice(lastSep));
-    if (deepRef.path !== _.trim(id, '/')) {
-      throw new Error(`Reference is pointing to the wrong model. Expected "${deepRef.path}", got "${id}".`);
+    const idSegment = id.slice(lastSep);
+    if (idSegment) {
+      const deepRef = to.doc(idSegment);
+      if (deepRef.path !== id) {
+        throw new Error(`Reference is pointing to the wrong model. Expected "${deepRef.path}", got "${id}".`);
+      }
+      return deepRef;
     }
   }
   
