@@ -1,31 +1,172 @@
 import * as _ from 'lodash';
-import { FieldValue, DocumentReference } from '@google-cloud/firestore';;
-import type { FirestoreConnectorModel } from './types';
+import { FieldValue, DocumentReference, DocumentData } from '@google-cloud/firestore';;
+import type { FirestoreConnectorModel, StrapiAssociation } from './types';
 import type { TransactionWrapper } from './utils/transaction-wrapper';
 import type { Reference } from './utils/queryable-collection';
 import { DeepReference } from './utils/deep-reference';
-import { coerceReference } from './utils/coerce';
-import { PartialSnapshot } from './populate';
+import { coerceReference, coerceToReferenceSingle } from './utils/coerce';
+
+function valueAsArray(data: DocumentData | undefined, { alias, nature }: StrapiAssociation, assocModel: FirestoreConnectorModel, strict: boolean): Reference[] | undefined {
+  if (data) {
+    const value = data[alias] || [];
+    if (!Array.isArray(value)) {
+      throw new Error(`Value of ${nature} association must be an array.`);
+    }
+    
+    const refs = new Array<Reference>(value.length);
+    value.forEach(v => {
+      const ref = coerceToReferenceSingle(v, assocModel, true);
+      if (ref) {
+        refs.push(ref);
+      } else if (strict) {
+        throw new Error(`Array of ${nature} associations cannot contain an empty value`);
+      }
+    });
+    return refs;
+
+  } else {
+    return undefined;
+  }
+}
+
+function valueAsSingle(data: DocumentData | undefined, { alias, nature }: StrapiAssociation, assocModel: FirestoreConnectorModel, strict: boolean): Reference | null | undefined {
+  if (data) {
+    const value = data[alias] || null;
+    if (Array.isArray(value)) {
+      throw new Error(`Value of ${nature} association must not be an array.`);
+    }
+    return coerceToReferenceSingle(value, assocModel, true);
+  } else {
+    return undefined;
+  }
+}
 
 
 /**
  * Parse relation attributes on this updated model and update the referred-to
  * models accordingly.
  */
-export async function relationsUpdate(model: FirestoreConnectorModel, snap: PartialSnapshot, transaction: TransactionWrapper) {
-  const data = snap.data();
-  const relations = model.pickRelations(data);
+export async function relationsUpdate(model: FirestoreConnectorModel, ref: Reference, prevData: DocumentData | undefined, newData: DocumentData | undefined, transaction: TransactionWrapper) {
+  const promises: Promise<any>[] = [];
 
+  model.associations.forEach(assoc => {
+
+    const assocModel = strapi.db.getModelByAssoc(assoc);
+    if (!assocModel) {
+      if ((assoc.collection || assoc.model) === '*') {
+        // TODO:
+        // How to handle polymorphic relations?
+        return;
+      } else {
+        throw new Error(`Associated model "${assoc.collection || assoc.model}" not found.`);
+      }
+    }
+
+    const reverseAssoc = assocModel.associations.find(a => a.alias === assoc.via);
+    if (!reverseAssoc) {
+      throw new Error(`Related attribute "${assoc.via}" on the associated model "${assocModel.globalId}" not found.`);
+    }
+
+    const setReverse = (assocRef: Reference, value: any) => {
+      promises.push(
+        assocModel.setMerge(
+          assocRef, 
+          {
+            [assoc.via]: value
+          },
+          transaction,
+        )
+      );
+    }
+
+    if (assoc.collection) {
+      const prevValue = valueAsArray(prevData, assoc, assocModel, true);
+      const newValue = valueAsArray(newData, assoc, assocModel, true);
+
+      const removed = _.differenceWith(prevValue, newValue || [], refEquals);
+      const added = _.differenceWith(newValue, prevValue || [], refEquals)
+
+      if (newData) {
+        if (assoc.dominant) {
+          // Reference to associated model is stored in this document
+          newData[assoc.alias] = newValue;
+        } else {
+          delete newData[assoc.alias];
+        }
+      }
+
+      if (reverseAssoc.dominant) {
+        // Reference to this model is stored in the associated document
+        
+        // Assign this reference to new associations
+        added.forEach(assocRef => {
+          const reverseNewValue = reverseAssoc.collection
+            ? FieldValue.arrayUnion(ref)
+            : ref;
+          setReverse(assocRef, reverseNewValue);
+        });
+
+        // Remove this reference from old associations
+        removed.forEach(assocRef => {
+          const reverseNewValue = reverseAssoc.collection
+            ? FieldValue.arrayRemove(ref)
+            : null;
+          setReverse(assocRef, reverseNewValue);
+        });
+
+      }
+
+      return;
+    }
+
+    if (assoc.model) {
+      const prevValue = valueAsSingle(prevData, assoc, assocModel, true);
+      const newValue = valueAsSingle(newData, assoc, assocModel, true);
+
+      if (newData) {
+        if (assoc.dominant) {
+          // Reference to associated model is stored in this document
+          newData[assoc.alias] = newValue;
+        } else {
+          delete newData[assoc.alias];
+        }
+      }
+
+      if (reverseAssoc.dominant && !refEquals(prevValue, newValue)) {
+        // Reference to this model is stored in the associated document
+
+        // Assign this reference to the new association
+        if (newValue) {
+          const reverseNewValue = reverseAssoc.collection
+              ? FieldValue.arrayUnion(ref)
+              : ref;
+          setReverse(newValue, reverseNewValue);
+        }
+
+        // Remove this reference from the old association
+        if (prevValue) {
+          const reverseNewValue = reverseAssoc.collection
+            ? FieldValue.arrayRemove(ref)
+            : null;
+          setReverse(prevValue, reverseNewValue);
+        }
+      }
+
+      return;
+    }
+
+    throw new Error('Unexpected type of association. Expected `collection` or `model` to be defined.')
+  });
+
+  await Promise.all(promises);
 }
 
 /**
  * When this model is being deleted, parse and update the referred-to models
  * accordingly.
  */
-export async function relationsDelete(model: FirestoreConnectorModel, snap: PartialSnapshot, transaction: TransactionWrapper) {
-  const data = snap.data();
-  const relations = model.pickRelations(data);
-  
+export async function relationsDelete(model: FirestoreConnectorModel, ref: Reference, prevData: DocumentData, transaction: TransactionWrapper) {
+  await relationsUpdate(model, ref, prevData, undefined, transaction); 
 }
 
 
@@ -49,7 +190,12 @@ interface MorphDef {
   filter: string
 }
 
-function refEquals(a: Reference | null, b: Reference | null): boolean {
+function refEquals(a: Reference | null | undefined, b: Reference | null | undefined): boolean {
+  if (a == b) {
+    // I.e. both are `null` or `undefined`, or
+    // the exact same instance
+    return true;
+  }
   if (a instanceof DocumentReference) {
     return a.isEqual(b as any);
   }

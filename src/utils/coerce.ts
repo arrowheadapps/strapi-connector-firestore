@@ -345,7 +345,7 @@ export function fromFirestore(relation: Partial<StrapiRelation> | undefined, val
 /**
  * Coerces a value to a `Reference` if it is one.
  */
-export function coerceReference(value: any, to: FirestoreConnectorModel): Reference | Reference[] | null {
+export function coerceReference(value: any, to: FirestoreConnectorModel, strict?: boolean): Reference | Reference[] | null {
   if (_.isArray(value)) {
     return value.map(v => coerceToReferenceSingle(v, to)!).filter(Boolean);
   } else {
@@ -353,9 +353,9 @@ export function coerceReference(value: any, to: FirestoreConnectorModel): Refere
   }
 }
 
-function coerceToReferenceSingle(value: any, to: FirestoreConnectorModel): Reference | null {
+export function coerceToReferenceSingle(value: any, to: FirestoreConnectorModel, strict?: boolean): Reference | null {
   if ((value === undefined) || (value === null)) {
-    return value;
+    return null;
   }
 
   if (value instanceof DocumentReference) {
@@ -363,8 +363,7 @@ function coerceToReferenceSingle(value: any, to: FirestoreConnectorModel): Refer
     // We want to get the appropraite converters so we reinstantiate it
     const newRef = to.doc(value.id);
     if (newRef.path !== value.path) {
-      strapi.log.warn(`Reference is pointing to the wrong wrong model. Expected "${newRef.path}", got "${value.path}".`);
-      return null;
+      throw new Error(`Reference is pointing to the wrong model. Expected "${newRef.path}", got "${value.path}".`);
     }
     return newRef;
   }
@@ -380,18 +379,25 @@ function coerceToReferenceSingle(value: any, to: FirestoreConnectorModel): Refer
     : to.getPK(value);
 
   if (id) {
-    const parts = id.split('/');
-    if (parts.length === 1) {
+    const lastSep = id.lastIndexOf('/');
+    if (lastSep === -1) {
       // No path separators so it is just an ID
       return to.doc(id);
     }
 
-    // TODO:
+    // It must be an absolute deep reference path
     // Verify that the path actually refers to the target model
-    return to.doc(parts[parts.length - 1]);
+    const deepRef = to.doc(id.slice(lastSep));
+    if (deepRef.path !== _.trim(id, '/')) {
+      throw new Error(`Reference is pointing to the wrong model. Expected "${deepRef.path}", got "${id}".`);
+    }
   }
   
-  return null;
+  if (strict) {
+    throw new Error('Value could not be coerced to a reference.');
+  } else {
+    return null;
+  }
 }
 
 function getIdOrAuto(model: FirestoreConnectorModel, value: any): string | undefined {
