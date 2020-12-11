@@ -20,12 +20,16 @@ export interface QuerySnapshot<T = DocumentData> {
 }
 
 
-export interface QueryableCollection<T = DocumentData> {
+export interface Queryable<T = DocumentData> {
   get(trans?: Transaction): Promise<QuerySnapshot<T>>;
   
-  where(field: string | FieldPath, opStr: WhereFilterOp | StrapiWhereOperator | RegExp, value: any): QueryableCollection<T>;
-  whereAny(filters: ManualFilter[]): QueryableCollection<T>;
-  orderBy(field: string | FieldPath, directionStr?: OrderByDirection): QueryableCollection<T>;
-  limit(limit: number): QueryableCollection<T>;
-  offset(offset: number): QueryableCollection<T>;
+  where(field: string | FieldPath, opStr: WhereFilterOp | StrapiWhereOperator | RegExp, value: any): Queryable<T>;
+  whereAny(filters: ManualFilter[]): Queryable<T>;
+  orderBy(field: string | FieldPath, directionStr?: OrderByDirection): Queryable<T>;
+  limit(limit: number): Queryable<T>;
+  offset(offset: number): Queryable<T>;
+}
+
+export interface QueryableCollection<T = DocumentData> extends Queryable<T> {
+  readonly path: string
 }

@@ -1,12 +1,12 @@
 import * as _ from 'lodash';
 import { DocumentReference, DocumentSnapshot, Transaction, DocumentData, Query } from '@google-cloud/firestore';
-import type { QueryableCollection, Snapshot, QuerySnapshot, Reference } from './queryable-collection';
+import type { Queryable, Snapshot, QuerySnapshot, Reference } from './queryable-collection';
 import { DeepReference } from './deep-reference';
 
 export interface TransactionWrapper {
 
   get<T>(documentRef: Reference<T>): Promise<Snapshot<T>>;
-  get<T>(query: QueryableCollection<T>): Promise<QuerySnapshot<T>>;
+  get<T>(query: Queryable<T>): Promise<QuerySnapshot<T>>;
   getAll<T>(...refs: Reference<T>[]): Promise<Snapshot<T>[]>;
 
   addWrite(writeOp: (trans: Transaction) => void): void;
@@ -60,8 +60,8 @@ export class TransactionWrapperImpl implements TransactionWrapper {
 
 
   get<T>(documentRef: Reference<T>): Promise<Snapshot<T>>;
-  get<T>(query: QueryableCollection<T>): Promise<QuerySnapshot<T>>;
-  async get(val: Reference | QueryableCollection): Promise<any> {
+  get<T>(query: Queryable<T>): Promise<QuerySnapshot<T>>;
+  async get(val: Reference | Queryable): Promise<any> {
     // Deep reference to flat collection
     if (val instanceof DeepReference) {
       const { doc, id } = val;
@@ -84,7 +84,7 @@ export class TransactionWrapperImpl implements TransactionWrapper {
       return await this.transaction.get(val);
     }
     
-    // Queryable collection
+    // Queryable
     return await val.get(this.transaction);
 
   }

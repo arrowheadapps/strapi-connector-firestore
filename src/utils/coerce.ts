@@ -345,7 +345,7 @@ export function fromFirestore(relation: Partial<StrapiRelation> | undefined, val
 /**
  * Coerces a value to a `Reference` if it is one.
  */
-export function coerceReference(value: any, to: FirestoreConnectorModel, strict?: boolean): Reference | Reference[] | null {
+export function coerceReference(value: any, to: FirestoreConnectorModel | undefined, strict?: boolean): Reference | Reference[] | null {
   if (_.isArray(value)) {
     return value.map(v => coerceToReferenceSingle(v, to, strict)!).filter(Boolean);
   } else {
@@ -353,7 +353,7 @@ export function coerceReference(value: any, to: FirestoreConnectorModel, strict?
   }
 }
 
-export function coerceToReferenceSingle(value: any, to: FirestoreConnectorModel, strict?: boolean): Reference | null {
+export function coerceToReferenceSingle(value: any, to: FirestoreConnectorModel | undefined, strict?: boolean): Reference | null {
   if ((value === undefined) || (value === null)) {
     return null;
   }
@@ -361,11 +361,19 @@ export function coerceToReferenceSingle(value: any, to: FirestoreConnectorModel,
   if (value instanceof DocumentReference) {
     // When deserialised from Firestore it comes without any converters
     // We want to get the appropraite converters so we reinstantiate it
-    const newRef = to.doc(value.id);
-    if (newRef.path !== value.path) {
-      throw new Error(`Reference is pointing to the wrong model. Expected "${newRef.path}", got "${value.path}".`);
+    if (to) {
+      const newRef = to.doc(value.id);
+      if (newRef.path !== value.path) {
+        return fault(strict, `Reference is pointing to the wrong model. Expected "${newRef.path}", got "${value.path}".`);
+      }
+      return newRef;
+    } else {
+      const model = strapi.db.getModelByCollectionName(value.parent.path);
+      if (!model) {
+        return fault(strict, `The model referred to by "${value.parent.path}" doesn't exist`);
+      }
+      return model.doc(value.id);
     }
-    return newRef;
   }
   if (value instanceof DeepReference) {
     // DeepReference is not native to Firestore
@@ -374,34 +382,39 @@ export function coerceToReferenceSingle(value: any, to: FirestoreConnectorModel,
     return value;
   }
 
-  const id = (typeof value === 'string') 
-    ? value 
-    : to.getPK(value);
-
-  if (id) {
-    const lastSep = id.lastIndexOf('/');
+  if (typeof value === 'string') {
+    const lastSep = value.lastIndexOf('/');
     if (lastSep === -1) {
       // No path separators so it is just an ID
-      return to.doc(id);
+      if (to) {
+        return to.doc(value);
+      } else {
+        return fault(strict, `Polymorphic reference must be fully qualified. Got the ID segment only.`);
+      }
     }
 
     // It must be an absolute deep reference path
     // Verify that the path actually refers to the target model
-    const idSegment = id.slice(lastSep);
-    if (idSegment) {
-      const deepRef = to.doc(idSegment);
-      if (deepRef.path !== id) {
-        throw new Error(`Reference is pointing to the wrong model. Expected "${deepRef.path}", got "${id}".`);
+    const id = value.slice(lastSep + 1);
+    if (id) {
+      if (to) {
+        const deepRef = to.doc(id);
+        if (deepRef.path !== value) {
+          return fault(strict, `Reference is pointing to the wrong model. Expected "${deepRef.path}", got "${id}".`);
+        }
+        return deepRef;
+      } else {
+        const collection = _.trim(value.slice(0, lastSep), '/');
+        const model = strapi.db.getModelByCollectionName(collection);
+        if (!model) {
+          return fault(strict, `The model referred to by "${collection}" doesn't exist`);
+        }
+        return model.doc(id);
       }
-      return deepRef;
     }
   }
-  
-  if (strict) {
-    throw new Error('Value could not be coerced to a reference.');
-  } else {
-    return null;
-  }
+
+  return fault(strict, 'Value could not be coerced to a reference.');
 }
 
 function getIdOrAuto(model: FirestoreConnectorModel, value: any): string | undefined {
@@ -413,3 +426,12 @@ function getIdOrAuto(model: FirestoreConnectorModel, value: any): string | undef
     return value[model.primaryKey];
   }
 }
+
+function fault(strict: boolean | undefined, message: string): null {
+  if (strict) {
+    throw new Error(message);
+  } else {
+    strapi.log.warn(message);
+    return null;
+  }
+};

@@ -1,29 +1,33 @@
 import * as _ from 'lodash';
 import { ManualFilter, convertWhere } from './convert-where';
-import { Query, Transaction, QueryDocumentSnapshot, FieldPath, WhereFilterOp, DocumentData } from '@google-cloud/firestore';
+import { Query, Transaction, QueryDocumentSnapshot, FieldPath, WhereFilterOp, DocumentData, CollectionReference } from '@google-cloud/firestore';
 import type { QueryableCollection, QuerySnapshot, Snapshot } from './queryable-collection';
 import type { StrapiWhereOperator } from '../types';
 
 
 export class QueryableFirestoreCollection<T = DocumentData> implements QueryableCollection<T> {
 
-  private allowNonNativeQueries: boolean
+  readonly path: string
+  
+  private readonly allowNonNativeQueries: boolean
   private query: Query<T>
-  private manualFilters: ManualFilter[] = [];
+  private readonly manualFilters: ManualFilter[] = [];
   private _limit?: number;
   private _offset?: number;
 
   constructor(other: QueryableFirestoreCollection<T>)
-  constructor(other: Query<T>, allowNonNativeQueries: boolean)
-  constructor(other: Query<T> | QueryableFirestoreCollection<T>, allowNonNativeQueries?: boolean) {
+  constructor(other: CollectionReference<T>, allowNonNativeQueries: boolean)
+  constructor(other: CollectionReference<T> | QueryableFirestoreCollection<T>, allowNonNativeQueries?: boolean) {
     if (other instanceof QueryableFirestoreCollection) {
       this.allowNonNativeQueries = other.allowNonNativeQueries;
       this.query = other.query;
+      this.path = other.path;
       this.manualFilters = other.manualFilters.slice();
       this._limit = other._limit;
       this._offset = other._offset;
     } else {
       this.query = other;
+      this.path = other.path;
       this.allowNonNativeQueries = allowNonNativeQueries || false;
     }
   }
