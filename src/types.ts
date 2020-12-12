@@ -226,6 +226,7 @@ export interface FirestoreConnectorModel<T = DocumentData> extends StrapiModel {
   defaultPopulate: string[];
   options: ModelOptions;
   config: ModelConfig<T>
+  morphRelatedModels: Record<string, FirestoreConnectorModel[]>
   
   hasPK: (obj: any) => boolean;
   getPK: (obj: any) => string;

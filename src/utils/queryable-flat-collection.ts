@@ -30,6 +30,10 @@ export class QueryableFlatCollection<T = DocumentData> implements QueryableColle
     }
   }
 
+  get path(): string {
+    return this.doc.parent.path;
+  }
+
   async get(trans?: Transaction): Promise<QuerySnapshot<T>> {
     const snap = await (trans ? trans.get(this.doc) : this.doc.get());
 

@@ -11,7 +11,7 @@ import { relationsUpdate, relationsDelete } from './relations';
 import { FieldPath } from '@google-cloud/firestore';
 import { validateComponents } from './utils/validate-components';
 import { TransactionWrapper } from './utils/transaction-wrapper';
-import type { Snapshot, QueryableCollection } from './utils/queryable-collection';
+import type { Snapshot, Queryable } from './utils/queryable-collection';
 import { ManualFilter, convertWhere } from './utils/convert-where';
 import { coerceValue, toFirestore } from './utils/coerce';
 
@@ -20,7 +20,7 @@ import { coerceValue, toFirestore } from './utils/coerce';
 export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
   
 
-  function buildSearchQuery(value: any, query: QueryableCollection) {
+  function buildSearchQuery(value: any, query: Queryable) {
 
     const filters: ManualFilter[] = [];
 
@@ -75,7 +75,7 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
     return query.whereAny(filters);
   };
 
-  function buildFirestoreQuery(params, searchQuery: string | null, query: QueryableCollection): QueryableCollection | null {
+  function buildFirestoreQuery(params, searchQuery: string | null, query: Queryable): Queryable | null {
     // Remove any search query
     // because we extract and handle it separately
     // Otherwise `convertRestQueryParams` will also handle it

@@ -19,13 +19,12 @@ export async function relationsUpdate(model: FirestoreConnectorModel, ref: Refer
 
     const reverse = getReverseAssocByAssoc(assoc);
 
-    const setReverse = (r: ReverseAssocDetails, assocRef: Reference, set: boolean) => {
+    const setReverse = (r: ReverseAssocDetails, assocRef: Reference, set: boolean, refValue?: any) => {
       // Store a plain reference for normal relations
       // but an object with extra info for polymorphic relations
-      const refValue = reverse
-        ? ref
-        : { ref, [r.assoc.filter]: assoc.alias };
-
+      if (!refValue) {
+        refValue = makeRefValue(r.assoc, assoc, ref);
+      }
       const reverseValue = set
         ? (r.assoc.collection ? FieldValue.arrayUnion(refValue) : refValue)
         : (r.assoc.collection ? FieldValue.arrayRemove(refValue) : null);
@@ -35,7 +34,7 @@ export async function relationsUpdate(model: FirestoreConnectorModel, ref: Refer
       );
     };
 
-    const findAndSetThis = (added: Reference[], removed: Reference[]) => {
+    const findAndSetReverse = (added: Reference[], removed: Reference[]) => {
       if (reverse) {
         if (reverse.assoc.dominant) {
           // Assign this reference to new values
@@ -49,14 +48,15 @@ export async function relationsUpdate(model: FirestoreConnectorModel, ref: Refer
           } else {
             // Previous references were not stored in this document
             // so we need to search for them
+            const refValue = makeRefValue(reverse.assoc, assoc, ref);
             const q = reverse.assoc.model
-              ? reverse.model.db.where(assoc.alias, '==', ref)
-              : reverse.model.db.where(assoc.alias, 'array-contains', ref);
+              ? reverse.model.db.where(reverse.assoc.alias, '==', refValue)
+              : reverse.model.db.where(reverse.assoc.alias, 'array-contains', refValue);
 
             promises.push(
               transaction.get(q).then(snap => {
                 snap.docs.forEach(d => {
-                  setReverse(reverse, d.ref, false);
+                  setReverse(reverse, d.ref, false, refValue);
                 });
               })
             );
@@ -69,8 +69,9 @@ export async function relationsUpdate(model: FirestoreConnectorModel, ref: Refer
         }
 
       } else {
-        // Handle polymorphic relation
+        // POLYMORPHIC RELATION
 
+        // Assign this reference to new values
         added.forEach(morphRef => {
           const morphReverse = getReverseAssocByModel(getModelByRef(morphRef), assoc);
           if (morphReverse.assoc.dominant) {
@@ -78,7 +79,10 @@ export async function relationsUpdate(model: FirestoreConnectorModel, ref: Refer
           }
         });
 
+        // Remove this reference from old values
         if (assoc.dominant) {
+          // Previous references were stored in this document
+          // so we can find them directly
           removed.forEach(morphRef => {
             const morphReverse = getReverseAssocByModel(getModelByRef(morphRef), assoc);
             if (morphReverse.assoc.dominant) {
@@ -86,6 +90,28 @@ export async function relationsUpdate(model: FirestoreConnectorModel, ref: Refer
             }
           });
         } else {
+          // Previous references were not stored in this document
+          // so we need to search for them
+          const relatedModels = model.morphRelatedModels[assoc.alias];
+
+          relatedModels.forEach(m => {
+            const morphReverse = getReverseAssocByModel(m, assoc);
+            if(morphReverse.assoc.dominant) {
+              const refValue = makeRefValue(morphReverse.assoc, assoc, ref);
+              const q = morphReverse.assoc.collection
+                ? m.db.where(morphReverse.assoc.alias, 'array-contains', refValue)
+                : m.db.where(morphReverse.assoc.alias, '==', refValue);
+              promises.push(
+                transaction.get(q).then(snap => {
+                  snap.docs.forEach(d => {
+                    setReverse(morphReverse, d.ref, false, refValue);
+                  });
+                })
+              );
+            }
+          });
+
+
           // TODO:
           // We need to search the collections of all models
           // that are related to this polymorphic relation
@@ -94,22 +120,31 @@ export async function relationsUpdate(model: FirestoreConnectorModel, ref: Refer
       }
     };
 
-    if (assoc.collection) {
-      const prevValue = valueAsArray(prevData, assoc, reverse, true);
-      const newValue = valueAsArray(newData, assoc, reverse, true);
-
+    const setThis = (value: Reference | Reference[] | null) => {
       if (newData) {
         if (assoc.dominant) {
-          // Reference to associated model is stored in this document
-          _.set(newData, assoc.alias, newValue);
+          const refValue = value && (Array.isArray(value)
+            ? value.map(v => makeRefValue(assoc, reverse?.assoc, v))
+            : makeRefValue(assoc, reverse?.assoc, value));
+
+          _.set(newData, assoc.alias, refValue);
         } else {
           _.unset(newData, assoc.alias);
         }
       }
+    };
 
+    if (assoc.collection) {
+      const prevValue = valueAsArray(prevData, assoc, reverse, true);
+      const newValue = valueAsArray(newData, assoc, reverse, true);
+      
+      // Set the value stored in this document appropriately
+      setThis(newValue || []);
+
+      // Set the value stored in the references documents appropriately
       const removed = _.differenceWith(prevValue, newValue || [], refEquals);
       const added = _.differenceWith(newValue, prevValue || [], refEquals)
-      findAndSetThis(added, removed);
+      findAndSetReverse(added, removed);
 
       return;
     }
@@ -117,19 +152,14 @@ export async function relationsUpdate(model: FirestoreConnectorModel, ref: Refer
     if (assoc.model) {
       const prevValue = valueAsSingle(prevData, assoc, reverse, true);
       const newValue = valueAsSingle(newData, assoc, reverse, true);
+      
+      // Set the value stored in this document appropriately
+      setThis(newValue || null);
 
-      if (newData) {
-        if (assoc.dominant) {
-          // Reference to associated model is stored in this document
-          _.set(newData, assoc.alias, newValue);
-        } else {
-          _.unset(newData, assoc.alias);
-        }
-      }
-
+      // Set the value stored in the references documents appropriately
       const added = newValue ? [newValue] : [];
       const removed = prevValue ? [prevValue] : [];
-      findAndSetThis(added, removed);
+      findAndSetReverse(added, removed);
 
       return;
     }
@@ -193,6 +223,21 @@ function getReverseAssocByModel(model: FirestoreConnectorModel | undefined, this
     model,
     assoc,
   };
+}
+
+function makeRefValue(assoc: StrapiAssociation, otherAssoc: StrapiAssociation | undefined, ref: Reference): any {
+  if ((assoc.collection || assoc.model) == '*') {
+    const value: any = { ref };
+    if (assoc.filter) {
+      if (!otherAssoc) {
+        throw new Error('Cannot assign polymorphic reference because the filter is unknown.');
+      }
+      value[assoc.filter] = otherAssoc.alias;
+    }
+    return value;
+  } else {
+    ref;
+  }
 }
 
 function refEquals(a: Reference | null | undefined, b: Reference | null | undefined): boolean {
