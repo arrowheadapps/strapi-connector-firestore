@@ -5,7 +5,7 @@
 import * as _ from 'lodash';
 import { populateDoc, populateDocs } from './populate';
 import { convertRestQueryParams } from 'strapi-utils';
-import type { StrapiQueryParams, StrapiFilter, StrapiQuery } from './types';
+import type { StrapiQueryParams, StrapiFilter, StrapiQuery, StrapiAttributeType } from './types';
 import { StatusError } from './utils/status-error';
 import { deleteRelations, updateRelations } from './relations';
 import { FieldPath } from '@google-cloud/firestore';
@@ -13,7 +13,8 @@ import { validateComponents } from './utils/validate-components';
 import { TransactionWrapper } from './utils/transaction-wrapper';
 import type { Snapshot, QueryableCollection, Reference } from './utils/queryable-collection';
 import { ManualFilter, convertWhere } from './utils/convert-where';
-import { coerceValue, toFirestore } from './utils/coerce';
+import { coerceAttribute, toFirestore } from './utils/coerce';
+import { buildPrefixQuery } from './utils/prefix-query';
 
 
 
@@ -22,25 +23,27 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
 
   function buildSearchQuery(value: any, query: QueryableCollection) {
 
-    const filters: ManualFilter[] = [];
+    if (model.options.searchAttribute) {
+      const field = model.options.searchAttribute;
+      const type: StrapiAttributeType = (field === model.primaryKey)
+        ? 'uid'
+        : model.attributes[field].type;
 
-    if (value != null) {
-      filters.push(convertWhere(FieldPath.documentId(), 'contains', value.toString(), 'manualOnly'));
-    }
-  
-    Object.keys(model.attributes).forEach((field) => {
-      switch (model.attributes[field].type) {
+      // Build a native implementation of primitive search
+      switch (type) {
         case 'integer':
         case 'float':
         case 'decimal':
         case 'biginteger':
-          try {
-            // Use equality operator for numbers
-            filters.push(convertWhere(field, 'eq', coerceValue(model, field, value, toFirestore), 'manualOnly'));
-          } catch {
-            // Ignore if the query can't be coerced to this type
-          }
-          break;
+        case 'date':
+        case 'time':
+        case 'datetime':
+        case 'timestamp':
+        case 'json':
+        case 'boolean':
+          // Use equality operator 
+          value = coerceAttribute(model.attributes[field], value, toFirestore);
+          return query.where(convertWhere(field, 'eq', value, 'nativeOnly'));
 
         case 'string':
         case 'text':
@@ -48,31 +51,78 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
         case 'email':
         case 'enumeration':
         case 'uid':
-          try {
-            // User contains operator for strings
-            filters.push(convertWhere(field, 'contains', coerceValue(model, field, value, toFirestore), 'manualOnly'));
-          } catch {
-            // Ignore if the query can't be coerced to this type
-          }
-          break;
+          // Use prefix operator
+          value = coerceAttribute(model.attributes[field], value, toFirestore);
+          const { gte, lt } = buildPrefixQuery(value);
+          return query
+            .where(convertWhere(field, 'gte', gte, 'nativeOnly'))
+            .where(convertWhere(field, 'lt', lt, 'nativeOnly'));
 
-        case 'date':
-        case 'time':
-        case 'datetime':
-        case 'json':
-        case 'boolean':
         case 'password':
-          // Explicitly don't search in these fields
-          break;
+          // Explicitly don't search in password fields
+          throw new Error('Not allowed to query password fields');
           
         default:
-          // Unsupported field type for search
-          // Don't search in these fields
-          break;
+          throw new Error(`Search attribute "${field}" is an of an unsupported type`);
       }
-    });
-  
-    return query.whereAny(filters);
+
+    } else {
+
+      // Build a manual implementation of fully-featured search
+      const filters: ManualFilter[] = [];
+
+      if (value != null) {
+        filters.push(convertWhere(FieldPath.documentId(), 'contains', value.toString(), 'manualOnly'));
+      }
+
+      Object.keys(model.attributes).forEach((field) => {
+        const attr = model.attributes[field];
+        switch (attr.type) {
+          case 'integer':
+          case 'float':
+          case 'decimal':
+          case 'biginteger':
+            try {
+              // Use equality operator for numbers
+              filters.push(convertWhere(field, 'eq', coerceAttribute(attr, value, toFirestore), 'manualOnly'));
+            } catch {
+              // Ignore if the query can't be coerced to this type
+            }
+            break;
+
+          case 'string':
+          case 'text':
+          case 'richtext':
+          case 'email':
+          case 'enumeration':
+          case 'uid':
+            try {
+              // User contains operator for strings
+              filters.push(convertWhere(field, 'contains', coerceAttribute(attr, value, toFirestore), 'manualOnly'));
+            } catch {
+              // Ignore if the query can't be coerced to this type
+            }
+            break;
+
+          case 'date':
+          case 'time':
+          case 'datetime':
+          case 'timestamp':
+          case 'json':
+          case 'boolean':
+          case 'password':
+            // Explicitly don't search in these fields
+            break;
+            
+          default:
+            // Unsupported field type for search
+            // Don't search in these fields
+            break;
+        }
+      });
+
+      return query.whereAny(filters);
+    }
   };
 
   function buildFirestoreQuery(params, searchQuery: string | null, query: QueryableCollection): QueryableCollection | null {
@@ -104,6 +154,11 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
           }
         }
 
+        // Prevent querying passwords
+        if (model.attributes[field]?.type === 'password') {
+          throw new Error('Not allowed to query password fields');
+        }
+
         // Coerce to the appropriate types
         // Because values from querystring will always come in as strings
         
@@ -119,7 +174,7 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
         } else if (operator !== 'null') {
           // Don't coerce the 'null' operatore because the value is true/false
           // not the type of the field
-          value = coerceValue(model, field, value, toFirestore);
+          value = coerceAttribute(model.attributes[field], value, toFirestore);
         }
 
         query = query.where(field, operator, value);

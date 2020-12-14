@@ -37,7 +37,7 @@ export function manualWhere(field: string | FieldPath, predicate: (fieldValue: a
  * or a manual function.
  */
 export function convertWhere(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator | RegExp, value: any, mode: 'manualOnly'): ManualFilter
-export function convertWhere(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator | RegExp, value: any, mode: 'nativeOnly'): ManualFilter
+export function convertWhere(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator | RegExp, value: any, mode: 'nativeOnly'): WhereFilter
 export function convertWhere(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator | RegExp, value: any, mode: 'manualOnly' | 'nativeOnly' | 'preferNative'): WhereFilter | ManualFilter
 export function convertWhere(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator | RegExp, value: any, mode: 'manualOnly' | 'nativeOnly' | 'preferNative'): WhereFilter | ManualFilter {
   let op: WhereFilterOp | ManualFilter;
