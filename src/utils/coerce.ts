@@ -414,7 +414,7 @@ export function coerceToReferenceSingle(value: any, to: FirestoreConnectorModel 
     }
   }
 
-  return fault(strict, 'Value could not be coerced to a reference.');
+  return fault(strict, `Value could not be coerced to a reference: "${JSON.stringify(value)}"`);
 }
 
 function getIdOrAuto(model: FirestoreConnectorModel, value: any): string | undefined {

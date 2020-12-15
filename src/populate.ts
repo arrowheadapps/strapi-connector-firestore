@@ -53,14 +53,14 @@ export async function populateField(model: FirestoreConnectorModel, docRef: Refe
   const details = model.associations.find(assoc => assoc.alias === field)!;
   const assocModel = strapi.db.getModelByAssoc(details);
 
-  if (!assocModel) {
-    // TODO:
-    // This seems to happen for polymorphic relations such as images
-    // Can we just safely ignore this?
-    //throw new Error(`Associated model not found for model: "${details.model || details.collection}" plugin: "${details.plugin}"`);
+  // if (!assocModel) {
+  //   // TODO:
+  //   // This seems to happen for polymorphic relations such as images
+  //   // Can we just safely ignore this?
+  //   //throw new Error(`Associated model not found for model: "${details.model || details.collection}" plugin: "${details.plugin}"`);
 
-    return;
-  }
+  //   return;
+  // }
 
   const processPopulatedDoc = (snap: Snapshot) => {
     const data = snap.data();

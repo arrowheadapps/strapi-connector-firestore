@@ -352,6 +352,11 @@ export function mountModels(models: FirestoreConnectorContext[]) {
     model.defaultPopulate = model.associations
       .filter(ast => ast.autoPopulate !== false)
       .map(ast => ast.alias);
+
+    // TODO:
+    // Correlate all models that relate to any polymorphic
+    // relations in this model
+    model.morphRelatedModels = {};
     
     model.hasPK = (obj: any) => _.has(obj, model.primaryKey) || _.has(obj, 'id') || Boolean(singleKey);
     model.getPK = (obj: any) => singleKey || ((_.has(obj, model.primaryKey) ? obj[model.primaryKey] : obj.id));
