@@ -184,7 +184,16 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
 
     (filters.sort || []).forEach(({ field, order }) => {
       if (_.includes(model.idKeys, field)) {
-        query = query.orderBy(FieldPath.documentId() as any, order);
+        if (searchQuery || 
+          (filters.where || []).some(w => !_.includes(model.idKeys, w.field))) {
+          // Ignore sort by document ID when there are other filers
+          // on fields other than the document ID
+          // Document ID is the default sort for all queryies 
+          // And more often than not, it interferes with Firestore inequality filter
+          // or indexing rules
+        } else {
+          query = query.orderBy(FieldPath.documentId() as any, order);
+        }
       } else {
         query = query.orderBy(field, order);
       }
