@@ -97,13 +97,13 @@ jobs:
       # Combine coverate
       - name: Combine coverage
         working-directory: input
-        run: npm run combine-coverage --prefix test
+        run: npm run coverage-combine --prefix test
       
       # Upload report
       - name: Codecov
         uses: codecov/codecov-action@v1
         with:
-          directory: coverage
+          directory: coverage/combined
           fail_ci_if_error: true
       
       # Report pass/fail results

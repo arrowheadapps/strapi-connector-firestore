@@ -2,7 +2,8 @@
   "private": true,
   "scripts": {
     "postinstall": "patch-package",
-    "remap": "remap-istanbul --input ../coverage/coverage-final.json --output ../coverage/coverage-mapped.json",
+    "remap-coverage": "remap-istanbul --input ../coverage/coverage-final.json --output ../coverage/coverage-mapped.json",
+    "combine-coverage": "istanbul-combine -d ../coverage/combined -p detail -r json ../coverage/*/*.json",
     "test": "node e2e.js",
     "test:e2e": "jest --config jest.config.e2e.js --runInBand --verbose --forceExit --detectOpenHandles"
   },
