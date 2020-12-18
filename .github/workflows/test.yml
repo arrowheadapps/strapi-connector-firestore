@@ -66,7 +66,7 @@ jobs:
           name: coverage_${{ matrix.flattening }}
           path: coverage/coverage-mapped.json
 
-  codecov:
+  coverage:
     runs-on: ubuntu-latest
     if: ${{ always() }}
     needs: test
@@ -92,12 +92,12 @@ jobs:
       # Download individual coverage reports
       - uses: actions/download-artifact@v2
         with:
-          path: input
+          path: coverage
 
       # Combine coverate
       - name: Combine coverage
         working-directory: input
-        run: npx istanbul-combine -- -d ../coverage -p detail -r json **/*.json
+        run: npm run combine-coverage --prefix test
       
       # Upload report
       - name: Codecov
@@ -105,3 +105,13 @@ jobs:
         with:
           directory: coverage
           fail_ci_if_error: true
+      
+      # Report pass/fail results
+      - name: Report results
+        uses: actions/github-script@v3
+        with:
+          result-encoding: string
+          script: |
+            const report = require(`${process.env.GITHUB_WORKSPACE}/test/report.js`);
+            return await report({ github, context, core, io });
+
