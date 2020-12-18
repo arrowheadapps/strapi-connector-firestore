@@ -58,7 +58,7 @@ jobs:
           FLATTENING: ${{ matrix.flattening }}
       - name: Remap
         if: ${{ always() }}
-        run: npm run remap -s --prefix test
+        run: npm run remap-coverage -s --prefix test
       - name: Upload coverage
         uses: actions/upload-artifact@v2
         if: ${{ always() }}
@@ -97,7 +97,7 @@ jobs:
       # Combine coverate
       - name: Combine coverage
         working-directory: input
-        run: npm run coverage-combine --prefix test
+        run: npm run combine-coverage -s --prefix test
       
       # Upload report
       - name: Codecov
