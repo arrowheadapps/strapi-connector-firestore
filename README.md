@@ -131,7 +131,7 @@ This connector manually implements search and these other filters by reading the
 
 You can enable manual search and manual implementations of unsupported queries by using the `allowNonNativeQueries` option, but you should consider cost exposure. It is therefore recommended that you only enable this on models that specifically require it.
 
-You can enable a primitve kind of search withouth enabling `allowNonNativeQueries` by using the `searchAttribute` setting. This nominates a single attribute to query against when a search query is performed. If the attribute is a string, a search query will result in a query for strings starting with the given query term. If the attribute of any other type, a search query will result in an equality query on this attribute.
+You can enable a primitve kind of search withouth enabling `allowNonNativeQueries` by using the `searchAttribute` setting. This nominates a single attribute to query against when a search query is performed. If the attribute is a string, a search query will result in a case-sensitive query for strings starting with the given query term (case-sensitive string prefix). If the attribute of any other type, a search query will result in an equality query on this attribute.
 
 If `searchAttribute` is defined, the primitive search behaviour is used regardless of whether or not fully-featured search is available.
 
