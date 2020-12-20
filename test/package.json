@@ -1,8 +1,7 @@
 {
   "private": true,
   "scripts": {
-    "postinstall": "patch-package",
-    "pretest": "node -e \"require('./helpers/testAppGenerator').setupTestApp()\"",
+    "pretest": "patch-package && node -e \"require('./helpers/testAppGenerator').setupTestApp()\"",
     "posttest": "node -e \"require('./helpers/testAppGenerator').cleanTestApp()\"",
     "test": "jest --config=jest.config.e2e.js --runInBand --forceExit --detectOpenHandles --json --outputFile=../coverage/results.json",
     "coverage-remap": "remap-istanbul --input ../coverage/coverage-final.json --output ../coverage/coverage-mapped.json --basePath strapi-connector-firestore",
