@@ -10,14 +10,12 @@
   },
   "dependencies": {
     "execa": "^5.0.0",
-    "firebase-tools": "^8.17.0",
+    "firebase-tools": "^9.0.1",
     "fs-extra": "^9.0.1",
     "glob": "^7.1.6",
     "glob-promise": "^3.4.0",
-    "istanbul-combine": "^0.3.0",
     "jest": "^26.6.3",
     "patch-package": "^6.2.2",
-    "remap-istanbul": "^0.13.0",
     "request-promise-native": "^1.0.9",
     "rimraf": "^3.0.2",
     "strapi": "^3.3.4",
@@ -29,5 +27,9 @@
     "strapi-plugin-users-permissions": "^3.3.4",
     "strapi-utils": "^3.3.4",
     "wait-on": "^5.2.0"
+  },
+  "devDependencies": {
+    "istanbul-combine": "^0.3.0",
+    "remap-istanbul": "^0.13.0"
   }
 }

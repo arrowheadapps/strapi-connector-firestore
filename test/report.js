@@ -64,7 +64,7 @@ module.exports = async ({ github, context, core, io }) => {
 const loadResults = async () => {
   const results = {};
   const resultFiles = await glob.promise('coverage/*/results.json');
-  await Promise.all(resultFiles.map(file => {
+  await Promise.all(resultFiles.map(async file => {
     const obj = await fs.readJSON(file);
     const flattening = path.basename(file).split('.')[0];
     results['Total'] = results['Total'] || {};
