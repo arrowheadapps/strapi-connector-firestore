@@ -33,16 +33,3 @@ index 7e5b2b0..d369511 100644
      peopleNumber: 1,
      fabricThickness: 1.0001,
    },
-diff --git a/node_modules/strapi/lib/Strapi.js b/node_modules/strapi/lib/Strapi.js
-index bca04a9..394abcb 100644
---- a/node_modules/strapi/lib/Strapi.js
-+++ b/node_modules/strapi/lib/Strapi.js
-@@ -275,7 +275,7 @@ class Strapi {
-     }
- 
-     // Kill process.
--    process.exit(exitCode);
-+    //process.exit(exitCode);
-   }
- 
-   async load() {

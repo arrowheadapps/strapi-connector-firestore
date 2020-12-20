@@ -56,15 +56,18 @@ jobs:
         run: npm test
         env: 
           FLATTENING: ${{ matrix.flattening }}
+          SILENT: true
       - name: Remap
         if: ${{ always() }}
-        run: npm run remap-coverage -s --prefix test
+        run: npm run coverage-remap -s --prefix test
       - name: Upload coverage
         uses: actions/upload-artifact@v2
         if: ${{ always() }}
         with:
           name: coverage_${{ matrix.flattening }}
-          path: coverage/coverage-mapped.json
+          path: |
+            coverage/coverage-mapped.json
+            coverage/results.json
 
   coverage:
     runs-on: ubuntu-latest
@@ -97,7 +100,7 @@ jobs:
       # Combine coverate
       - name: Combine coverage
         working-directory: input
-        run: npm run combine-coverage -s --prefix test
+        run: npm run coverage-combine -s --prefix test
       
       # Upload report
       - name: Codecov

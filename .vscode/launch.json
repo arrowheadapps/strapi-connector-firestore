@@ -6,7 +6,14 @@
       "request": "launch",
       "name": "Debug tests",
       "cwd": "${workspaceRoot}/test",
-      "program": "${workspaceRoot}/test/e2e.js",
+      "runtimeArgs": [
+        "--inspect-brk",
+        "${workspaceRoot}/test/node_modules/.bin/jest",
+        "--runInBand",
+        "--config=jest.config.e2e.js",
+        "--forceExit",
+        "--detectOpenHandles"
+      ],
       "console": "integratedTerminal",
       "internalConsoleOptions": "neverOpen",
       "autoAttachChildProcesses": true
