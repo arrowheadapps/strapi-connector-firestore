@@ -7,5 +7,4 @@ public/
 build/
 node_modules/
 __tests__/
-package-lock.json
 .strapi-updater.json

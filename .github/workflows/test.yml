@@ -31,7 +31,7 @@ jobs:
       
       # Install and build the package
       - name: Install root package
-        run: npm install
+        run: npm ci
       - name: Build
         run: npm run build
 
@@ -41,7 +41,7 @@ jobs:
         with:
           java-version: 1.8
       - name: Install test package
-        run: npm install --prefix test
+        run: npm ci --prefix test
       - name: Cache emulators
         uses: actions/cache@v2.0.0
         with:
@@ -88,7 +88,7 @@ jobs:
         
       # Install and build the package
       - name: Install root package
-        run: npm install
+        run: npm ci
       - name: Build
         run: npm run build
   
@@ -99,7 +99,7 @@ jobs:
 
       # Install the test package
       - name: Install test package
-        run: npm install --only=dev --prefix test
+        run: npm ci --only=dev --prefix test
 
       # Combine coverate
       - name: Combine coverage
