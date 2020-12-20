@@ -103,7 +103,6 @@ jobs:
 
       # Combine coverate
       - name: Combine coverage
-        working-directory: input
         run: npm run coverage-combine -s --prefix test
       
       # Upload report
