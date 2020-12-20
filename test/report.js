@@ -38,7 +38,7 @@ const fingerprint = 'strapi-connector-firestore-bot-results';
 module.exports = async ({ github, context, core, io }) => {
   const [results, baseResults] = await Promise.all([
     loadResults(), 
-    findBaseResults()
+    findBaseResults({ github, context })
   ]);
   const rows = [
     `## Test results`,
