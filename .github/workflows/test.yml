@@ -99,7 +99,7 @@ jobs:
 
       # Install the test package
       - name: Install test package
-        run: npm ci --only=dev --prefix test
+        run: npm ci --prefix test
 
       # Combine coverate
       - name: Combine coverage

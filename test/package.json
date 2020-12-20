@@ -5,7 +5,7 @@
     "posttest": "node -e \"require('./helpers/testAppGenerator').cleanTestApp()\"",
     "test": "jest --config=jest.config.e2e.js --runInBand --forceExit --detectOpenHandles --json --outputFile=../coverage/results.json",
     "coverage-remap": "remap-istanbul --input ../coverage/coverage-final.json --output ../coverage/coverage-mapped.json --basePath strapi-connector-firestore",
-    "coverage-combine": "mkdir -p ../coverage/combined && istanbul-combine -d ../coverage/combined -p detail -r json ../coverage/*/coverage-mapped.json"
+    "coverage-combine": "istanbul-combine -d ../coverage/combined -p detail -r json ../coverage/*/coverage-mapped.json"
   },
   "dependencies": {
     "execa": "^5.0.0",
