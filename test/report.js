@@ -36,6 +36,7 @@ const fingerprint = 'strapi-connector-firestore-bot-results';
  * @param {GitHubContext}
  */
 module.exports = async ({ github, context, core, io }) => {
+  let totalPassed = 0, grandTotal = 0;
   const [results, baseResults] = await Promise.all([
     loadResults(), 
     findBaseResults({ github, context })
@@ -44,8 +45,6 @@ module.exports = async ({ github, context, core, io }) => {
     `## Test results`,
     ``,
   ];
-  const totalPassed = 0;
-  const grandTotal = 0;
 
   if (!baseResults) {
     rows.unshift(
@@ -74,7 +73,7 @@ module.exports = async ({ github, context, core, io }) => {
 
         totalPassed += pass;
         grandTotal += total;
-        const row = `${pass} / ${total} (${(pass + total).toFixed(1)}%)`;
+        let row = `${pass} / ${total} (${(pass + total).toFixed(1)}%)`;
 
         if (baseResults) {
           const base = (results[suiteName] || {})[flattening];
@@ -84,6 +83,8 @@ module.exports = async ({ github, context, core, io }) => {
             row += ` (Δ ${(base.pass / (base.pass + base.skipped + base.fail)).toFixed(1)}%)`;
           }
         }
+
+        return row;
       })
       .join(' | ');
 
@@ -166,7 +167,7 @@ const updateComment = async (body, meta, { github, context }) => {
     });
 
   const comment = await paginateFilteringFingerprint(opts, { github });
-  
+
   const fingerprintedBody = `<!-- ${fingerprint}\n${JSON.stringify(meta)}\n-->\n${body}`;
   if (comment) {
     await github.issues.updateComment({
