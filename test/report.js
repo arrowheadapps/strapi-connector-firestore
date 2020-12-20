@@ -126,11 +126,11 @@ const loadResults = async () => {
 const findBaseResults = async ({ github, context }) => {
   
   const opts = context.payload.pull_request
-    ? github.repos.listCommentsForCommit.endpoint.defaults({
+    ? github.repos.listCommentsForCommit.endpoint.merge({
         ...context.repo,
         commit_sha: context.payload.pull_request.base.sha,
     })
-    : github.repos.listCommentsForCommit.endpoint.defaults({
+    : github.repos.listCommentsForCommit.endpoint.merge({
       ...context.repo,
       commit_sha: context.payload.base.sha,
     });
@@ -156,18 +156,18 @@ const findBaseResults = async ({ github, context }) => {
 const updateComment = async (body, meta, { github, context }) => {
 
   const opts = context.payload.pull_request
-    ? github.issues.listComments.endpoint.defaults({
+    ? github.issues.listComments.endpoint.merge({
         ...context.repo,
         issue_number: context.issue.number,
     })
-    : github.repos.listCommentsForCommit.endpoint.defaults({
+    : github.repos.listCommentsForCommit.endpoint.merge({
       ...context.repo,
       commit_sha: null,
     });
 
   const comment = await paginateFilteringFingerprint(opts, { github });
-  const fingerprintedBody = `<!-- ${fingerprint}\n${JSON.stringify(meta)}\n-->\n${body}`;
   
+  const fingerprintedBody = `<!-- ${fingerprint}\n${JSON.stringify(meta)}\n-->\n${body}`;
   if (comment) {
     await github.issues.updateComment({
       ...context.repo,
@@ -187,6 +187,7 @@ const updateComment = async (body, meta, { github, context }) => {
 
 /**
  * 
+ * @param {any} opts
  * @param {GitHubContext}
  */
 const paginateFilteringFingerprint = async (opts, { github }) => {
