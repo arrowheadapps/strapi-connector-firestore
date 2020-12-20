@@ -97,6 +97,10 @@ jobs:
         with:
           path: coverage
 
+      # Install the test package
+      - name: Install test package
+        run: npm install --prefix test
+
       # Combine coverate
       - name: Combine coverage
         working-directory: input
