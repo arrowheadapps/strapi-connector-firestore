@@ -32,14 +32,20 @@ export async function populateDoc(model: FirestoreConnectorModel, doc: PartialSn
   const componentPromises = Promise.all(model.componentKeys.map(async componentKey => {
     const component = data[componentKey];
     if (component) {
-      await Promise.all(_.castArray(component).map(async c => {
-        if (c) {
+      if (Array.isArray(component)) {
+        data[componentKey] = await Promise.all(component.map(c => {
           const componentModel = getComponentModel(model, componentKey, c);
-          await Promise.all(componentModel.defaultPopulate.map(async field => {
-            await populateField(componentModel, doc.ref, field, c, transaction);
-          }));
-        }
-      }));
+          return populateDoc(componentModel, { ref, data: () => c }, componentModel.defaultPopulate, transaction);
+        }));
+      } else {
+        const componentModel = getComponentModel(model, componentKey, c);
+        // FIXME:
+        // `ref` is pointing to the parent document that the component 
+        // is embedded into
+        // In the future, components embedding or not may be configurable
+        // so we need a way to handle and differentiate this
+        data[componentKey] = await populateDoc(componentModel, { ref, data: () => component }, componentModel.defaultPopulate, transaction);
+      }
     }
   }));
 
