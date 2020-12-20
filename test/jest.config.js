@@ -12,6 +12,7 @@ module.exports = {
   coverageReporters: ['json', 'text'],
   collectCoverageFrom: [
     '<rootDir>/lib/**/*.js',
+    '<rootDir>/src/**/*.ts',
   ],
   moduleNameMapper: {
     // When tests are copied over from the strapi module

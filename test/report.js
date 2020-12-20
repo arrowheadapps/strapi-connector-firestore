@@ -77,7 +77,7 @@ module.exports = async ({ github, context, core, io }) => {
         const row = `${pass} / ${total} (${(pass + total).toFixed(1)}%)`;
 
         if (baseResults) {
-          const base = results[suiteName]?.[flattening];
+          const base = (results[suiteName] || {})[flattening];
           if (base) {
             row += ` (Δ ?)`;
           } else {
