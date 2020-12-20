@@ -9,10 +9,10 @@ module.exports = {
   globalTeardown: '<rootDir>/test/teardown.js',
   setupFilesAfterEnv: ['<rootDir>/test/setup-test.js'],
 
+  collectCoverage: true,
   coverageReporters: ['json', 'text'],
   collectCoverageFrom: [
     '<rootDir>/lib/**/*.js',
-    '<rootDir>/src/**/*.ts',
   ],
   moduleNameMapper: {
     // When tests are copied over from the strapi module

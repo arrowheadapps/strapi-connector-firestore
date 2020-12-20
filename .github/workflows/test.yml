@@ -69,7 +69,7 @@ jobs:
             coverage/coverage-mapped.json
             coverage/results.json
 
-  coverage:
+  results:
     runs-on: ubuntu-latest
     if: ${{ always() }}
     needs: test

@@ -48,7 +48,7 @@ module.exports = async ({ github, context, core, io }) => {
 
   if (!baseResults) {
     rows.unshift(
-      `| :exclamation: No results found for base commit.`,
+      `> :exclamation: No results found for base commit. Delta results cannot be shown.`,
       ``,
     );
   }
@@ -70,18 +70,18 @@ module.exports = async ({ github, context, core, io }) => {
       .map(flattening => {
         const { pass = 0, fail = 0, skipped = 0 } = results[suiteName][flattening];
         const total = pass + fail + skipped;
+        const percent = pass / total;
 
         totalPassed += pass;
         grandTotal += total;
-        let row = `${pass} / ${total} (${(pass + total).toFixed(1)}%)`;
+        let row = `${pass} / ${total} (${percent.toFixed(1)}%)`;
 
-        if (baseResults) {
-          const base = (results[suiteName] || {})[flattening];
-          if (base) {
-            row += ` (Δ ?)`;
-          } else {
-            row += ` (Δ ${(base.pass / (base.pass + base.skipped + base.fail)).toFixed(1)}%)`;
-          }
+        const base = ((baseResults || {})[suiteName] || {})[flattening];
+        if (base) {
+          const basePercent = base.pass / (base.pass + base.skipped + base.fail);
+          row += ` (Δ ${(percent - basePercent).toFixed(1)}%)`;
+        } else {
+          row += ` (Δ ?)`;
         }
 
         return row;
@@ -109,7 +109,8 @@ const loadResults = async () => {
   const resultFiles = await glob.promise('coverage/*/results.json');
   await Promise.all(resultFiles.map(async file => {
     const obj = await fs.readJSON(file);
-    const flattening = path.basename(file).split('.')[0];
+    const flattening = /flatten_(\w+)\/results.json$/.exec(file)[1];
+    
     results['Total'] = results['Total'] || {};
     results['Total'][flattening] = results['Total'][flattening] || {};
     results['Total'][flattening].pass = obj.numPassedTests;
