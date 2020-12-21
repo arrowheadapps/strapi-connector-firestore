@@ -10,7 +10,6 @@
         "--inspect-brk",
         "${workspaceRoot}/test/node_modules/.bin/jest",
         "--runInBand",
-        "--config=jest.config.js",
         "--forceExit",
         "--detectOpenHandles"
       ],

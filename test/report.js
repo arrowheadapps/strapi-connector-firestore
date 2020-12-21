@@ -130,16 +130,13 @@ const loadResults = async () => {
  * @returns {TestResult}
  */
 const findBaseResults = async ({ github, context }) => {
-  
-  const opts = context.payload.pull_request
-    ? github.repos.listCommentsForCommit.endpoint.merge({
-        ...context.repo,
-        commit_sha: context.payload.pull_request.base.sha,
-    })
-    : github.repos.listCommentsForCommit.endpoint.merge({
-      ...context.repo,
-      commit_sha: context.payload.base.sha,
-    });
+
+  const opts = github.issues.listCommentsForCommit.endpoint.merge({
+    ...context.repo,
+    commit_sha: context.payload.pull_request
+      ? context.payload.pull_request.base.sha
+      : context.payload.before,
+  });
 
   const comment = await paginateFilteringFingerprint(opts, { github });
   if (comment) {
@@ -168,24 +165,36 @@ const updateComment = async (body, meta, { github, context }) => {
     })
     : github.repos.listCommentsForCommit.endpoint.merge({
       ...context.repo,
-      commit_sha: null,
+      commit_sha: context.payload.sha,
     });
 
   const comment = await paginateFilteringFingerprint(opts, { github });
 
   const fingerprintedBody = `<!-- ${fingerprint}\n${JSON.stringify(meta)}\n-->\n${body}`;
   if (comment) {
-    await github.issues.updateComment({
+    const endpoint = context.payload.pull_request
+      ? github.issues.updateComment
+      : github.repos.updateCommitComment;
+
+    await endpoint({
       ...context.repo,
       comment_id: comment.id,
       body: fingerprintedBody,
     });
   } else {
-    await github.issues.createComment({
-      ...context.repo,
-      issue_number: context.issue.number,
-      body: fingerprintedBody,
-    });
+    if (context.payload.pull_request) {
+      await github.issues.createComment({
+        ...context.repo,
+        issue_number: context.issue.number,
+        body: fingerprintedBody,
+      });
+    } else {
+      await github.repos.createCommitComment({
+        ...context.repo,
+        commit_sha: context.payload.sha,
+        body: fingerprintedBody,
+      });
+    }
   }
 };
 
