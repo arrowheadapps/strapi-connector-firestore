@@ -131,7 +131,7 @@ const loadResults = async () => {
  */
 const findBaseResults = async ({ github, context }) => {
 
-  const opts = github.issues.listCommentsForCommit.endpoint.merge({
+  const opts = github.repos.listCommentsForCommit.endpoint.merge({
     ...context.repo,
     commit_sha: context.payload.pull_request
       ? context.payload.pull_request.base.sha
