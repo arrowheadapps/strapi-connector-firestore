@@ -38,10 +38,7 @@ export interface ConnectorOptions {
    * Does not apply to flattened collections which use only a single
    * read operation anyway.
    * 
-   * **WARNING:**
-   * Defaults to `undefined` (no limit), but it is highly recommend
-   * to set a maximum limit, and to set it as low as applicable for
-   * your application.
+   * Defaults to `200`.
    */
   maxQuerySize?: number
 }

@@ -35,8 +35,12 @@ export class QueryableFirestoreCollection<T = DocumentData> implements Queryable
   }
 
   private warnQueryLimit(limit: number | 'unlimited') {
+    const log = (limit === 'unlimited') 
+      ? strapi.log.debug
+      : strapi.log.warn;
+
     // Log at debug level
-    strapi.log.debug(
+    log(
       `The query limit of "${limit}" has been capped to "${this.maxQuerySize}".` +
       'Adjust the strapi-connector-firestore \`maxQuerySize\` configuration option ' +
       'if this is not the desired behaviour.'

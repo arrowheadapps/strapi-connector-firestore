@@ -90,7 +90,7 @@ These are the available options to be specified in the Strapi database configura
 | `options.flattenModels` | `(string \| RegExp \| { test: string \| RegExp, doc: (model: StrapiModel) => string })[]`   | `[]` | An array of `RegExp`'s that are matched against the `uid` property of each model to determine if it should be flattened (see [collection flattening](#collection-flattening)). Alternatively, and array of objects with `test` and `doc` properties, where `test` is the aforementioned `RegExp` and `doc` is a function taking the model instance and returning a document path where the collection should be stored.<br><br>This is useful for flattening models built-in models or plugin models where you don't have access to the model configuration. Defaults an empty array (no flattening). |
 | `options.allowNonNativeQueries` | `boolean \| RexExp` | `false` | Indicates wheter to allow the connector to manually perform search and other query types than are not natively supported by Firestore (see [Search and non-native queries](#search-and-non-native-queries)). These can have poor performance and higher usage costs, and can cause some queries to fail. If disabled, then search will not function. If a `RegExp` is provided, then this will be tested against each model's `uid` (but this will still be overridden by the model's own setting).  |
 | `options.ensureCompnentIds` | `boolean \| undefined` | `false` | If `true`, then ID's are automatically generated and assigned for embedded components (including dynamic zone) if they don't already exist. ID's are assigned immediately before being sent to Firestore, so they aren't be assigned yet during lifecycle hooks. |
-| `options.maxQuerySize` | `number \| undefined` | `100` | If defined, enforces a maximum limit on the size of all queries. You can use this to limit out-of-control quota usage. Does not apply to flattened collections which use only a single read operation anyway. Set to `0` to remove the limit. <br/><br/>**WARNING:** It is highly recommend to set a maximum limit, and to set it as low as applicable for your application, to limit unexpected quota usage. |
+| `options.maxQuerySize` | `number \| undefined` | `200` | If defined, enforces a maximum limit on the size of all queries. You can use this to limit out-of-control quota usage. Does not apply to flattened collections which use only a single read operation anyway. Set to `0` to remove the limit. <br/><br/>**WARNING:** It is highly recommend to set a maximum limit, and to set it as low as applicable for your application, to limit unexpected quota usage. |
 
 ### Model options
 
@@ -169,8 +169,8 @@ module.exports = ({ env }) => ({
       options: {
         singleId: 'default',
 
-        // Increase max query size limit (default is 100)
-        maxQuerySize: 250,
+        // Decrease max query size limit (default is 200)
+        maxQuerySize: 100,
 
         // Connect to a local running Firestore emulator
         // when running in development mode
