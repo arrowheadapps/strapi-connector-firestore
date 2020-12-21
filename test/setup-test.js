@@ -1,5 +1,5 @@
 const { startStrapi, stopStrapi } = require('./helpers/strapi');
-const { cleanTestApp } = require('./helpers/testAppGenerator');
+const { cleanTestApp } = require('./helpers/app');
 const { purgeFirestore } = require('./helpers/firestore');
 
 beforeAll(async done => {
