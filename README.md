@@ -90,6 +90,7 @@ These are the available options to be specified in the Strapi database configura
 | `options.flattenModels` | `(string \| RegExp \| { test: string \| RegExp, doc: (model: StrapiModel) => string })[]`   | `[]` | An array of `RegExp`'s that are matched against the `uid` property of each model to determine if it should be flattened (see [collection flattening](#collection-flattening)). Alternatively, and array of objects with `test` and `doc` properties, where `test` is the aforementioned `RegExp` and `doc` is a function taking the model instance and returning a document path where the collection should be stored.<br><br>This is useful for flattening models built-in models or plugin models where you don't have access to the model configuration. Defaults an empty array (no flattening). |
 | `options.allowNonNativeQueries` | `boolean \| RexExp \| undefined` | `false` | Indicates wheter to allow the connector to manually perform search and other query types than are not natively supported by Firestore (see [Search and non-native queries](#search-and-non-native-queries)). These can have poor performance and higher usage costs, and can cause some queries to fail. If disabled, then search will not function. If a `RegExp` is provided, then this will be tested against each model's `uid` (but this will still be overridden by the model's own setting).  |
 | `options.ensureCompnentIds` | `boolean \| undefined` | `false` | If `true`, then ID's are automatically generated and assigned for embedded components (including dynamic zone) if they don't already exist. ID's are assigned immediately before being sent to Firestore, so they aren't be assigned yet during lifecycle hooks. |
+| `options.maxQuerySize` | `number \| undefined` | `200` | If defined, enforces a maximum limit on the size of all queries. You can use this to limit out-of-control quota usage. Does not apply to flattened collections which use only a single read operation anyway. Set to `0` to remove the limit. <br/><br/>**WARNING:** It is highly recommend to set a maximum limit, and to set it as low as applicable for your application, to limit unexpected quota usage. |
 
 ### Model options
 
@@ -102,6 +103,7 @@ In addition to the normal model options, you can provide the following to custom
 | `options.allowNonNativeQueries` | `boolean \| undefined` | `undefined` | If defined, overrides the connector's global `allowNonNativeQueries` setting (see above) for this model. If this model is flattened, this setting is ignored and non-native queries including search are supported. |
 | `options.searchAttribute` | `string \| undefined` | `undefined` | If defined, nominates a single attribute to be queried natively, instead of performing a manual search. This can be used to enable primitive search when fully-featured search is disabled because of the `allowNonNativeQueries` setting, or to improve the performance or cost of search queries when full search is not required. See [Search and non-native queries](#search-and-non-native-queries). |
 | `options.ensureCompnentIds` | `boolean \| undefined` | `undefined` | If defined, overrides the connector's global `ensureCompnentIds` setting (see above) for this model. |
+| `options.maxQuerySize` | `number \| undefined` | `undefined` | If defined, overrides the connector's global `maxQuerySize` setting (see above) for this model. Set to `0` to disable the limit. |
 | `config.converter` | `{ toFirestore: (data: Object) => Object, fromFirestore: (data: Object) => Object }` | `undefined` | An object with functions used to convert objects going in and out of Firestore. The `toFirestore` function will be called to convert an object immediately before writing to Firestore. The `fromFirestore` function will be called to convert an object immediately after it is read from Firestore. You can config this parameter in a Javascript file called `./api/{model-name}/models/{model-name}.config.js`, which must export an object with the `converter` property. |
 
 ### Collection flattening
@@ -170,10 +172,14 @@ module.exports = ({ env }) => ({
         projectId: '{YOUR_PROJECT_ID}',
       },
       options: {
+        singleId: 'default',
+
+        // Decrease max query size limit (default is 200)
+        maxQuerySize: 100,
+
         // Connect to a local running Firestore emulator
         // when running in development mode
         useEmulator: env('NODE_ENV') == 'development',
-        singleId: 'default',
 
         // Flatten internal Strapi models (as an example)
         // However, flattening the internal Strapi models is
@@ -289,7 +295,9 @@ While Firestore has a free tier, be very careful to consider the potential usage
 
 Be aware that the Strapi Admin console can very quickly consume several thousand read and write operations in just a few minutes of usage.
 
-For more info, read their [pricing calculator](https://firebase.google.com/pricing#blaze-calculator).
+Particularly, when viewing a collection in the Strapi Admin console, the console will count the collection size, which will incur a read operation for every single document in the collection. This would be disasterous for quota usage for large collections. This is why it is highly recommended to apply the `maxQuerySize` setting, and to set it as low as possible.
+
+For more info on pricing, see the [pricing calculator](https://firebase.google.com/pricing#blaze-calculator).
 
 ### Security
 

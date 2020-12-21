@@ -20,7 +20,8 @@
     "strapi-plugin-content-type-builder": "^3.4.0",
     "strapi-plugin-upload": "^3.4.0",
     "strapi-plugin-users-permissions": "^3.4.0",
-    "strapi-utils": "^3.4.0"
+    "strapi-utils": "^3.4.0",
+    "wait-on": "^5.2.0"
   },
   "devDependencies": {
     "@actions/core": "^1.2.6",

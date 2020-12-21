@@ -1,5 +1,5 @@
 const execa = require('execa');
-const request = require('request-promise-native');
+const waitOn = require('wait-on');
 const { log } = require('./log');
 
 /**
@@ -19,12 +19,18 @@ async function startStrapi() {
       preferLocal: true,
       cleanup: true,
       reject: false,
-      stdio: process.env.SILENT ? 'pipe' : ['pipe', 'inherit', 'inherit'],
+      stdio: 'pipe',
       env: {
         BROWSER: 'none',
         STRAPI_HIDE_STARTUP_MESSAGE: 'true',
       },
     });
+
+    // Pipe Strapi output to the parent
+    strapiProc.stderr.pipe(process.stderr);
+    if (!process.env.SILENT) {
+      strapiProc.stdout.pipe(process.stdout);
+    }
 
     strapiProc.finally(() => {
       strapiProc = null;
@@ -35,7 +41,12 @@ async function startStrapi() {
     log('Strapi already started.\n');
   }
 
-  await waitForStrapi();
+  // Wait for Strapi to become available
+  // or throw error if Strapi exits before becoming available
+  await Promise.race([
+    waitForStrapi(),
+    strapiProc.then(() => Promise.reject(new Error('Strapi failed to start!'))),
+  ]);
 }
 
 /**
@@ -63,28 +74,22 @@ async function stopStrapi() {
   }
 }
 
-async function waitForStrapi() {
-  const ping = async () => {
-    return new Promise((resolve, reject) => {
-      // ping _health
-      request({
-        url: 'http://localhost:1337/_health',
-        method: 'HEAD',
-        mode: 'no-cors',
-        json: true,
-        headers: {
-          'Content-Type': 'application/json',
-          'Keep-Alive': false,
-        },
-      }).then(resolve, reject);
-    }).catch(() => {
-      return new Promise(resolve => setTimeout(resolve, 200)).then(ping);
-    });
-  };
-  
-  // Wait for Strapi to come online
+async function waitForStrapi(timeoutMs = 30_000) {
   log('Waiting for Strapi to come online... ');
-  await new Promise(resolve => setTimeout(resolve, 200)).then(ping);
+  try {
+    await waitOn({
+      resources: ['http://localhost:1337/_health'],
+      headers: {
+        'Content-Type': 'application/json',
+        'Keep-Alive': false,
+      },
+      window: 0,
+      timeout: timeoutMs,
+    });
+  } catch {
+    throw new Error('Timeout waiting for Strapi to come online');
+  }
+
   log('Strapi online!\n');
 }
 

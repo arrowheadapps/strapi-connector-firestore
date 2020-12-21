@@ -81,6 +81,9 @@ export function mountModels(models: FirestoreConnectorContext[]) {
     if (model.options.ensureCompnentIds === undefined) {
       model.options.ensureCompnentIds = options.ensureCompnentIds;
     }
+    if (model.options.maxQuerySize === undefined) {
+      model.options.maxQuerySize = options.maxQuerySize;
+    }
     
     const userConverter = model.config?.converter || { 
       toFirestore: data => data,
@@ -229,7 +232,7 @@ export function mountModels(models: FirestoreConnectorContext[]) {
         };
 
         const collection = instance.collection(collectionName).withConverter(conv);
-        model.db = new QueryableFirestoreCollection(collection, model.options.allowNonNativeQueries);
+        model.db = new QueryableFirestoreCollection(collection, model.options.allowNonNativeQueries, model.options.maxQuerySize);
         model.autoId = () => collection.doc().id;
         model.doc = (id?: string) => id ? collection.doc(id.toString()) : collection.doc();
 

@@ -23,9 +23,9 @@ const startFirestore = async () => {
   });
 
   // Pipe Firestore output to the parent
+  proc.stderr.pipe(process.stderr);
   if (!process.env.SILENT) {
     proc.stdout.pipe(process.stdout);
-    proc.stderr.pipe(process.stderr);
   }
 
   proc.finally(() => {
@@ -60,7 +60,7 @@ const stopFirestore = async () => {
   if (firestore) {
     try {
       log('Killing Firestore... ');
-      firestore.proc.kill('SIGINT', { forceKillAfterTimeout: 3000 });
+      firestore.proc.kill('SIGINT');
 
       // Wait for process to end or timeout
       await Promise.race([

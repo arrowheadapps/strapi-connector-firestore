@@ -30,6 +30,17 @@ export interface ConnectorOptions {
    * Defults to `false`.
    */
   ensureCompnentIds?: boolean
+
+  /**
+   * If defined, enforces a maximum limit on the size of all queries.
+   * You can use this to limit out-of-control quota usage.
+   * 
+   * Does not apply to flattened collections which use only a single
+   * read operation anyway.
+   * 
+   * Defaults to `200`.
+   */
+  maxQuerySize?: number
 }
 
 export interface ModelOptions {
@@ -65,6 +76,15 @@ export interface ModelOptions {
    * Defaults to `undefined` (use connector setting).
    */
   ensureCompnentIds?: boolean
+
+  
+
+  /**
+   * Override connector setting per model.
+   * 
+   * Defaults to `undefined` (use connector setting).
+   */
+  maxQuerySize?: number
 }
 
 
