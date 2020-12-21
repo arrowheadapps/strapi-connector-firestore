@@ -9,8 +9,9 @@ module.exports = {
 
   collectCoverage: true,
   coverageReporters: ['json', 'text'],
+  coverageDirectory: '<rootDir>/../coverage',
   collectCoverageFrom: [
-    '**/strapi-connector-firestore/lib/**/*.js',
+    '**/strapi-connector-firestore/lib/**',
   ],
 
   moduleNameMapper: {
