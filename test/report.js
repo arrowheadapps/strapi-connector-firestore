@@ -82,7 +82,7 @@ module.exports = async ({ github, context, core, io }) => {
         if (base) {
           // const basePercent = (base.pass / (base.pass + base.skipped + base.fail)) * 100;
           const diff = pass - base.pass;
-          const sign = (diff < 0) ? '-' : '';
+          const sign = (diff > 0) ? '+' : '';
           row += ` (Δ \`${sign}${diff})\``;
         } else {
           row += ` (Δ ?)`;
