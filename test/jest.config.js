@@ -10,8 +10,10 @@ module.exports = {
   coverageReporters: ['json', 'text'],
   coverageDirectory: '<rootDir>/coverage',
   collectCoverageFrom: [
-    '**/strapi-connector-firestore/lib/**/*.js',
-    '**/strapi-connector-firestore/src/**/*.ts',
+    '**/*.{ts,js}',
+    '!**/node_modules/**',
+    '!**/test/**',
+    '!**/examples/**',
   ],
 
   testMatch: ['<rootDir>/test/**/*.test*.js'],
