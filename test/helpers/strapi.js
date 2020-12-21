@@ -19,12 +19,18 @@ async function startStrapi() {
       preferLocal: true,
       cleanup: true,
       reject: true,
-      stdio: process.env.SILENT ? ['pipe', 'pipe', 'inherit'] : ['pipe', 'inherit', 'inherit'],
+      stdio: 'pipe',
       env: {
         BROWSER: 'none',
         STRAPI_HIDE_STARTUP_MESSAGE: 'true',
       },
     });
+
+    // Pipe Strapi output to the parent
+    strapiProc.stderr.pipe(process.stderr);
+    if (!process.env.SILENT) {
+      strapiProc.stdout.pipe(process.stdout);
+    }
 
     strapiProc.finally(() => {
       strapiProc = null;
@@ -68,7 +74,7 @@ async function stopStrapi() {
   }
 }
 
-async function waitForStrapi(timeoutMs = 60_000) {
+async function waitForStrapi(timeoutMs = 30_000) {
   log('Waiting for Strapi to come online... ');
   try {
     await waitOn({

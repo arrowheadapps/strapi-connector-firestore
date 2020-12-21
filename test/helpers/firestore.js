@@ -60,7 +60,7 @@ const stopFirestore = async () => {
   if (firestore) {
     try {
       log('Killing Firestore... ');
-      firestore.proc.kill('SIGINT', { forceKillAfterTimeout: 3000 });
+      firestore.proc.kill('SIGINT');
 
       // Wait for process to end or timeout
       await Promise.race([

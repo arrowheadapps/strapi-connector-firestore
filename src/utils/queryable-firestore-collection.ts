@@ -35,16 +35,19 @@ export class QueryableFirestoreCollection<T = DocumentData> implements Queryable
   }
 
   private warnQueryLimit(limit: number | 'unlimited') {
-    const log = (limit === 'unlimited') 
-      ? strapi.log.debug
-      : strapi.log.warn;
-
-    // Log at debug level
-    log(
+    const msg = 
       `The query limit of "${limit}" has been capped to "${this.maxQuerySize}".` +
       'Adjust the strapi-connector-firestore \`maxQuerySize\` configuration option ' +
-      'if this is not the desired behaviour.'
-    );
+      'if this is not the desired behaviour.';
+
+    if (limit === 'unlimited') {
+      // Log at debug level if no limit was set
+      strapi.log.debug(msg);
+    } else {
+      // Log at warning level if a limit was explicitly
+      // set beyond the maximum limit
+      strapi.log.warn(msg);
+    }
   }
 
   get(trans?: Transaction): Promise<QuerySnapshot<T>> {
