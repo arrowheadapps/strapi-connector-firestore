@@ -165,7 +165,7 @@ const updateComment = async (body, meta, { github, context }) => {
     })
     : github.repos.listCommentsForCommit.endpoint.merge({
       ...context.repo,
-      commit_sha: context.payload.sha,
+      commit_sha: context.sha,
     });
 
   const comment = await paginateFilteringFingerprint(opts, { github });
@@ -191,7 +191,7 @@ const updateComment = async (body, meta, { github, context }) => {
     } else {
       await github.repos.createCommitComment({
         ...context.repo,
-        commit_sha: context.payload.sha,
+        commit_sha: context.sha,
         body: fingerprintedBody,
       });
     }
