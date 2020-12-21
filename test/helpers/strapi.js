@@ -1,5 +1,5 @@
 const execa = require('execa');
-const request = require('request-promise-native');
+const waitOn = require('wait-on');
 const { log } = require('./log');
 
 /**
@@ -18,7 +18,7 @@ async function startStrapi() {
     strapiProc = execa.command('nyc --silent --no-clean strapi start', { 
       preferLocal: true,
       cleanup: true,
-      reject: false,
+      reject: true,
       stdio: process.env.SILENT ? ['pipe', 'pipe', 'inherit'] : ['pipe', 'inherit', 'inherit'],
       env: {
         BROWSER: 'none',
@@ -35,7 +35,12 @@ async function startStrapi() {
     log('Strapi already started.\n');
   }
 
-  await waitForStrapi();
+  // Wait for Strapi to become available
+  // or throw error if Strapi exits or cannot start
+  await Promise.race([
+    waitForStrapi(),
+    strapiProc.catch().then(() => Promise.reject(new Error('Strapi failed to start!'))),
+  ]);
 }
 
 /**
@@ -53,7 +58,7 @@ async function stopStrapi() {
     log('Stopping Strapi... ');
     strapiProc.kill();
     // strapiProc.send('stop');
-    await strapiProc;
+    await strapiProc.catch();
 
     // Wait for the next event loop so that the cleanup
     // of the strapiProc will have completed
@@ -63,28 +68,22 @@ async function stopStrapi() {
   }
 }
 
-async function waitForStrapi() {
-  const ping = async () => {
-    return new Promise((resolve, reject) => {
-      // ping _health
-      request({
-        url: 'http://localhost:1337/_health',
-        method: 'HEAD',
-        mode: 'no-cors',
-        json: true,
-        headers: {
-          'Content-Type': 'application/json',
-          'Keep-Alive': false,
-        },
-      }).then(resolve, reject);
-    }).catch(() => {
-      return new Promise(resolve => setTimeout(resolve, 200)).then(ping);
-    });
-  };
-  
-  // Wait for Strapi to come online
+async function waitForStrapi(timeoutMs = 60_000) {
   log('Waiting for Strapi to come online... ');
-  await new Promise(resolve => setTimeout(resolve, 200)).then(ping);
+  try {
+    await waitOn({
+      resources: ['http://localhost:1337/_health'],
+      headers: {
+        'Content-Type': 'application/json',
+        'Keep-Alive': false,
+      },
+      window: 0,
+      timeout: timeoutMs,
+    });
+  } catch {
+    throw new Error('Timeout waiting for Strapi to come online');
+  }
+
   log('Strapi online!\n');
 }
 
