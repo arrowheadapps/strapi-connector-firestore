@@ -23,9 +23,9 @@ const startFirestore = async () => {
   });
 
   // Pipe Firestore output to the parent
+  proc.stderr.pipe(process.stderr);
   if (!process.env.SILENT) {
     proc.stdout.pipe(process.stdout);
-    proc.stderr.pipe(process.stderr);
   }
 
   proc.finally(() => {

@@ -19,7 +19,7 @@ async function startStrapi() {
       preferLocal: true,
       cleanup: true,
       reject: false,
-      stdio: process.env.SILENT ? 'pipe' : ['pipe', 'inherit', 'inherit'],
+      stdio: process.env.SILENT ? ['pipe', 'pipe', 'inherit'] : ['pipe', 'inherit', 'inherit'],
       env: {
         BROWSER: 'none',
         STRAPI_HIDE_STARTUP_MESSAGE: 'true',
