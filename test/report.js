@@ -56,18 +56,19 @@ module.exports = async ({ github, context, core, io }) => {
   // Build a markdown table
 
   Object.keys(results).forEach((suiteName, row) => {
+    const colKeys = Object.keys(results[suiteName]).sort();
+
     if (!row) {
       // Write header
       rows.push(
-        `| Test suite | ${Object.keys(results[suiteName]).join(' | ')} |`,
-        `|------------| ${Object.keys(results[suiteName]).map(() => '---').join('|')}|`,
+        `| Test suite | ${colKeys.join(' | ')} |`,
+        `|------------| ${colKeys.map(() => '---').join('|')}|`,
       );
     }
 
     // Write the row
 
-    const cols = Object.keys(results[suiteName])
-      .sort()
+    const cols = colKeys
       .map(flattening => {
         const { pass = 0, fail = 0, skipped = 0 } = results[suiteName][flattening];
         const total = pass + fail + skipped;
