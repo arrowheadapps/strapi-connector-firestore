@@ -1,23 +1,25 @@
 module.exports = {
   name: 'API integration tests',
-  collectCoverage: true,
   testEnvironment: 'node',
   verbose: !process.env.SILENT,
-  testMatch: ['**/*.test*.js'],
-  globalSetup: 'setup.js',
-  globalTeardown: 'teardown.js',
-  setupFilesAfterEnv: ['setup-test.js'],
+  testMatch: ['<rootDir>/**/*.test*.js'],
+  globalSetup: '<rootDir>/setup.js',
+  globalTeardown: '<rootDir>/teardown.js',
+  setupFilesAfterEnv: ['<rootDir>/setup-test.js'],
 
   collectCoverage: true,
   coverageReporters: ['json', 'text'],
   collectCoverageFrom: [
-    '../lib/**/*.js',
+    '**/strapi-connector-firestore/lib/**/*.js',
   ],
+
   moduleNameMapper: {
-    // When tests are copied over from the strapi module
-    // the relative imports are broken
+    // Tests are copied from the Strapi module so the relative imports are broken
     // So map them to the correct place
     '\\.\\.\\/test\\/helpers\/(.*)$': '<rootDir>/helpers/$1',
   },
-  transform: {},
+
+  transform: {
+
+  },
 };

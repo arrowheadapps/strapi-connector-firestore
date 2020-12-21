@@ -100,6 +100,15 @@ jobs:
       # Install the test package
       - name: Install test package
         run: npm ci --prefix test
+      
+      # Report pass/fail results
+      - name: Report results
+        uses: actions/github-script@v3
+        with:
+          result-encoding: string
+          script: |
+            const report = require(`${process.env.GITHUB_WORKSPACE}/test/report.js`);
+            return await report({ github, context, core, io });
 
       # Combine coverate
       - name: Combine coverage
@@ -111,13 +120,3 @@ jobs:
         with:
           directory: coverage/combined
           fail_ci_if_error: true
-      
-      # Report pass/fail results
-      - name: Report results
-        uses: actions/github-script@v3
-        with:
-          result-encoding: string
-          script: |
-            const report = require(`${process.env.GITHUB_WORKSPACE}/test/report.js`);
-            return await report({ github, context, core, io });
-
