@@ -22,8 +22,9 @@
   ],
   "scripts": {
     "build": "rimraf lib && tsc",
+    "build:test": "rimraf lib && tsc -p tsconfig.test.json",
     "prepare": "tsc --skipLibCheck",
-    "test": "npm run build && npm test --prefix test",
+    "test": "npm run build:test && npm test --prefix test",
     "combine": "cd input && istanbul-combine -d ../coverage -p detail -r json **/*.json"
   },
   "dependencies": {
