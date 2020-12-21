@@ -18,7 +18,7 @@ async function startStrapi() {
     strapiProc = execa.command('nyc --silent --no-clean strapi start', { 
       preferLocal: true,
       cleanup: true,
-      reject: true,
+      reject: false,
       stdio: 'pipe',
       env: {
         BROWSER: 'none',
@@ -42,10 +42,10 @@ async function startStrapi() {
   }
 
   // Wait for Strapi to become available
-  // or throw error if Strapi exits or cannot start
+  // or throw error if Strapi exits before becoming available
   await Promise.race([
     waitForStrapi(),
-    strapiProc.catch().then(() => Promise.reject(new Error('Strapi failed to start!'))),
+    strapiProc.then(() => Promise.reject(new Error('Strapi failed to start!'))),
   ]);
 }
 
@@ -64,7 +64,7 @@ async function stopStrapi() {
     log('Stopping Strapi... ');
     strapiProc.kill();
     // strapiProc.send('stop');
-    await strapiProc.catch();
+    await strapiProc;
 
     // Wait for the next event loop so that the cleanup
     // of the strapiProc will have completed
