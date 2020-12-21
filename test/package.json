@@ -1,7 +1,7 @@
 {
   "private": true,
   "scripts": {
-    "pretest": "patch-package && FLATTENING=flatten_mixed_target node helpers/app-setup.js",
+    "pretest": "patch-package && node helpers/app-setup.js",
     "test": "jest --runInBand --forceExit --detectOpenHandles --json --outputFile=../coverage/results.json",
     "coverage-remap": "nyc merge ../.nyc_output ../coverage/coverage.json",
     "coverage-combine": "istanbul-combine -d ../coverage/combined -p detail -r json ../coverage/*/coverage.json"
