@@ -10,7 +10,8 @@ module.exports = ({ env }) => ({
         projectId: env('npm_package_project_id'),
       },
       options: {
-        useEmulator: env('NODE_ENV') !== 'production'
+        useEmulator: env('NODE_ENV') !== 'production',
+        maxQuerySize: 100,
       }
     }
   },

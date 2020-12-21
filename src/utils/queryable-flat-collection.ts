@@ -1,5 +1,5 @@
 import * as _ from 'lodash';
-import { getFieldPath, convertWhere, ManualFilter } from './convert-where';
+import { getFieldPath, convertWhere, ManualFilter, WhereFilter } from './convert-where';
 import { DocumentReference, OrderByDirection, Transaction, FieldPath, WhereFilterOp, DocumentData } from '@google-cloud/firestore';
 import type { QueryableCollection, QuerySnapshot, Snapshot } from './queryable-collection';
 import type { StrapiWhereOperator } from '../types';
@@ -14,16 +14,18 @@ export class QueryableFlatCollection<T = DocumentData> implements QueryableColle
   private _limit?: number
   private _offset?: number
 
-  constructor(other: DocumentReference<T> | QueryableFlatCollection<T>) {
-    if (other instanceof QueryableFlatCollection) {
-      this.doc = other.doc;
+  constructor(doc: DocumentReference<T>)
+  constructor(other: QueryableFlatCollection<T>)
+  constructor(docOrOther: DocumentReference<T> | QueryableFlatCollection<T>) {
+    if (docOrOther instanceof QueryableFlatCollection) {
+      this.doc = docOrOther.doc;
       // Copy the values
-      this._filters = other._filters.slice();
-      this._orderBy = other._orderBy.slice();
-      this._limit = other._limit;
-      this._offset = other._offset;
+      this._filters = docOrOther._filters.slice();
+      this._orderBy = docOrOther._orderBy.slice();
+      this._limit = docOrOther._limit;
+      this._offset = docOrOther._offset;
     } else {
-      this.doc = other;
+      this.doc = docOrOther;
 
       // Default sort by ID
       this.orderBy(FieldPath.documentId(), 'asc');
@@ -73,33 +75,39 @@ export class QueryableFlatCollection<T = DocumentData> implements QueryableColle
     };
   }
 
-  where(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator | RegExp, value: any): QueryableCollection<T> {
-    const other = new QueryableFlatCollection(this);
-
-    const filter = convertWhere(field, operator, value, 'manualOnly');
-    other._filters.push(filter);
-    return other;
+  where(filter: WhereFilter): QueryableFlatCollection<T>
+  where(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator | RegExp, value: any): QueryableFlatCollection<T>
+  where(fieldOrFilter: string | FieldPath | WhereFilter, operator?: WhereFilterOp | StrapiWhereOperator | RegExp, value?: any): QueryableFlatCollection<T> {
+    if ((typeof fieldOrFilter === 'string') || (fieldOrFilter instanceof FieldPath)) {
+      const other = new QueryableFlatCollection(this);
+  
+      const filter = convertWhere(fieldOrFilter, operator!, value, 'manualOnly');
+      other._filters.push(filter);
+      return other;
+    } else {
+      return this.where(fieldOrFilter.field, fieldOrFilter.operator, fieldOrFilter.value);
+    }
   }
 
-  whereAny(filters: ManualFilter[]): QueryableCollection<T> {
+  whereAny(filters: ManualFilter[]): QueryableFlatCollection<T> {
     const other = new QueryableFlatCollection(this);
     other._filters.push(data => filters.some(f => f(data)));
     return other;
   }
 
-  orderBy(field: string | FieldPath, directionStr: OrderByDirection = 'asc'): QueryableCollection<T> {
+  orderBy(field: string | FieldPath, directionStr: OrderByDirection = 'asc'): QueryableFlatCollection<T> {
     const other = new QueryableFlatCollection(this);
     other._orderBy.push({ field, directionStr });
     return other;
   }
 
-  limit(limit: number): QueryableCollection<T> {
+  limit(limit: number): QueryableFlatCollection<T> {
     const other = new QueryableFlatCollection(this);
     other._limit = limit;
     return other;
   }
 
-  offset(offset: number): QueryableCollection<T> {
+  offset(offset: number): QueryableFlatCollection<T> {
     const other = new QueryableFlatCollection(this);
     other._offset = offset;
     return other;

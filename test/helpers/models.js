@@ -1,6 +1,4 @@
-const waitRestart = require('./waitRestart');
-const { stopStrapi } = require('./strapi');
-const { cleanTestApp } = require('./testAppGenerator');
+const { reloadStrapi } = require('./strapi');
 
 module.exports = ({ rq }) => {
   async function createComponent(data) {
@@ -17,7 +15,7 @@ module.exports = ({ rq }) => {
       },
     });
 
-    await waitRestart();
+    await reloadStrapi();
   }
 
   async function deleteComponent(name) {
@@ -26,7 +24,7 @@ module.exports = ({ rq }) => {
       method: 'DELETE',
     });
 
-    await waitRestart();
+    await reloadStrapi();
   }
 
   function createContentTypeWithType(name, type, opts = {}) {
@@ -59,7 +57,7 @@ module.exports = ({ rq }) => {
     }
 
     if (restart) {
-      await waitRestart();
+      await reloadStrapi();
     }
   }
 
@@ -86,7 +84,7 @@ module.exports = ({ rq }) => {
     });
 
     if (restart) {
-      await waitRestart();
+      await reloadStrapi();
     }
   }
 
@@ -108,25 +106,15 @@ module.exports = ({ rq }) => {
   }
 
   async function deleteContentType(model) {
-    // Just stop Strapi and clean the entire config
-    // Don't bother to manually remove each content type
-    await stopStrapi();
-    await cleanTestApp();
-
-    // await rq({
-    //   url: `/content-type-builder/content-types/application::${model}.${model}`,
-    //   method: 'DELETE',
-    // });
-
-    // await waitRestart();
+    // Don't do anything
+    // Total cleanup will be handled be the afterAll
+    // hook in Jest
   }
 
   async function deleteContentTypes(models) {
-    await deleteContentType();
-
-    // for (let model of models) {
-    //   await deleteContentType(model);
-    // }
+    // Don't do anything
+    // Total cleanup will be handled be the afterAll
+    // hook in Jest
   }
 
   async function cleanupContentTypes(models) {

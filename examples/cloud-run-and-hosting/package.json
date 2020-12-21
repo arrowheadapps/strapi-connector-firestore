@@ -12,12 +12,12 @@
     "deploy:front": "npm run build:prod && firebase deploy --only hosting",
     "deploy:back": "gcloud builds submit --tag gcr.io/$npm_package_project_id/$npm_package_name --project $npm_package_project_id && gcloud run deploy $npm_package_name --quiet --image gcr.io/$npm_package_project_id/$npm_package_name --project $npm_package_project_id --platform managed --region us-central1 --allow-unauthenticated",
     "strapi": "strapi",
-    "clean": "rm -rf .temp .cache build"
+    "clean": "rimraf .temp .cache build"
   },
   "dependencies": {
     "strapi": "^3.3.4",
     "strapi-admin": "^3.3.4",
-    "strapi-connector-firestore": "^3.0.0-alpha.23",
+    "strapi-connector-firestore": "^3.0.0-alpha.24",
     "strapi-plugin-content-manager": "^3.3.4",
     "strapi-plugin-content-type-builder": "^3.3.4",
     "strapi-plugin-email": "^3.3.4",
@@ -27,6 +27,7 @@
     "strapi-utils": "^3.3.4"
   },
   "devDependencies": {
-    "patch-package": "^6.2.2"
+    "patch-package": "^6.2.2",
+    "rimraf": "^3.0.2"
   }
 }

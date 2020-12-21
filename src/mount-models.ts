@@ -4,11 +4,12 @@ import * as path from 'path';
 import { DocumentReference, FieldValue, FirestoreDataConverter, DocumentData } from '@google-cloud/firestore';
 import { QueryableFirestoreCollection } from './utils/queryable-firestore-collection';
 import { QueryableFlatCollection } from './utils/queryable-flat-collection';
-import type { FirestoreConnectorContext, FirestoreConnectorModel, ModelOptions } from './types';
+import type { FirestoreConnectorContext, FirestoreConnectorModel, ModelOptions, StrapiAttributeType } from './types';
 import { TransactionWrapper, TransactionWrapperImpl } from './utils/transaction-wrapper';
 import { populateDocs } from './populate';
 import { coerceModelFromFirestore, coerceModelToFirestore } from './utils/coerce';
 import { DeepReference } from './utils/deep-reference';
+import { buildPrefixQuery } from './utils/prefix-query';
 
 export const DEFAULT_CREATE_TIME_KEY = 'createdAt';
 export const DEFAULT_UPDATE_TIME_KEY = 'updatedAt';
@@ -63,8 +64,25 @@ export function mountModels(models: FirestoreConnectorContext[]) {
       const rootAllow = options.allowNonNativeQueries;
       model.options.allowNonNativeQueries = (rootAllow instanceof RegExp) ? rootAllow.test(model.uid) : rootAllow;
     }
+    if (model.options.searchAttribute) {
+      const attr = model.options.searchAttribute;
+      const type: StrapiAttributeType = (attr === model.primaryKey)
+        ? 'uid'
+        : model.attributes[attr]?.type;
+      const notAllowed: StrapiAttributeType[] = [
+        'password',
+        'dynamiczone',
+        'component',
+      ];
+      if (!type || notAllowed.includes(type)) {
+        throw new Error(`The search attribute "${attr}" does not exist on the model ${model.globalId} or is of an unsupported type.`);
+      }
+    }
     if (model.options.ensureCompnentIds === undefined) {
       model.options.ensureCompnentIds = options.ensureCompnentIds;
+    }
+    if (model.options.maxQuerySize === undefined) {
+      model.options.maxQuerySize = options.maxQuerySize;
     }
     
     const userConverter = model.config?.converter || { 
@@ -214,7 +232,7 @@ export function mountModels(models: FirestoreConnectorContext[]) {
         };
 
         const collection = instance.collection(collectionName).withConverter(conv);
-        model.db = new QueryableFirestoreCollection(collection, model.options.allowNonNativeQueries);
+        model.db = new QueryableFirestoreCollection(collection, model.options.allowNonNativeQueries, model.options.maxQuerySize);
         model.autoId = () => collection.doc().id;
         model.doc = (id?: string) => id ? collection.doc(id.toString()) : collection.doc();
 
@@ -320,11 +338,10 @@ export function mountModels(models: FirestoreConnectorContext[]) {
 
       return {
         fetchAll: async () => {
-          // Firestore method to check prefix
-          // See: https://stackoverflow.com/a/46574143/1513557
+          const { gte, lt } = buildPrefixQuery(value);
           const results = await strapi.query(modelKey).find({
-            [`${field}_gte`]: value,
-            [`${field}_lt`]: value.slice(0, -1) + String.fromCharCode(value.charCodeAt(value.length - 1) + 1) // Lexicographically increment the last character
+            [`${field}_gte`]: gte,
+            [`${field}_lt`]: lt,
           });
           return {
             toJSON: () => results
