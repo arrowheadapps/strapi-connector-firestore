@@ -64,6 +64,11 @@ export interface ModelOptions {
    */
   allowNonNativeQueries?: boolean
 
+  /**
+   * If defined, nominates a single attribute to be searched when fully-featured
+   * search is disabled because of the `allowNonNativeQueries` setting.
+   */
+  searchAttribute?: string
 
   /**
    * Override connector setting per model.
@@ -177,6 +182,7 @@ export interface StrapiModel {
 }
 
 export type StrapiRelationType = 'oneWay' | 'manyWay' | 'oneToMany' | 'oneToOne' | 'manyToMany' | 'manyToOne' | 'oneToManyMorph' | 'manyToManyMorph' | 'manyMorphToMany' | 'manyMorphToOne' | 'oneMorphToOne' | 'oneMorphToMany';
+export type StrapiAttributeType = 'integer' | 'float' | 'decimal' | 'biginteger' | 'string' | 'text' | 'richtext' | 'email' | 'enumeration' | 'uid' | 'date' | 'time' | 'datetime' | 'timestamp' | 'json' | 'boolean' | 'password' | 'dynamiczone' | 'component';
 
 export interface StrapiRelation {
   dominant: boolean
@@ -186,7 +192,7 @@ export interface StrapiRelation {
   filter: string
   plugin: string
   autoPopulate: boolean
-  type: string
+  type: StrapiAttributeType
   required: boolean
   component: string
   components: string[]

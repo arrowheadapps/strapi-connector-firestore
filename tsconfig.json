@@ -9,7 +9,7 @@
     "target": "ES2019",
     "types": ["node"],
     "noImplicitAny": false,
-    "sourceMap": true,
+    "sourceMap": false,
     "declaration": true
   },
   "compileOnSave": true,

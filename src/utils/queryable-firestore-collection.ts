@@ -1,5 +1,5 @@
 import * as _ from 'lodash';
-import { ManualFilter, convertWhere } from './convert-where';
+import { ManualFilter, convertWhere, WhereFilter } from './convert-where';
 import { Query, Transaction, QueryDocumentSnapshot, FieldPath, WhereFilterOp, DocumentData } from '@google-cloud/firestore';
 import type { QueryableCollection, QuerySnapshot, Snapshot } from './queryable-collection';
 import type { StrapiWhereOperator } from '../types';
@@ -64,20 +64,26 @@ export class QueryableFirestoreCollection<T = DocumentData> implements Queryable
     }
   }
 
-  where(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator | RegExp, value: any): QueryableFirestoreCollection<T> {
-    const filter = convertWhere(field, operator, value, this.allowNonNativeQueries ? 'preferNative' : 'nativeOnly');
-    const other = new QueryableFirestoreCollection(this);
-    if (typeof filter === 'function') {
-      other.manualFilters.push(filter);
+  where(filter: WhereFilter): QueryableFirestoreCollection<T>
+  where(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator | RegExp, value: any): QueryableFirestoreCollection<T>
+  where(fieldOrFilter: string | FieldPath | WhereFilter, operator?: WhereFilterOp | StrapiWhereOperator | RegExp, value?: any): QueryableFirestoreCollection<T> {
+    if ((typeof fieldOrFilter === 'string') || (fieldOrFilter instanceof FieldPath)) {
+      const filter = convertWhere(fieldOrFilter, operator!, value, this.allowNonNativeQueries ? 'preferNative' : 'nativeOnly');
+      const other = new QueryableFirestoreCollection(this);
+      if (typeof filter === 'function') {
+        other.manualFilters.push(filter);
+      } else {
+        other.query = this.query.where(filter.field, filter.operator, filter.value);
+      }
+      return other;
     } else {
-      other.query = this.query.where(filter.field, filter.operator, filter.value);
+      return this.where(fieldOrFilter.field, fieldOrFilter.operator, fieldOrFilter.value);
     }
-    return other;
   }
 
   whereAny(filters: ManualFilter[]): QueryableFirestoreCollection<T> {
     if (!this.allowNonNativeQueries) {
-      throw new Error('Search is not natively supported by Firestore. Use the `allowNonNativeQueries` option to enable manual search.');
+      throw new Error('Search is not natively supported by Firestore. Use the `allowNonNativeQueries` option to enable manual search, or `searchAttribute` to enable primitive search.');
     }
     const other = new QueryableFirestoreCollection(this);
     other.manualFilters.push(data => filters.some(f => f(data)));

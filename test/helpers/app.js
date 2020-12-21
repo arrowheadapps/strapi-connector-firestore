@@ -1,9 +1,6 @@
 const path = require('path');
-const rimraf = require('rimraf');
 const fs = require('fs-extra');
-const { promisify } = require('util');
 
-const rm = promisify(rimraf);
 
 const testsDir = '__tests__';
 const flattenExcludes = {
@@ -28,23 +25,27 @@ const flattenExcludes = {
 
 const cleanTestApp = async () => {
   await Promise.all([
-    rm('.cache'),
-    rm('.temp'),
-    rm('public'),
-    rm('build'),
-    rm('api'),
-    rm('extensions'),
-    rm( 'components'),
+    fs.remove('.cache'),
+    fs.remove('.temp'),
+    fs.remove('public'),
+    fs.remove('build'),
+    fs.remove('components'),
+    fs.emptyDir('api'),
+    fs.emptyDir('extensions'),
   ]);
-
-  await fs.mkdir('api');
-  await fs.mkdir('extensions');
 };
 
+/**
+ * Removes the Strapi tests.
+ */
 const cleanTests = async () => {
-  await rm(path.resolve(testsDir));
+  await fs.remove(path.resolve(testsDir));
 };
 
+/**
+ * Jest seemingly refuses to run tests located under `node_modules`,
+ * so we copy Strapi's tests out into our test dir.
+ */
 const copyTests = async () => {
   const strapiDir = path.dirname(require.resolve('strapi/package.json'));
   const rootDir = path.resolve();
@@ -62,8 +63,30 @@ const copyTests = async () => {
   }
 };
 
+const setupTestApp = async () => {
+  await cleanTestApp();
+  await copyTests();
+
+  // Clean coverage outputs
+  // Jest seems to fail to write the JSON results otherwise
+  await Promise.all([
+    fs.emptyDir(path.resolve('../coverage')),
+    fs.emptyDir(path.resolve('../.nyc_output')),
+  ]);
+};
+
+const teardownTestApp = async () => {
+  await Promise.all([
+    cleanTestApp(),
+    cleanTests(),
+  ]);
+};
+
+
 module.exports = {
   cleanTestApp,
   copyTests,
-  cleanTests
+  cleanTests,
+  setupTestApp,
+  teardownTestApp,
 };

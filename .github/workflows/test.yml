@@ -29,11 +29,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-node-
       
-      # Install and build the package
+      # Install the package
       - name: Install root package
-        run: npm install
-      - name: Build
-        run: npm run build
+        run: npm ci
 
       # Setup and install the test environment
       - name: Setup Java JDK
@@ -41,7 +39,7 @@ jobs:
         with:
           java-version: 1.8
       - name: Install test package
-        run: npm install --prefix test
+        run: npm ci --prefix test
       - name: Cache emulators
         uses: actions/cache@v2.0.0
         with:
@@ -56,17 +54,20 @@ jobs:
         run: npm test
         env: 
           FLATTENING: ${{ matrix.flattening }}
+          SILENT: true
       - name: Remap
         if: ${{ always() }}
-        run: npm run remap -s --prefix test
+        run: npm run coverage-remap -s --prefix test
       - name: Upload coverage
         uses: actions/upload-artifact@v2
         if: ${{ always() }}
         with:
           name: coverage_${{ matrix.flattening }}
-          path: coverage/coverage-mapped.json
+          path: |
+            coverage/coverage.json
+            coverage/results.json
 
-  codecov:
+  results:
     runs-on: ubuntu-latest
     if: ${{ always() }}
     needs: test
@@ -83,25 +84,35 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-node-
         
-      # Install and build the package
+      # Install the package
       - name: Install root package
-        run: npm install
-      - name: Build
-        run: npm run build
+        run: npm ci
   
       # Download individual coverage reports
       - uses: actions/download-artifact@v2
         with:
-          path: input
+          path: coverage
+
+      # Install the test package
+      - name: Install test package
+        run: npm ci --prefix test
+      
+      # Report pass/fail results
+      - name: Report results
+        uses: actions/github-script@v3
+        with:
+          result-encoding: string
+          script: |
+            const report = require(`${process.env.GITHUB_WORKSPACE}/test/report.js`);
+            return await report({ github, context, core, io });
 
       # Combine coverate
       - name: Combine coverage
-        working-directory: input
-        run: npx istanbul-combine -- -d ../coverage -p detail -r json **/*.json
+        run: npm run coverage-combine -s --prefix test
       
       # Upload report
       - name: Codecov
         uses: codecov/codecov-action@v1
         with:
-          directory: coverage
+          directory: coverage/combined
           fail_ci_if_error: true

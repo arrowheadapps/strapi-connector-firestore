@@ -1,5 +1,5 @@
 import * as _ from 'lodash';
-import { getFieldPath, convertWhere, ManualFilter } from './convert-where';
+import { getFieldPath, convertWhere, ManualFilter, WhereFilter } from './convert-where';
 import { DocumentReference, OrderByDirection, Transaction, FieldPath, WhereFilterOp, DocumentData } from '@google-cloud/firestore';
 import type { QueryableCollection, QuerySnapshot, Snapshot } from './queryable-collection';
 import type { StrapiWhereOperator } from '../types';
@@ -71,12 +71,18 @@ export class QueryableFlatCollection<T = DocumentData> implements QueryableColle
     };
   }
 
-  where(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator | RegExp, value: any): QueryableFlatCollection<T> {
-    const other = new QueryableFlatCollection(this);
-
-    const filter = convertWhere(field, operator, value, 'manualOnly');
-    other._filters.push(filter);
-    return other;
+  where(filter: WhereFilter): QueryableFlatCollection<T>
+  where(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator | RegExp, value: any): QueryableFlatCollection<T>
+  where(fieldOrFilter: string | FieldPath | WhereFilter, operator?: WhereFilterOp | StrapiWhereOperator | RegExp, value?: any): QueryableFlatCollection<T> {
+    if ((typeof fieldOrFilter === 'string') || (fieldOrFilter instanceof FieldPath)) {
+      const other = new QueryableFlatCollection(this);
+  
+      const filter = convertWhere(fieldOrFilter, operator!, value, 'manualOnly');
+      other._filters.push(filter);
+      return other;
+    } else {
+      return this.where(fieldOrFilter.field, fieldOrFilter.operator, fieldOrFilter.value);
+    }
   }
 
   whereAny(filters: ManualFilter[]): QueryableFlatCollection<T> {

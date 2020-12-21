@@ -1,58 +1,89 @@
 const execa = require('execa');
-const waitOn = require('wait-on');
+const { log } = require('./log');
 
-let proc;
+/**
+ * @type {{ proc: execa.ExecaChildProcess, started: Promise<void> } | null}
+ */
+let firestore = null;
 
+/**
+ * Starts the Firestore emulator if it isn't started already.
+ */
 const startFirestore = async () => {
-  if (proc) {
-    return;
+  if (firestore) {
+    log('Firestore already started/starting!');
+    return await firestore.started;
   }
 
-  try {
-    process.stdout.write('\nStarting Firestore...\n');
-    proc = execa.command('node_modules/.bin/firebase emulators:start --only firestore', {
-      stdio: ['pipe', 'inherit', 'inherit'],
+  log('\nStarting Firestore...\n');
+  const proc = execa.command('firebase emulators:start --only firestore', {
+    preferLocal: true,
+    cleanup: true,
+    stdio: 'pipe',
+  });
+
+  // Pipe Firestore output to the parent
+  if (!process.env.SILENT) {
+    proc.stdout.pipe(process.stdout);
+    proc.stderr.pipe(process.stderr);
+  }
+
+  proc.finally(() => {
+    firestore = null;
+    log('Firestore stopped!\n');
+  });
+
+  const started = new Promise((resolve, reject) => {
+    proc.stdout.on('data', data => {
+      if (data.includes('All emulators ready')) {
+        resolve();
+      }
+      if (data.includes('Could not start')) {
+        reject(new Error('Firestore failed to start!'));
+      }
     });
+    proc.once('exit', () => {
+      reject(new Error('Firestore failed to start!'));
+    });
+  });
 
-    // Wait for Firestore to come online or for the process to end or crash
-    const result = await Promise.race([
-      proc, 
-      waitOn({ resources: ['http-get://localhost:8080'], timeout: 20_000, })
-    ]);
+  firestore = {
+    proc,
+    started,
+  };
 
-    if (result) {
-      // If the result is truthy
-      // it means that it was the firestore process that completed
-      // not the waitOn() promise (which returns undefined)
-      throw new Error(result.shortMessage);
-    }
-
-    process.stdout.write('Firestore started!\n');
-
-  } catch (err) {
-    process.stdout.write(`Failed to start Firestore! ${err && err.message}\n`);
-    throw err;
-  }
+  await started;
+  log('Firestore started!\n');
 };
 
 const stopFirestore = async () => {
-  if (proc) {
+  if (firestore) {
     try {
-      process.stdout.write('Killing Firestore... ');
-      proc.kill('SIGINT', { forceKillAfterTimeout: 3000 });
+      log('Killing Firestore... ');
+      firestore.proc.kill('SIGINT', { forceKillAfterTimeout: 3000 });
 
       // Wait for process to end or timeout
       await Promise.race([
-        proc,
+        firestore.proc,
         new Promise((_, reject) => setTimeout(reject, 5000)),
       ]);
+
+      // Wait for the next event loop so that the firestore
+      // variable is set to null by the completion handler
+      await new Promise(resolve => setImmediate(resolve));
+
     } catch {
-      process.stdout.write('Failed to kill Firestore!\n');
+      process.stderr.write('Failed to kill Firestore!\n');
     }
   }
+};
+
+const purgeFirestore = async () => {
+  // TODO
 };
 
 module.exports = {
   startFirestore,
-  stopFirestore
+  stopFirestore,
+  purgeFirestore,
 };
