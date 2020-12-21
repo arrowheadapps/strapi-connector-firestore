@@ -11,6 +11,7 @@ module.exports = {
   coverageDirectory: '<rootDir>/coverage',
   collectCoverageFrom: [
     '**/strapi-connector-firestore/lib/**/*.js',
+    '**/strapi-connector-firestore/src/**/*.ts',
   ],
 
   testMatch: ['<rootDir>/test/**/*.test*.js'],

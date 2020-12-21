@@ -33,7 +33,7 @@ jobs:
       - name: Install root package
         run: npm ci
       - name: Build
-        run: npm run build
+        run: npm run build:test
 
       # Setup and install the test environment
       - name: Setup Java JDK
@@ -90,7 +90,7 @@ jobs:
       - name: Install root package
         run: npm ci
       - name: Build
-        run: npm run build
+        run: npm run build:test
   
       # Download individual coverage reports
       - uses: actions/download-artifact@v2
