@@ -67,9 +67,12 @@ const setupTestApp = async () => {
   await cleanTestApp();
   await copyTests();
 
-  // Ensure the output directory exists
+  // Clean coverage outputs
   // Jest seems to fail to write the JSON results otherwise
-  await fs.ensureDir(path.resolve('../coverage'));
+  await Promise.all([
+    fs.emptyDir(path.resolve('../coverage')),
+    fs.emptyDir(path.resolve('../.nyc_output')),
+  ]);
 };
 
 const teardownTestApp = async () => {

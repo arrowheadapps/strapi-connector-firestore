@@ -2,29 +2,17 @@ module.exports = {
   name: 'API integration tests',
   testEnvironment: 'node',
   verbose: !process.env.SILENT,
+  collectCoverage: false,
+  transform: { },
 
-  // Required so that we can collect coverage from the root directory
-  rootDir: '../',
-  
-  collectCoverage: true,
-  coverageReporters: ['json', 'text'],
-  coverageDirectory: '<rootDir>/coverage',
-  collectCoverageFrom: [
-    '<rootDir>/lib/**/*.js',
-  ],
-
-  testMatch: ['<rootDir>/test/**/*.test*.js'],
-  globalSetup: '<rootDir>/test/setup.js',
-  globalTeardown: '<rootDir>/test/teardown.js',
-  setupFilesAfterEnv: ['<rootDir>/test/setup-test.js'],
+  testMatch: ['<rootDir>/**/*.test*.js'],
+  globalSetup: '<rootDir>/setup.js',
+  globalTeardown: '<rootDir>/teardown.js',
+  setupFilesAfterEnv: ['<rootDir>/setup-test.js'],
 
   moduleNameMapper: {
     // Tests are copied from the Strapi module so the relative imports are broken
     // So map them to the correct place
-    '\\.\\.\\/test\\/helpers\/(.*)$': '<rootDir>/test/helpers/$1',
-  },
-
-  transform: {
-
+    '\\.\\.\\/test\\/helpers\/(.*)$': '<rootDir>/helpers/$1',
   },
 };

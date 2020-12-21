@@ -1,26 +1,26 @@
 {
   "private": true,
   "scripts": {
-    "pretest": "patch-package && node helpers/app-setup.js",
+    "pretest": "patch-package && FLATTENING=flatten_mixed_target node helpers/app-setup.js",
     "test": "jest --runInBand --forceExit --detectOpenHandles --json --outputFile=../coverage/results.json",
-    "coverage-remap": "remap-istanbul --input ../coverage/coverage-final.json --output ../coverage/coverage-mapped.json --basePath strapi-connector-firestore",
-    "coverage-combine": "istanbul-combine -d ../coverage/combined -p detail -r json ../coverage/*/coverage-mapped.json"
+    "coverage-remap": "nyc merge ../.nyc_output ../coverage/coverage.json",
+    "coverage-combine": "istanbul-combine -d ../coverage/combined -p detail -r json ../coverage/*/coverage.json"
   },
   "dependencies": {
     "execa": "^5.0.0",
     "firebase-tools": "^9.0.1",
     "jest": "^26.6.3",
+    "nyc": "^15.1.0",
     "patch-package": "^6.2.2",
     "request-promise-native": "^1.0.9",
-    "strapi": "^3.3.4",
-    "strapi-admin": "^3.3.4",
+    "strapi": "^3.4.0",
+    "strapi-admin": "^3.4.0",
     "strapi-connector-firestore": "file:..",
-    "strapi-plugin-content-manager": "^3.3.4",
-    "strapi-plugin-content-type-builder": "^3.3.4",
-    "strapi-plugin-upload": "^3.3.4",
-    "strapi-plugin-users-permissions": "^3.3.4",
-    "strapi-utils": "^3.3.4",
-    "wait-on": "^5.2.0"
+    "strapi-plugin-content-manager": "^3.4.0",
+    "strapi-plugin-content-type-builder": "^3.4.0",
+    "strapi-plugin-upload": "^3.4.0",
+    "strapi-plugin-users-permissions": "^3.4.0",
+    "strapi-utils": "^3.4.0"
   },
   "devDependencies": {
     "@actions/core": "^1.2.6",
@@ -29,7 +29,6 @@
     "fs-extra": "^9.0.1",
     "glob": "^7.1.6",
     "glob-promise": "^3.4.0",
-    "istanbul-combine": "^0.3.0",
-    "remap-istanbul": "^0.13.0"
+    "istanbul-combine": "^0.3.0"
   }
 }

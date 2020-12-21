@@ -15,7 +15,7 @@ async function startStrapi() {
 
   if (!strapiProc) {
     log('Starting Strapi... ');
-    strapiProc = execa.command('strapi start', { 
+    strapiProc = execa.command('nyc --silent --no-clean strapi start', { 
       preferLocal: true,
       cleanup: true,
       reject: false,
