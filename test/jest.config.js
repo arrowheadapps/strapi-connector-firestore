@@ -10,10 +10,7 @@ module.exports = {
   coverageReporters: ['json', 'text'],
   coverageDirectory: '<rootDir>/coverage',
   collectCoverageFrom: [
-    '**/*.{ts,js}',
-    '!**/node_modules/**',
-    '!**/test/**',
-    '!**/examples/**',
+    '<rootDir>/lib/**/*.js',
   ],
 
   testMatch: ['<rootDir>/test/**/*.test*.js'],
