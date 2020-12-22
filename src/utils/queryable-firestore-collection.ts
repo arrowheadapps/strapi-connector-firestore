@@ -65,7 +65,7 @@ export class QueryableFirestoreCollection<T = DocumentData> implements Queryable
 
     if (q.manualFilters.length) {
       // Only use manual implementation when manual filters are present
-      return manualQuery(q.query, q.manualFilters, q._limit || 0, q._offset || 0, trans);
+      return queryWithManualFilters(q.query, q.manualFilters, q._limit || 0, q._offset || 0, trans);
     } else {
       return trans ? trans.get(q.query) : q.query.get();
     }
@@ -125,19 +125,10 @@ export class QueryableFirestoreCollection<T = DocumentData> implements Queryable
 }
 
 
-
-async function manualQuery<T>(baseQuery: Query<T>, manualFilters: ManualFilter[], limit: number, offset: number, transaction: Transaction | undefined): Promise<QuerySnapshot<T>> {
-
+async function* queryChunked<T>(query: Query<T>, chunkSize:number, transaction: Transaction | undefined) {
   let cursor: QueryDocumentSnapshot<T> | undefined
-  let docs: Snapshot<T>[] = [];
-  while (!limit || (docs.length < limit)) {
-    if (limit) {
-      // Use a minimum limit of 10 for the native query
-      // E.g. if we only want 1 result, we will still query
-      // ten at a time to improve performance
-      // But it will increase read usage (at most 9 reads will be unused)
-      baseQuery = baseQuery.limit(Math.max(10, limit));
-    }
+  while (true) {
+    let q = query.limit(chunkSize);
     if (cursor) {
       // WARNING:
       // Usage of a cursor implicitly applies field ordering by document ID
@@ -145,35 +136,51 @@ async function manualQuery<T>(baseQuery: Query<T>, manualFilters: ManualFilter[]
       // E.g. inequality filters require the first sort field to be the same
       // field as the inequality filter (see issue #29)
       // This scenario only manifests when manual queries are used
-      baseQuery = baseQuery.startAfter(cursor);
+      q = q.startAfter(cursor);
     }
 
-    const result = await (transaction ? transaction.get(baseQuery) : baseQuery.get());
-    if (result.empty) {
-      break;
+    const { docs } = await (transaction ? transaction.get(q) : q.get());
+    cursor = docs[docs.length - 1];
+
+    for (const d of docs) {
+      yield d;
     }
 
-    let resultDocs = result.docs;
-    cursor = resultDocs[resultDocs.length - 1];
-    if (manualFilters.length) {
-      resultDocs = resultDocs.filter((doc) => manualFilters.every(op => op(doc)));
+    if (docs.length < chunkSize) {
+      return;
     }
+  }
+}
 
-    if (offset > 0) {
-      const length = resultDocs.length;
-      resultDocs = resultDocs.slice(offset);
-      offset -= length;
-    }
+async function queryWithManualFilters<T>(query: Query<T>, filters: ManualFilter[], limit: number, offset: number, transaction: Transaction | undefined): Promise<QuerySnapshot<T>> {
 
-    if (limit && ((docs.length + resultDocs.length) > limit)) {
-      docs = docs.concat(resultDocs.slice(0, limit - docs.length));
-    } else {
-      docs = docs.concat(resultDocs);
+  // Use a chunk size of 10 for the native query
+  // E.g. if we only want 1 result, we will still query
+  // ten at a time to improve performance for larger queries
+  // But it will increase read usage (at most 9 reads will be unused)
+  const chunkSize = Math.max(10, limit);
+
+  // Improve performace by performing some native offset
+  const q = query.offset(offset);
+
+  const docs: Snapshot<T>[] = [];
+  let skipped = 0;
+
+  for await (const doc of queryChunked(q, chunkSize, transaction)) {
+    if (filters.every(op => op(doc))) {
+      if (limit > skipped) {
+        skipped++;
+      } else {
+        docs.push(doc);
+        if (docs.length >= limit) {
+          break;
+        }
+      }
     }
   }
 
   return {
     docs,
-    empty: docs.length === 0
+    empty: docs.length === 0,
   };
 }
