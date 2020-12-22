@@ -5,6 +5,7 @@ import type { FirestoreConnectorModel } from './types';
 import type { TransactionWrapper } from './utils/transaction-wrapper';
 import type { Reference, Snapshot } from './utils/queryable-collection';
 import { StatusError } from './utils/status-error';
+import { AsyncSnapshot, findReverse, getReverseAssocByAssoc, ReverseActionParams } from './relations';
 
 
 export type PartialSnapshot = Pick<Snapshot, 'data'> & Pick<Snapshot, 'ref'>
@@ -22,29 +23,32 @@ export async function populateDocs(model: FirestoreConnectorModel, docs: Partial
  * Populates all the requested relational field on the given document.
  */
 export async function populateDoc(model: FirestoreConnectorModel, doc: PartialSnapshot, populateFields: string[], transaction: TransactionWrapper) {
-  const data = Object.assign({}, doc.data());
-  if (!data) {
+  const values = doc.data();
+  if (!values) {
     throw new StatusError(`Document not found: ${doc.ref.path}`, 404);
   }
+
+  // Clone the object (shallow)
+  const data = Object.assign({}, values);
 
   const relationPromises =  Promise.all(populateFields.map(f => populateField(model, doc.ref, f, data, transaction)));
 
   const componentPromises = Promise.all(model.componentKeys.map(async componentKey => {
     const component = data[componentKey];
     if (component) {
+      // FIXME:
+      // `ref` is pointing to the parent document that the component is embedded into
+      // In the future, components embedding or not may be configurable
+      // so we need a way to handle and differentiate this
+
       if (Array.isArray(component)) {
         data[componentKey] = await Promise.all(component.map(c => {
           const componentModel = getComponentModel(model, componentKey, c);
-          return populateDoc(componentModel, { ref, data: () => c }, componentModel.defaultPopulate, transaction);
+          return populateDoc(componentModel, { ref: doc.ref, data: () => c }, componentModel.defaultPopulate, transaction);
         }));
       } else {
-        const componentModel = getComponentModel(model, componentKey, c);
-        // FIXME:
-        // `ref` is pointing to the parent document that the component 
-        // is embedded into
-        // In the future, components embedding or not may be configurable
-        // so we need a way to handle and differentiate this
-        data[componentKey] = await populateDoc(componentModel, { ref, data: () => component }, componentModel.defaultPopulate, transaction);
+        const componentModel = getComponentModel(model, componentKey, component);
+        data[componentKey] = await populateDoc(componentModel, { ref: doc.ref, data: () => component }, componentModel.defaultPopulate, transaction);
       }
     }
   }));
@@ -56,85 +60,66 @@ export async function populateDoc(model: FirestoreConnectorModel, doc: PartialSn
 
 
 export async function populateField(model: FirestoreConnectorModel, docRef: Reference, field: string, data: any, transaction: TransactionWrapper) {
-  const details = model.associations.find(assoc => assoc.alias === field)!;
-  const assocModel = strapi.db.getModelByAssoc(details);
+  const assoc = model.associations.find(assoc => assoc.alias === field)!;
+  const reverse = getReverseAssocByAssoc(assoc);
 
-  // if (!assocModel) {
-  //   // TODO:
-  //   // This seems to happen for polymorphic relations such as images
-  //   // Can we just safely ignore this?
-  //   //throw new Error(`Associated model not found for model: "${details.model || details.collection}" plugin: "${details.plugin}"`);
-
-  //   return;
-  // }
-
-  const processPopulatedDoc = (snap: Snapshot) => {
-    const data = snap.data();
-    if (!data) {
+  const processPopulatedDoc = async (snap: AsyncSnapshot) => {
+    try {
+      return await snap.data();
+    } catch {
       // TODO:
       // Should we through an error if the reference can't be found
       // or just silently omit it?
       // For now we log a warning
       strapi.log.warn(`The document referenced by "${snap.ref.path}" no longer exists`);
+      return null;
     }
-    return data || null;
   }
 
-
-  if (details.dominant) {
-    // If the attribute is the dominant end of the relation
-    // then its data will contain the reference to the other end
-    const ref = coerceReference(data[field], assocModel);
-    if (ref) {
-      if (Array.isArray(ref)) {
-        data[field] = await transaction.getAll(...ref).then(docs => docs.map(processPopulatedDoc).filter(doc => doc != null));
-      } else {
-        data[field] = processPopulatedDoc(await transaction.get(ref));
-      }
-    } else {
-      if (data[field]) {
-        // Relation has a value but it could not be coerced to a reference
-        throw new Error(`Attribute value for "${field}" could not be coerced to a reference`);
-      } else {
-        // Empty relation
-        if (details.collection) {
-          data[field] = [];
-        } else {
-          data[field] = null;
-        }
-      }
-    }
-
-
+  let action: (refs: ReverseActionParams[]) => Promise<any>;
+  if (assoc.collection) {
+    action = async (refs) => {
+      const datas = await Promise.all(refs.map(processPopulatedDoc));
+      data[field] = datas.filter(d => d != null);
+    };
   } else {
-    // I.e. details.dominant == false
-    // If we get here then there was no value populated
-    const via = details.via || details.alias;
-    const assocDetails = assocModel.associations.find(assoc => assoc.alias === via);
-    if (!assocDetails) {
-      throw new Error(`No configuration found to populate attribute "${via}"`);
-    }
-
-    // If the attribe in the related model has `model` then it is a one-way relation
-    // otherwise it has `collection` and it is a multi-way relation
-    // The model's own converters be called
-    let q = assocDetails.model
-      ? assocModel.db.where(via, '==', docRef)
-      : assocModel.db.where(via, 'array-contains', docRef);
-
-    // It's a one-way relation so we only want a single value
-    const oneWay = details.model;
-    if (oneWay) {
-      q = q.limit(1);
-    }
-
-    const { docs } = await transaction.get(q);
-    if (oneWay) {
-      // This is a one-way relation
-      data[field] = docs.length ? processPopulatedDoc(docs[0]) : null;
-    } else {
-      // This is a multi-way relation
-      data[field] = docs.map(processPopulatedDoc);
-    }
+    action = async ([ref]) => {
+      if (ref) {
+        data[field] = await processPopulatedDoc(ref);
+      } else {
+        data[field] = null;
+      }
+    };
   }
+
+  let refs: Reference[];
+  if (assoc.dominant) {
+    const ref = coerceReference(data[field], reverse?.model);
+    if (assoc.collection) {
+      refs = ref
+        ? _.castArray(ref)
+        : [];
+    } else {
+      refs = ref
+        ? Array.isArray(ref) ? ref.slice(0, 1) : [ref]
+        : [];
+    }
+  } else {
+    refs = [];
+  }
+
+  await findReverse({
+    model,
+    ref: docRef,
+    assoc: assoc,
+    reverse,
+    transaction,
+    removed: {
+      refs,
+      action,
+    },
+    // Trigger special case for `removed` actions
+    // to be performed
+    added: undefined,
+  });
 }
