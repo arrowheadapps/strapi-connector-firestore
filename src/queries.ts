@@ -228,7 +228,7 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
     return await model.runTransaction(async trans => {
       let docs: Snapshot[];
       if (model.hasPK(params)) {
-        const ref = model.doc(model.getPK(params));
+        const ref = model.db.doc(model.getPK(params));
         const snap = await trans.get(ref);
         if (!snap.exists) {
           docs = [];
@@ -270,7 +270,7 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
 
     // Create entry without relational data
     const id = model.getPK(values);
-    const ref = id ? model.doc(id) : model.doc();
+    const ref = id ? model.db.doc(id) : model.db.doc();
 
     return await model.runTransaction(async trans => {
       
@@ -285,7 +285,7 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
       // Populate relations
       const entry = await populateDoc(model, { ref, data: () => values }, populateOpt, trans);
 
-      await model.create(ref, values, trans);
+      await model.db.create(ref, values, trans);
       return entry;
     });
   }
@@ -311,7 +311,7 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
 
       let snap: Snapshot;
       if (model.hasPK(params)) {
-        snap = await trans.get(model.doc(model.getPK(params)));
+        snap = await trans.get(model.db.doc(model.getPK(params)));
       } else {
         const docs = await runFirestoreQuery({ ...params, _limit: 1 }, null, trans);
         snap = docs[0];
@@ -337,9 +337,9 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
 
       // Update entry without
       if (merge) {
-        await model.setMerge(snap.ref, values, trans);
+        await model.db.setMerge(snap.ref, values, trans);
       } else {
-        await model.update(snap.ref, values, trans);
+        await model.db.update(snap.ref, values, trans);
       }
 
       return entry;
@@ -365,7 +365,7 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
 
     return await model.runTransaction(async trans => {
 
-      const ref = model.doc(id);
+      const ref = model.db.doc(id);
       const snap = await trans.get(ref);
       const data = snap.data();
       if (!data) {
@@ -376,7 +376,7 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
 
       await relationsDelete(model, ref, data, trans);
 
-      await model.delete(ref, trans);
+      await model.db.delete(ref, trans);
       return doc;
     });
   }
@@ -387,7 +387,7 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
     return await model.runTransaction(async trans => {
       let docs: Snapshot[];
       if (model.hasPK(params)) {
-        const ref = model.doc(model.getPK(params));
+        const ref = model.db.doc(model.getPK(params));
         const snap = await trans.get(ref);
         if (!snap.exists) {
           docs = [];

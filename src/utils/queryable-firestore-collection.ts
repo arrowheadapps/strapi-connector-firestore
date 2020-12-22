@@ -1,13 +1,16 @@
 import * as _ from 'lodash';
 import { ManualFilter, convertWhere, WhereFilter } from './convert-where';
-import { Query, Transaction, QueryDocumentSnapshot, FieldPath, WhereFilterOp, DocumentData, CollectionReference } from '@google-cloud/firestore';
-import type { QueryableCollection, QuerySnapshot, Snapshot } from './queryable-collection';
-import type { StrapiWhereOperator } from '../types';
+import { Query, Transaction, QueryDocumentSnapshot, FieldPath, WhereFilterOp, DocumentData, CollectionReference, DocumentReference } from '@google-cloud/firestore';
+import type { QueryableCollection, QuerySnapshot, Reference, Snapshot } from './queryable-collection';
+import type { ConnectorOptions, Converter, FirestoreConnectorModel, StrapiWhereOperator } from '../types';
+import { coerceModelFromFirestore, coerceModelToFirestore } from './coerce';
+import { TransactionWrapper } from './transaction-wrapper';
 
 
 export class QueryableFirestoreCollection<T = DocumentData> implements QueryableCollection<T> {
 
-  readonly path: string
+  private readonly collection: CollectionReference<T>
+  private readonly conv: Converter<T, any>;
   
   private readonly allowNonNativeQueries: boolean
   private readonly maxQuerySize: number
@@ -17,26 +20,104 @@ export class QueryableFirestoreCollection<T = DocumentData> implements Queryable
   private _offset?: number;
 
   constructor(other: QueryableFirestoreCollection<T>)
-  constructor(other: CollectionReference<T>, allowNonNativeQueries: boolean, maxQuerySize: number | undefined)
-  constructor(other: CollectionReference<T> | QueryableFirestoreCollection<T>, allowNonNativeQueries?: boolean, maxQuerySize?: number) {
-    if (other instanceof QueryableFirestoreCollection) {
-      this.allowNonNativeQueries = other.allowNonNativeQueries;
-      this.maxQuerySize = other.maxQuerySize;
-      this.query = other.query;
-      this.path = other.path;
-      this.manualFilters = other.manualFilters.slice();
-      this._limit = other._limit;
-      this._offset = other._offset;
+  constructor(model: FirestoreConnectorModel<T>, options: ConnectorOptions)
+  constructor(modelOrOther: FirestoreConnectorModel<T> | QueryableFirestoreCollection<T>, options?: ConnectorOptions) {
+    if (modelOrOther instanceof QueryableFirestoreCollection) {
+      this.collection = modelOrOther.collection;
+      this.conv = modelOrOther.conv;
+      this.allowNonNativeQueries = modelOrOther.allowNonNativeQueries;
+      this.maxQuerySize = modelOrOther.maxQuerySize;
+      this.query = modelOrOther.query;
+      this.manualFilters = modelOrOther.manualFilters.slice();
+      this._limit = modelOrOther._limit;
+      this._offset = modelOrOther._offset;
     } else {
-      this.query = other;
-      this.path = other.path;
-      this.allowNonNativeQueries = allowNonNativeQueries || false;
-      this.maxQuerySize = maxQuerySize || 0;
+      
+      this.conv = {
+        toFirestore: data => userConverter.toFirestore(coerceModelToFirestore(model, data)),
+        fromFirestore: snap => coerceModelFromFirestore(model, snap.id, userConverter.fromFirestore(snap.data())),
+      };
+
+      this.collection = modelOrOther.firestore
+        .collection(modelOrOther.collectionName)
+        .withConverter(this.conv);
+
+      this.query = this.collection;
+      this.allowNonNativeQueries = modelOrOther.options.allowNonNativeQueries || options!.allowNonNativeQueries || false;
+      this.maxQuerySize = modelOrOther.options.maxQuerySize || options!.maxQuerySize || 0;
+      
       if (this.maxQuerySize < 0) {
         throw new Error("maxQuerySize cannot be less than zero");
       }
     }
   }
+
+
+  
+  get path() {
+    return this.collection.path;
+  }
+
+  autoId() {
+    return this.collection.doc().id;
+  }
+
+  doc(): Reference<T>
+  doc(id: string): Reference<T>
+  doc(id?: string) {
+    return id ? this.collection.doc(id.toString()) : this.collection.doc();
+  }
+
+  async delete(ref: Reference<T>, trans: TransactionWrapper | undefined) {
+    if (!(ref instanceof DocumentReference)) {
+      throw new Error('Non-flattened collection must have reference of type `DocumentReference`');
+    }
+    if (trans) {
+      trans.addWrite((trans)  => trans.delete(ref));
+    } else {
+      await ref.delete();
+    }
+  };
+
+  async create(ref: Reference<T>, data: T, trans: TransactionWrapper | undefined) {
+    if (!(ref instanceof DocumentReference)) {
+      throw new Error('Non-flattened collection must have reference of type `DocumentReference`');
+    }
+    if (trans) {
+      trans.addWrite((trans)  => trans.create(ref, data));
+    } else {
+      await ref.create(data);
+    }
+  };
+
+  async update(ref: Reference<T>, data: Partial<T>, trans: TransactionWrapper | undefined) {
+    if (!(ref instanceof DocumentReference)) {
+      throw new Error('Non-flattened collection must have reference of type `DocumentReference`');
+    }
+
+    // HACK:
+    // It seems that Firestore does not call the converter
+    // for update operations?
+    data = this.conv.toFirestore(data);
+
+    if (trans) {
+      trans.addWrite((trans)  => trans.update(ref, data));
+    } else {
+      await ref.update(data);
+    }
+  };
+
+  async setMerge(ref: Reference<T>, data: Partial<T>, trans: TransactionWrapper | undefined) {
+    if (!(ref instanceof DocumentReference)) {
+      throw new Error('Non-flattened collection must have reference of type `DocumentReference`');
+    }
+    if (trans) {
+      trans.addWrite((trans)  => trans.set(ref, data, { merge: true }));
+    } else {
+      await ref.set(data, { merge: true });
+    }
+  };
+
 
   private warnQueryLimit(limit: number | 'unlimited') {
     const msg = 

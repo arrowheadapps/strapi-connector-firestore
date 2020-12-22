@@ -1,31 +1,43 @@
 import * as _ from 'lodash';
+import * as path from 'path';
 import { getFieldPath, convertWhere, ManualFilter, WhereFilter } from './convert-where';
-import { DocumentReference, OrderByDirection, Transaction, FieldPath, WhereFilterOp, DocumentData } from '@google-cloud/firestore';
-import type { QueryableCollection, QuerySnapshot, Snapshot } from './queryable-collection';
-import type { StrapiWhereOperator } from '../types';
+import { DocumentReference, OrderByDirection, Transaction, FieldPath, WhereFilterOp, DocumentData, FieldValue, FirestoreDataConverter } from '@google-cloud/firestore';
+import type { QueryableCollection, QuerySnapshot, Reference, Snapshot } from './queryable-collection';
+import type { ConnectorOptions, FirestoreConnectorModel, StrapiWhereOperator } from '../types';
 import { DeepReference } from './deep-reference';
+import { coerceModelFromFirestore, coerceModelToFirestore } from './coerce';
+import { TransactionWrapper, TransactionWrapperImpl } from './transaction-wrapper';
 
 
 export class QueryableFlatCollection<T = DocumentData> implements QueryableCollection<T> {
 
-  private readonly doc: DocumentReference<T>
+
+  private readonly conv: FirestoreDataConverter<T>;
+  private readonly flatDoc: DocumentReference<T>;
+
   private _filters: ManualFilter[] = [];
   private _orderBy: { field: string | FieldPath, directionStr: OrderByDirection }[] = [];
   private _limit?: number
   private _offset?: number
 
-  constructor(doc: DocumentReference<T>)
+  constructor(model: FirestoreConnectorModel<T>, options: ConnectorOptions)
   constructor(other: QueryableFlatCollection<T>)
-  constructor(docOrOther: DocumentReference<T> | QueryableFlatCollection<T>) {
-    if (docOrOther instanceof QueryableFlatCollection) {
-      this.doc = docOrOther.doc;
+  constructor(modelOrOther: FirestoreConnectorModel<T> | QueryableFlatCollection<T>, options?: ConnectorOptions) {
+    if (modelOrOther instanceof QueryableFlatCollection) {
       // Copy the values
-      this._filters = docOrOther._filters.slice();
-      this._orderBy = docOrOther._orderBy.slice();
-      this._limit = docOrOther._limit;
-      this._offset = docOrOther._offset;
+      this.flatDoc = modelOrOther.flatDoc;
+      this.conv = modelOrOther.conv;
+      this._filters = modelOrOther._filters.slice();
+      this._orderBy = modelOrOther._orderBy.slice();
+      this._limit = modelOrOther._limit;
+      this._offset = modelOrOther._offset;
     } else {
-      this.doc = docOrOther;
+      const docPath = path.posix.join(modelOrOther.collectionName, modelOrOther.options.singleId || options!.singleId);
+      this.flatDoc = modelOrOther.firestore.doc(docPath).withConverter(conv);
+      this.conv = {
+        toFirestore: data => _.mapValues(data, d => conv!.toFirestore(coerceModelToFirestore(modelOrOther, d))),
+        fromFirestore: data => _.mapValues(data.data(), (d, id) => coerceModelFromFirestore(modelOrOther, id, conv!.fromFirestore(d))),
+      };;
 
       // Default sort by ID
       this.orderBy(FieldPath.documentId(), 'asc');
@@ -33,11 +45,119 @@ export class QueryableFlatCollection<T = DocumentData> implements QueryableColle
   }
 
   get path(): string {
-    return this.doc.parent.path;
+    return this.flatDoc.parent.path;
   }
 
+  autoId() {
+    return this.flatDoc.parent.doc().id;
+  }
+
+  doc(): Reference<T>
+  doc(id: string): Reference<T>
+  doc(id?: string): Reference<T> {
+    return new DeepReference(this.flatDoc, id?.toString() || this.autoId());
+  };
+
+  async delete(ref: Reference<T>, trans: TransactionWrapper | undefined) {
+    await this._set(ref, FieldValue.delete(), trans, false);
+  };
+
+  async create(ref: Reference<T>, data: T, trans: TransactionWrapper | undefined) {
+    // TODO:
+    // Error if document already exists
+    await this._set(ref, data, trans, false);
+  };
+
+  async update(ref: Reference<T>, data: Partial<T>, trans: TransactionWrapper | undefined) {
+    // TODO:
+    // Error if document doesn't exist
+    await this._set(ref, data, trans, false);
+  };
+
+
+  // Set flattened document
+  async setMerge(ref: Reference<T>, data: Partial<T>, trans: TransactionWrapper | undefined) {
+    await this._set(ref, data, trans, true);
+  };
+
+  private _ensureDocument: Promise<any> | null = null;
+  private async ensureDocument() {
+    // Set and merge with empty object
+    // This will ensure that the document exists using
+    // as single write operation
+    if (!this._ensureDocument) {
+      this._ensureDocument = this.flatDoc.set({}, { merge: true })
+        .catch((err) => {
+          this._ensureDocument = null;
+          throw err;
+        });
+    }
+    return this._ensureDocument;
+  }
+  
+  private async _set(ref: Reference<T>, data: any, trans: TransactionWrapper | undefined, merge: boolean) {
+    if (!(ref instanceof DeepReference)) {
+      throw new Error('Flattened collection must have reference of type `DeepReference`');
+    }
+    if (!ref.doc.isEqual(this.flatDoc)) {
+      throw new Error('Reference points to a different model');
+    }
+    if (!data || (typeof data !== 'object')) {
+      throw new Error(`Invalid data provided to Firestore. It must be an object but it was: ${JSON.stringify(data)}`);
+    }
+    
+    if (FieldValue.delete().isEqual(data)) {
+      data = { [ref.id]: FieldValue.delete() };
+    } else {
+      if (merge) {
+        // Flatten into key-value pairs to merge the fields
+        const pairs = _.toPairs(data);
+        data = {};
+        pairs.forEach(([path, val]) => {
+          data[`${ref.id}.${path}`] = val;
+        });
+      } else {
+        data = { [ref.id]: data };
+      }
+    }
+
+    // Ensure document exists
+    // This costs one write operation at startup only
+    await this.ensureDocument();
+
+
+
+    // HACK:
+    // It seems that Firestore does not call the converter
+    // for update operations?
+    data = this.conv.toFirestore(data);
+
+    if (trans) {
+      // Batch all writes to documents in this flattened
+      // collection and do it only once
+      (trans as TransactionWrapperImpl).addKeyedWrite(this.flatDoc.path, 
+        (ctx) => Object.assign(ctx || {}, data),
+        (trans, ctx) => {
+          trans.update(this.flatDoc, ctx);
+        }
+      );
+    } else {
+      // Do the write immediately
+      await this.flatDoc.update(data);
+    }
+  }
+
+
+
+
+
+
+
+
+
+
   async get(trans?: Transaction): Promise<QuerySnapshot<T>> {
-    const snap = await (trans ? trans.get(this.doc) : this.doc.get());
+    const snap = await (trans ? trans.get(this.flatDoc) : this.flatDoc.get());
 
     let docs: Snapshot<T>[] = [];
     for (const [id, data] of Object.entries<any>(snap.data() || {})) {
@@ -45,7 +165,7 @@ export class QueryableFlatCollection<T = DocumentData> implements QueryableColle
       // and at least one 'OR' filter (if any exists)
       const snap: Snapshot<T> = {
         id,
-        ref: new DeepReference(this.doc, id),
+        ref: new DeepReference(this.flatDoc, id),
         exists: data != null,
         data: () => data,
       };

@@ -1,5 +1,5 @@
 import type { Firestore, DocumentData } from '@google-cloud/firestore';
-import type { QueryableCollection, Reference, Snapshot } from './utils/queryable-collection';
+import type { QueryableCollection, Snapshot } from './utils/queryable-collection';
 import type { TransactionWrapper } from './utils/transaction-wrapper';
 import type { Logger } from 'pino';
 
@@ -233,14 +233,6 @@ export interface FirestoreConnectorContext {
 export interface FirestoreConnectorModel<T = DocumentData> extends StrapiModel {
   firestore: Firestore;
   db: QueryableCollection<T>;
-
-  autoId(): string;
-  doc(): Reference<T>;
-  doc(id: string): Reference<T>;
-  create(ref: Reference<T>, data: T, transaction: TransactionWrapper | undefined): Promise<void>;
-  update(ref: Reference<T>, data: Partial<T>, transaction: TransactionWrapper | undefined): Promise<void>;
-  setMerge(ref: Reference<T>, data: Partial<T>, transaction: TransactionWrapper | undefined): Promise<void>;
-  delete(ref: Reference<T>, transaction: TransactionWrapper | undefined): Promise<void>;
 
   runTransaction<TResult>(fn: (transaction: TransactionWrapper) => Promise<TResult>): Promise<TResult>;
 

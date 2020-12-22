@@ -29,7 +29,7 @@ export async function relationsUpdate(model: FirestoreConnectorModel, ref: Refer
         ? (r.assoc.collection ? FieldValue.arrayUnion(refValue) : refValue)
         : (r.assoc.collection ? FieldValue.arrayRemove(refValue) : null);
 
-      return r.model.update(r.ref, { [r.assoc.alias]: reverseValue }, transaction);
+      return r.model.db.update(r.ref, { [r.assoc.alias]: reverseValue }, transaction);
     };
 
     const findAndSetReverse = (added: Reference[], removed: Reference[]) => {

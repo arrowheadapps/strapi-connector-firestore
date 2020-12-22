@@ -41,7 +41,7 @@ export class DeepReference<T = DocumentData> {
       throw new Error(`Could not find model referred to by "${targetCollectionName}"`);
     }
 
-    return targetModel.doc(id) as DeepReference;
+    return targetModel.db.doc(id) as DeepReference;
   }
 
   get path() {

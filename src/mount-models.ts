@@ -1,15 +1,12 @@
 import * as _ from 'lodash';
 import * as utils from 'strapi-utils';
-import * as path from 'path';
-import { DocumentReference, FieldValue, FirestoreDataConverter, DocumentData } from '@google-cloud/firestore';
 import { QueryableFirestoreCollection } from './utils/queryable-firestore-collection';
 import { QueryableFlatCollection } from './utils/queryable-flat-collection';
 import type { FirestoreConnectorContext, FirestoreConnectorModel, ModelOptions, StrapiAttributeType } from './types';
-import { TransactionWrapper, TransactionWrapperImpl } from './utils/transaction-wrapper';
+import { TransactionWrapperImpl } from './utils/transaction-wrapper';
 import { populateDocs } from './populate';
-import { coerceModelFromFirestore, coerceModelToFirestore } from './utils/coerce';
-import { DeepReference } from './utils/deep-reference';
 import { buildPrefixQuery } from './utils/prefix-query';
+import { QueryableComponentCollection } from './utils/queryable-component-collection';
 
 export const DEFAULT_CREATE_TIME_KEY = 'createdAt';
 export const DEFAULT_UPDATE_TIME_KEY = 'updatedAt';
@@ -25,7 +22,7 @@ export function mountModels(models: FirestoreConnectorContext[]) {
   function mountModel({ instance, isComponent, connection, modelKey, strapi, options }: FirestoreConnectorContext) {
     // @ts-expect-error
     const model: FirestoreConnectorModel = connection;
-    const collectionName = model.collectionName || model.globalId;
+    model.collectionName = model.collectionName || model.globalId;
 
     // Set the default values to model settings
     _.defaults(model, {
@@ -84,213 +81,38 @@ export function mountModels(models: FirestoreConnectorContext[]) {
     if (model.options.maxQuerySize === undefined) {
       model.options.maxQuerySize = options.maxQuerySize;
     }
-    
-    const userConverter = model.config?.converter || { 
-      toFirestore: data => data,
-      fromFirestore: data => data,
-    };
-
-    const singleKey = model.kind === 'singleType' ? model.options.singleId : '';
-    const flattenedKey = model.options.flatten ? path.posix.join(collectionName, model.options.singleId) : '';
 
     model.orm = 'firestore'; 
     model.associations = [];
 
-    // Expose ORM functions
-    if (!isComponent) {
-
-      model.firestore = instance;
-      model.runTransaction = (fn) => {
-        return instance.runTransaction(async (trans) => {
-          const wrapper = new TransactionWrapperImpl(trans);
-          const result = await fn(wrapper);
-          wrapper.doWrites();
-          return result;
-        });
-      };
-
-      model.populate = async (data, transaction, populateFields) => {
-        const [result] = await populateDocs(model, [data], (populateFields as string[]) || model.defaultPopulate, transaction);
-        return result;
-      };
-
-      model.populateAll = (datas, transaction, populateFields) => {
-        return populateDocs(model, datas, (populateFields as string[]) || model.defaultPopulate, transaction);
-      };
-
-      if (flattenedKey) {
-
-        const conv: FirestoreDataConverter<DocumentData> = {
-          toFirestore: data => _.mapValues(data, d => userConverter.toFirestore(coerceModelToFirestore(model, d))),
-          fromFirestore: data => _.mapValues(data.data(), (d, id) => coerceModelFromFirestore(model, id, userConverter.fromFirestore(d))),
-        };
-        const flatDoc = instance.doc(flattenedKey).withConverter(conv);
-        const collection = flatDoc.parent;
-
-        (model as any).flatDoc = flatDoc;
-
-        model.db = new QueryableFlatCollection(flatDoc);
-        model.autoId = () => collection.doc().id;
-        model.doc = (id?: string) => {
-          return new DeepReference(flatDoc, id?.toString() || model.autoId());
-        };
-
-        model.delete = async (ref, trans) => {
-          await set(ref, FieldValue.delete(), trans, false);
-        };
-
-        model.create = async (ref, data, trans) => {
-          // TODO:
-          // Error if document already exists
-          await set(ref, data, trans, false);
-        };
-
-        model.update = async (ref, data, trans) => {
-          // TODO:
-          // Error if document doesn't exist
-          await set(ref, data, trans, false);
-        };
-
-
-        // Set flattened document
-        model.setMerge = async (ref, data, trans) => {
-          await set(ref, data, trans, true);
-        };
-
-        let _ensureDocument: Promise<any> | null = null;
-        const ensureDocument = async () => {
-          // Set and merge with empty object
-          // This will ensure that the document exists using
-          // as single write operation
-          if (!_ensureDocument) {
-            _ensureDocument = flatDoc.set({}, { merge: true })
-              .catch((err) => {
-                _ensureDocument = null;
-                throw err;
-              });
-          }
-          return _ensureDocument;
-        };
-        
-        const set = async (ref, data, trans: TransactionWrapper | undefined, merge: boolean) => {
-          if (!(ref instanceof DeepReference)) {
-            throw new Error('Flattened collection must have reference of type `DeepReference`');
-          }
-          if (!ref.doc.isEqual(flatDoc)) {
-            throw new Error('Reference points to a different model');
-          }
-          if (!data || (typeof data !== 'object')) {
-            throw new Error(`Invalid data provided to Firestore. It must be an object but it was: ${JSON.stringify(data)}`);
-          }
-          
-          if (FieldValue.delete().isEqual(data)) {
-            data = { [ref.id]: FieldValue.delete() };
-          } else {
-            if (merge) {
-              // Flatten into key-value pairs to merge the fields
-              const pairs = _.toPairs(data);
-              data = {};
-              pairs.forEach(([path, val]) => {
-                data[`${ref.id}.${path}`] = val;
-              });
-            } else {
-              data = { [ref.id]: data };
-            }
-          }
-
-          // Ensure document exists
-          // This costs one write operation at startup only
-          await ensureDocument();
-
-
-
-          // HACK:
-          // It seems that Firestore does not call the converter
-          // for update operations?
-          data = conv.toFirestore(data);
-
-          if (trans) {
-            // Batch all writes to documents in this flattened
-            // collection and do it only once
-            (trans as TransactionWrapperImpl).addKeyedWrite(flatDoc.path, 
-              (ctx) => Object.assign(ctx || {}, data),
-              (trans, ctx) => {
-                trans.update(flatDoc, ctx);
-              }
-            );
-          } else {
-            // Do the write immediately
-            await flatDoc.update(data);
-          }
-        };
-
-      } else {
-
-        const conv: FirestoreDataConverter<DocumentData> = {
-          toFirestore: data => userConverter.toFirestore(coerceModelToFirestore(model, data)),
-          fromFirestore: snap => coerceModelFromFirestore(model, snap.id, userConverter.fromFirestore(snap.data())),
-        };
-
-        const collection = instance.collection(collectionName).withConverter(conv);
-        model.db = new QueryableFirestoreCollection(collection, model.options.allowNonNativeQueries, model.options.maxQuerySize);
-        model.autoId = () => collection.doc().id;
-        model.doc = (id?: string) => id ? collection.doc(id.toString()) : collection.doc();
-
-        model.delete = async (ref, trans) => {
-          if (!(ref instanceof DocumentReference)) {
-            throw new Error('Non-flattened collection must have reference of type `DocumentReference`');
-          }
-          if (trans) {
-            trans.addWrite((trans)  => trans.delete(ref));
-          } else {
-            await ref.delete();
-          }
-        };
-
-        model.create = async (ref, data, trans) => {
-          if (!(ref instanceof DocumentReference)) {
-            throw new Error('Non-flattened collection must have reference of type `DocumentReference`');
-          }
-          if (trans) {
-            trans.addWrite((trans)  => trans.create(ref, data));
-          } else {
-            await ref.create(data);
-          }
-        };
-
-        model.update = async (ref, data, trans) => {
-          if (!(ref instanceof DocumentReference)) {
-            throw new Error('Non-flattened collection must have reference of type `DocumentReference`');
-          }
-
-          // HACK:
-          // It seems that Firestore does not call the converter
-          // for update operations?
-          data = conv.toFirestore(data);
-
-          if (trans) {
-            trans.addWrite((trans)  => trans.update(ref, data));
-          } else {
-            await ref.update(data);
-          }
-        };
-
-        model.setMerge = async (ref, data, trans) => {
-          if (!(ref instanceof DocumentReference)) {
-            throw new Error('Non-flattened collection must have reference of type `DocumentReference`');
-          }
-          if (trans) {
-            trans.addWrite((trans)  => trans.set(ref, data, { merge: true }));
-          } else {
-            await ref.set(data, { merge: true });
-          }
-        };
-      }
+    if (isComponent) {
+      model.db = new QueryableComponentCollection(model);
     } else {
-
-      // Used to generate IDs for embedded components
-      model.autoId = () => instance.collection(model.collectionName).doc().id;
+      if (model.options.flatten) {
+        model.db = new QueryableFlatCollection(model, options);
+      } else {
+        model.db = new QueryableFirestoreCollection(model, options);
+      }
     }
+    
+    model.firestore = instance;
+    model.runTransaction = (fn) => {
+      return instance.runTransaction(async (trans) => {
+        const wrapper = new TransactionWrapperImpl(trans);
+        const result = await fn(wrapper);
+        wrapper.doWrites();
+        return result;
+      });
+    };
+
+    model.populate = async (data, transaction, populateFields) => {
+      const [result] = await populateDocs(model, [data], (populateFields as string[]) || model.defaultPopulate, transaction);
+      return result;
+    };
+
+    model.populateAll = (datas, transaction, populateFields) => {
+      return populateDocs(model, datas, (populateFields as string[]) || model.defaultPopulate, transaction);
+    };
     
 
     /** 
@@ -370,11 +192,12 @@ export function mountModels(models: FirestoreConnectorContext[]) {
       .filter(ast => ast.autoPopulate !== false)
       .map(ast => ast.alias);
 
-    // TODO:
+    // FIXME:
     // Correlate all models that relate to any polymorphic
     // relations in this model
     model.morphRelatedModels = {};
     
+    const singleKey = model.kind === 'singleType' ? model.options.singleId : '';
     model.hasPK = (obj: any) => _.has(obj, model.primaryKey) || _.has(obj, 'id') || Boolean(singleKey);
     model.getPK = (obj: any) => singleKey || ((_.has(obj, model.primaryKey) ? obj[model.primaryKey] : obj.id));
   }

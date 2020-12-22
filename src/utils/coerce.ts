@@ -362,7 +362,7 @@ export function coerceToReferenceSingle(value: any, to: FirestoreConnectorModel 
     // When deserialised from Firestore it comes without any converters
     // We want to get the appropraite converters so we reinstantiate it
     if (to) {
-      const newRef = to.doc(value.id);
+      const newRef = to.db.doc(value.id);
       if (newRef.path !== value.path) {
         return fault(strict, `Reference is pointing to the wrong model. Expected "${newRef.path}", got "${value.path}".`);
       }
@@ -372,7 +372,7 @@ export function coerceToReferenceSingle(value: any, to: FirestoreConnectorModel 
       if (!model) {
         return fault(strict, `The model referred to by "${value.parent.path}" doesn't exist`);
       }
-      return model.doc(value.id);
+      return model.db.doc(value.id);
     }
   }
   if (value instanceof DeepReference) {
@@ -387,7 +387,7 @@ export function coerceToReferenceSingle(value: any, to: FirestoreConnectorModel 
     if (lastSep === -1) {
       // No path separators so it is just an ID
       if (to) {
-        return to.doc(value);
+        return to.db.doc(value);
       } else {
         return fault(strict, `Polymorphic reference must be fully qualified. Got the ID segment only.`);
       }
@@ -398,7 +398,7 @@ export function coerceToReferenceSingle(value: any, to: FirestoreConnectorModel 
     const id = value.slice(lastSep + 1);
     if (id) {
       if (to) {
-        const deepRef = to.doc(id);
+        const deepRef = to.db.doc(id);
         if (deepRef.path !== value) {
           return fault(strict, `Reference is pointing to the wrong model. Expected "${deepRef.path}", got "${id}".`);
         }
@@ -409,7 +409,7 @@ export function coerceToReferenceSingle(value: any, to: FirestoreConnectorModel 
         if (!model) {
           return fault(strict, `The model referred to by "${collection}" doesn't exist`);
         }
-        return model.doc(id);
+        return model.db.doc(id);
       }
     }
   }
@@ -420,7 +420,7 @@ export function coerceToReferenceSingle(value: any, to: FirestoreConnectorModel 
 function getIdOrAuto(model: FirestoreConnectorModel, value: any): string | undefined {
   if (model.options.ensureCompnentIds) {
     // Ensure there is a gauranteed ID
-    return value[model.primaryKey] || model.autoId();
+    return value[model.primaryKey] || model.db.autoId();
   } else {
     // Don't delete it if it already exists
     return value[model.primaryKey];
