@@ -8,7 +8,7 @@ import type { QueryableCollection } from "./queryable-collection";
  */
 export class DeepReference<T = DocumentData> {
 
-  constructor(readonly doc: DocumentReference<T>, readonly id: string) {
+  constructor(readonly doc: DocumentReference<Record<string, T>>, readonly id: string) {
     if (!id) {
       throw new Error('Document ID must not be empty');
     }

@@ -89,8 +89,8 @@ export class TransactionWrapperImpl implements TransactionWrapper {
 
   }
 
-  async getAll<T>(...refs: Reference<T>[]): Promise<Snapshot<T>[]> {
-    const docs: DocumentReference<T>[] = new Array(refs.length);
+  async getAll(...refs: Reference<any>[]): Promise<Snapshot<any>[]> {
+    const docs: DocumentReference<any>[] = new Array(refs.length);
     const ids: (string | null)[] = new Array(refs.length);
     refs.forEach((ref, i) => {
       if (ref instanceof DocumentReference) {

@@ -29,7 +29,7 @@ export interface ConnectorOptions {
    * 
    * Defults to `false`.
    */
-  ensureCompnentIds?: boolean
+  ensureCompnentIds: boolean
 
   /**
    * If defined, enforces a maximum limit on the size of all queries.
@@ -40,7 +40,7 @@ export interface ConnectorOptions {
    * 
    * Defaults to `200`.
    */
-  maxQuerySize?: number
+  maxQuerySize: number
 }
 
 export interface ModelOptions {
@@ -98,9 +98,9 @@ export interface ModelConfig<T = any, R = any> {
   converter?: Converter<T, R>
 }
 
-export interface Converter<T, R> {
+export interface Converter<T, R = DocumentData> {
   toFirestore: (data: Partial<T>) => R
-  fromFirestore: (data: R) => Partial<T>
+  fromFirestore: (data: R) => T
 }
 
 declare global {
@@ -178,6 +178,7 @@ export interface StrapiModel {
   options: {
     timestamps?: boolean | [string, string]
   }
+  config?: any;
   associations: StrapiAssociation[]
 }
 
@@ -243,7 +244,6 @@ export interface FirestoreConnectorModel<T = DocumentData> extends StrapiModel {
   componentKeys: string[];
   defaultPopulate: string[];
   options: ModelOptions;
-  config: ModelConfig<T>
   morphRelatedModels: Record<string, FirestoreConnectorModel[]>
   
   hasPK: (obj: any) => boolean;

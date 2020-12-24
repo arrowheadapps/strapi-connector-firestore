@@ -3,17 +3,18 @@ import * as path from 'path';
 import { getFieldPath, convertWhere, ManualFilter, WhereFilter } from './convert-where';
 import { DocumentReference, OrderByDirection, Transaction, FieldPath, WhereFilterOp, DocumentData, FieldValue, FirestoreDataConverter } from '@google-cloud/firestore';
 import type { QueryableCollection, QuerySnapshot, Reference, Snapshot } from './queryable-collection';
-import type { ConnectorOptions, FirestoreConnectorModel, StrapiWhereOperator } from '../types';
+import type { ConnectorOptions, StrapiWhereOperator } from '../types';
 import { DeepReference } from './deep-reference';
 import { coerceModelFromFirestore, coerceModelToFirestore } from './coerce';
-import { TransactionWrapper, TransactionWrapperImpl } from './transaction-wrapper';
+import type { TransactionWrapper, TransactionWrapperImpl } from './transaction-wrapper';
+import type { FirestoreConnectorModel } from '../model';
 
 
 export class QueryableFlatCollection<T = DocumentData> implements QueryableCollection<T> {
 
 
-  private readonly conv: FirestoreDataConverter<T>;
-  private readonly flatDoc: DocumentReference<T>;
+  private readonly conv: FirestoreDataConverter<Record<string, T>>;
+  private readonly flatDoc: DocumentReference<Record<string, T>>;
 
   private _filters: ManualFilter[] = [];
   private _orderBy: { field: string | FieldPath, directionStr: OrderByDirection }[] = [];
@@ -32,15 +33,16 @@ export class QueryableFlatCollection<T = DocumentData> implements QueryableColle
       this._limit = modelOrOther._limit;
       this._offset = modelOrOther._offset;
     } else {
-      const docPath = path.posix.join(modelOrOther.collectionName, modelOrOther.options.singleId || options!.singleId);
-      this.flatDoc = modelOrOther.firestore.doc(docPath).withConverter(conv);
+      const userConverter = modelOrOther.converter;
       this.conv = {
-        toFirestore: data => _.mapValues(data, d => conv!.toFirestore(coerceModelToFirestore(modelOrOther, d))),
-        fromFirestore: data => _.mapValues(data.data(), (d, id) => coerceModelFromFirestore(modelOrOther, id, conv!.fromFirestore(d))),
-      };;
+        toFirestore: data => _.mapValues(data, d => userConverter.toFirestore(coerceModelToFirestore(modelOrOther, d))),
+        fromFirestore: data => _.mapValues(data.data(), (d, id) => coerceModelFromFirestore(modelOrOther, id, userConverter.fromFirestore(d))),
+      };
 
-      // Default sort by ID
-      this.orderBy(FieldPath.documentId(), 'asc');
+      const docPath = path.posix.join(modelOrOther.collectionName, modelOrOther.options.singleId || options!.singleId);
+      this.flatDoc = modelOrOther.firestore
+        .doc(docPath)
+        .withConverter(this.conv);
     }
   }
 

@@ -2,43 +2,39 @@ import * as _ from 'lodash';
 import * as utils from 'strapi-utils';
 import { QueryableFirestoreCollection } from './utils/queryable-firestore-collection';
 import { QueryableFlatCollection } from './utils/queryable-flat-collection';
-import { ConnectorOptions, FirestoreConnectorContext, FirestoreConnectorModel, ModelConfig, ModelOptions, StrapiAssociation, StrapiAttributeType, StrapiModel, StrapiRelation } from './types';
+import { QueryableComponentCollection } from './utils/queryable-component-collection';
+import type { ConnectorOptions, Converter, ModelConfig, ModelOptions, StrapiAssociation, StrapiAttributeType, StrapiModel, StrapiRelation } from './types';
 import { TransactionWrapper, TransactionWrapperImpl } from './utils/transaction-wrapper';
 import { populateDoc, populateDocs } from './populate';
 import { buildPrefixQuery } from './utils/prefix-query';
-import { QueryableComponentCollection } from './utils/queryable-component-collection';
-import { QueryableCollection, Snapshot } from './utils/queryable-collection';
-import type { Firestore } from '@google-cloud/firestore';
+import type{ QueryableCollection, Snapshot } from './utils/queryable-collection';
+import type { DocumentData, Firestore } from '@google-cloud/firestore';
 
 export const DEFAULT_CREATE_TIME_KEY = 'createdAt';
 export const DEFAULT_UPDATE_TIME_KEY = 'updatedAt';
 
-const defaultOptions: ModelOptions = {
-  timestamps: false,
-  allowNonNativeQueries: undefined,
-  flatten: undefined
-};
 
-export class FirestoreConnectorModel<T> implements StrapiModel {
+export interface FirestoreConnectorModelOpts {
+  firestore: Firestore
+  options: ConnectorOptions
+  connection: StrapiModel
+  modelKey: string
+  isComponent: boolean
+}
 
-  readonly firestore: Firestore
-  readonly options: Required<ModelOptions>
+export class FirestoreConnectorModel<T = DocumentData> implements StrapiModel {
+
   readonly orm: 'firestore';
-  readonly primaryKey: 'id';
-  readonly primaryKeyType: 'string';
+  readonly primaryKey: string;
+  readonly primaryKeyType: string;
+  readonly firestore: Firestore;
+  readonly options: Required<ModelOptions>;
+  readonly config: ModelConfig<T>;
   readonly modelKey: string;
-  
   readonly kind: 'collectionType' | 'singleType';
-
-  readonly db: QueryableCollection<T>
-  
   readonly assocKeys: string[];
   readonly componentKeys: string[];
   readonly defaultPopulate: string[];
-  
-  config: ModelConfig<FirebaseFirestore.DocumentData, any>;
-  morphRelatedModels: Record<string, FirestoreConnectorModel<FirebaseFirestore.DocumentData>[]>;
-
   readonly connector: string;
   readonly connection: string;
   readonly attributes: Record<string, StrapiRelation>;
@@ -49,35 +45,92 @@ export class FirestoreConnectorModel<T> implements StrapiModel {
   readonly uid: string;
   readonly associations: StrapiAssociation[];
 
+  readonly db: QueryableCollection<T>;
+  readonly morphRelatedModels: Record<string, FirestoreConnectorModel[]>;
+  readonly flattenedKey: string | null;
+  readonly converter: Converter<T>;
 
-  private readonly singleKey : string | null;
+  private readonly singleKey: string | null;
 
-  constructor(modelKey: string, connection: StrapiModel, firestore: Firestore, options: ConnectorOptions) {
-    Object.assign(this, connection);
+  constructor({ modelKey, connection, options, firestore, isComponent }: FirestoreConnectorModelOpts) {
 
-    this.firestore = firestore;
-
-    
     this.orm = 'firestore'; 
+    this.firestore = firestore;
+    this.collectionName = connection.collectionName || connection.globalId;
+    this.globalId = connection.globalId;
+    this.kind = connection.kind;
+    this.uid = connection.uid;
+    this.modelName = connection.modelName;
+    this.primaryKey = connection.primaryKey || 'id';
+    this.primaryKeyType = connection.primaryKeyType || 'string';
+    this.connector = connection.connector;
+    this.connection = connection.connection;
+    this.attributes = connection.attributes;
+    this.config = connection.config;
+    
+    // FIXME: what is the difference from modelName?
     this.modelKey = modelKey;
-    this.associations = [];
+
+    const opts: ModelOptions = connection.options || {};
+    this.flattenedKey = this.defaultFlattenOpts(opts, options);
 
     this.options = {
-
+      timestamps: (opts.timestamps === true) ? [DEFAULT_CREATE_TIME_KEY, DEFAULT_UPDATE_TIME_KEY] : false,
+      singleId: opts.singleId || options.singleId,
+      flatten: this.flattenedKey != null,
+      searchAttribute: this.defaultSearchAttrOpts(opts, options),
+      maxQuerySize: opts.maxQuerySize ?? options.maxQuerySize,
+      ensureCompnentIds: opts.ensureCompnentIds ?? options.ensureCompnentIds,
+      allowNonNativeQueries: this.defaultAllowNonNativeQueries(opts, options),
     };
 
     this.singleKey = this.kind === 'singleType' ? this.options.singleId : null;
 
-    const isComponent: boolean
+    const cfg: ModelConfig<T> = connection.config || {};
+    this.converter = cfg.converter || { 
+      toFirestore: data => data,
+      fromFirestore: data => data as T,
+    };
+
     if (isComponent) {
-      this.db = new QueryableComponentCollection(this);
+      this.db = new QueryableComponentCollection<T>(this);
     } else {
       if (this.options.flatten) {
-        this.db = new QueryableFlatCollection(this, options);
+        this.db = new QueryableFlatCollection<T>(this, options);
       } else {
-        this.db = new QueryableFirestoreCollection(this, options);
+        this.db = new QueryableFirestoreCollection<T>(this, options);
       }
     }
+
+
+    this.associations = [];
+    Object.keys(this.attributes)
+      .filter(key => {
+        const { type } = this.attributes[key];
+        return type === undefined;
+      })
+      .forEach(name => {
+        // Build associations key
+        utils.models.defineAssociations(modelKey.toLowerCase(), this, this.attributes[name], name);
+      });
+
+
+    this.privateAttributes = utils.contentTypes.getPrivateAttributes(this);
+    this.assocKeys = this.associations.map(ast => ast.alias);
+    this.componentKeys = Object
+      .keys(this.attributes)
+      .filter(key =>
+        ['component', 'dynamiczone'].includes(this.attributes[key].type)
+      );
+
+    this.defaultPopulate = this.associations
+      .filter(ast => ast.autoPopulate !== false)
+      .map(ast => ast.alias);
+
+    // FIXME:
+    // Correlate all models that relate to any polymorphic
+    // relations in this model
+    this.morphRelatedModels = {};
   }
 
   hasPK(obj: any): boolean {
@@ -98,21 +151,15 @@ export class FirestoreConnectorModel<T> implements StrapiModel {
     });
   }
 
-  async populate(data: Snapshot<T>, transaction: TransactionWrapper, populate?: (keyof T)[]): Promise<T> {
-    return await populateDoc(this, data, populate || this.defaultPopulate, transaction);
+  async populate(data: Snapshot<T>, transaction: TransactionWrapper, populate?: (keyof T)[]): Promise<any> {
+    return await populateDoc(this, data, (populate as string[]) || this.defaultPopulate, transaction);
   }
 
-  async populateAll(datas: Snapshot<T>[], transaction: TransactionWrapper, populate?: (keyof T)[]): Promise<T[]> {
-    return await populateDocs(this, datas, populate || this.defaultPopulate, transaction);
+  async populateAll(datas: Snapshot<T>[], transaction: TransactionWrapper, populate?: (keyof T)[]): Promise<any[]> {
+    return await populateDocs(this, datas, (populate as string[]) || this.defaultPopulate, transaction);
   }
 
 
-
-
-
-  
-    /**  
-    */
 
   /**
    * HACK:
@@ -170,104 +217,68 @@ export class FirestoreConnectorModel<T> implements StrapiModel {
     };
   }
 
-}
 
+  private defaultAllowNonNativeQueries(options: ModelOptions, rootOptions: ConnectorOptions) {
+    if (options.allowNonNativeQueries === undefined) {
+      const rootAllow = rootOptions.allowNonNativeQueries;
+      return (rootAllow instanceof RegExp)
+        ? rootAllow.test(this.uid) 
+        : rootAllow;
+    } else {
+      return options.allowNonNativeQueries;
+    }
+  }
 
-export function mountModels(models: FirestoreConnectorContext[]) {
+  private defaultFlattenOpts(options: ModelOptions, rootOptions: ConnectorOptions) {
+    if (options.flatten === undefined) {
+      
+      const [flattenedId] = rootOptions.flattenModels
+        .map(testOrRegEx => {
+          if ((typeof testOrRegEx === 'string') || (testOrRegEx instanceof RegExp)) {
+            return {
+              test: testOrRegEx,
+              doc: undefined,
+            }
+          } else {
+            return testOrRegEx;
+          }
+        })
+        .filter(({ test }) => {
+          const regex = (typeof test === 'string')
+            ? new RegExp(test)
+            : test;
+          return regex.test(this.uid);
+        })
+        .map(({ doc }) => {
+          return doc?.(this) || options.singleId || rootOptions.singleId;
+        });
+  
+      return flattenedId || null;
 
-  function mountModel({ instance, isComponent, connection, modelKey, strapi, options }: FirestoreConnectorContext) {
-    // @ts-expect-error
-    const model: FirestoreConnectorModel = connection;
-    model.collectionName = model.collectionName || model.globalId;
+    } else {
+      return options.flatten
+        ? options.singleId || rootOptions.singleId
+        : null;
+    }
+  }
 
-    // Set the default values to model settings
-    _.defaults(model, {
-      primaryKey: 'id',
-      primaryKeyType: 'string',
-    });
+  private defaultSearchAttrOpts(options: ModelOptions, rootOptions: ConnectorOptions) {
+    const searchAttr = options.searchAttribute || '';
 
-    // Setup default options
-    if (!model.options) {
-      model.options = {};
-    }
-    _.defaults(model.options, defaultOptions);
-    if (model.options.timestamps === true) {
-      model.options.timestamps = [DEFAULT_CREATE_TIME_KEY, DEFAULT_UPDATE_TIME_KEY];
-    }
-    if (!model.options.singleId) {
-      model.options.singleId = options.singleId;
-    }
-    if (model.options.flatten === undefined) {
-      const match = options.flattenModels.find(testOrRegEx => {
-        const regexRaw = ((typeof testOrRegEx === 'string') || (testOrRegEx instanceof RegExp))
-          ? testOrRegEx
-          : testOrRegEx.test;
-        const regex = typeof regexRaw === 'string'
-          ? new RegExp(regexRaw)
-          : regexRaw;
-        
-        return regex.test(connection.uid);
-      });
-      if (match) {
-        const doc = (match as any).doc?.(connection);
-        model.options.flatten = doc || true;
-      }
-    }
-    if (model.options.allowNonNativeQueries === undefined) {
-      const rootAllow = options.allowNonNativeQueries;
-      model.options.allowNonNativeQueries = (rootAllow instanceof RegExp) ? rootAllow.test(model.uid) : rootAllow;
-    }
-    if (model.options.searchAttribute) {
-      const attr = model.options.searchAttribute;
-      const type: StrapiAttributeType = (attr === model.primaryKey)
+    if (searchAttr) {
+      const type: StrapiAttributeType = (searchAttr === this.primaryKey)
         ? 'uid'
-        : model.attributes[attr]?.type;
+        : this.attributes[searchAttr]?.type;
       const notAllowed: StrapiAttributeType[] = [
         'password',
         'dynamiczone',
         'component',
       ];
       if (!type || notAllowed.includes(type)) {
-        throw new Error(`The search attribute "${attr}" does not exist on the model ${model.globalId} or is of an unsupported type.`);
+        throw new Error(`The search attribute "${searchAttr}" does not exist on the model ${this.modelName} or is of an unsupported type.`);
       }
     }
-    if (model.options.ensureCompnentIds === undefined) {
-      model.options.ensureCompnentIds = options.ensureCompnentIds;
-    }
-    if (model.options.maxQuerySize === undefined) {
-      model.options.maxQuerySize = options.maxQuerySize;
-    }
 
-
-    
-
-
-    const relationalAttributes = Object.keys(model.attributes).filter(key => {
-      const { type } = model.attributes[key];
-      return type === undefined;
-    });
-
-    // handle relational attrs
-    relationalAttributes.forEach(name => {
-      // Build associations key
-      utils.models.defineAssociations(modelKey.toLowerCase(), model, model.attributes[name], name);
-    });
-
-    model.privateAttributes = utils.contentTypes.getPrivateAttributes(model);
-    model.assocKeys = model.associations.map(ast => ast.alias);
-    model.componentKeys = Object.keys(model.attributes).filter(key =>
-      ['component', 'dynamiczone'].includes(model.attributes[key].type)
-    );
-    model.defaultPopulate = model.associations
-      .filter(ast => ast.autoPopulate !== false)
-      .map(ast => ast.alias);
-
-    // FIXME:
-    // Correlate all models that relate to any polymorphic
-    // relations in this model
-    model.morphRelatedModels = {};
-    
+    return searchAttr;
   }
-
-  return models.forEach(mountModel);
 }

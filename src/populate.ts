@@ -14,7 +14,7 @@ export type PartialSnapshot = Pick<Snapshot, 'data'> & Pick<Snapshot, 'ref'>
 /**
  * Populates all the requested relational field on the given documents.
  */
-export async function populateDocs(model: FirestoreConnectorModel, docs: PartialSnapshot[], populateFields: string[], transaction: TransactionWrapper) {
+export async function populateDocs<T>(model: FirestoreConnectorModel<T>, docs: PartialSnapshot[], populateFields: string[], transaction: TransactionWrapper) {
   return await Promise.all(docs.map(doc => populateDoc(model, doc, populateFields, transaction)));
 };
 
@@ -22,7 +22,7 @@ export async function populateDocs(model: FirestoreConnectorModel, docs: Partial
 /**
  * Populates all the requested relational field on the given document.
  */
-export async function populateDoc(model: FirestoreConnectorModel, doc: PartialSnapshot, populateFields: string[], transaction: TransactionWrapper) {
+export async function populateDoc<T>(model: FirestoreConnectorModel<T>, doc: PartialSnapshot, populateFields: string[], transaction: TransactionWrapper) {
   const values = doc.data();
   if (!values) {
     throw new StatusError(`Document not found: ${doc.ref.path}`, 404);

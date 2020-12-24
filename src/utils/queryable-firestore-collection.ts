@@ -1,16 +1,17 @@
 import * as _ from 'lodash';
 import { ManualFilter, convertWhere, WhereFilter } from './convert-where';
-import { Query, Transaction, QueryDocumentSnapshot, FieldPath, WhereFilterOp, DocumentData, CollectionReference, DocumentReference } from '@google-cloud/firestore';
+import { Query, Transaction, QueryDocumentSnapshot, FieldPath, WhereFilterOp, DocumentData, CollectionReference, DocumentReference, FirestoreDataConverter } from '@google-cloud/firestore';
 import type { QueryableCollection, QuerySnapshot, Reference, Snapshot } from './queryable-collection';
-import type { ConnectorOptions, Converter, FirestoreConnectorModel, StrapiWhereOperator } from '../types';
+import type { ConnectorOptions, StrapiWhereOperator } from '../types';
 import { coerceModelFromFirestore, coerceModelToFirestore } from './coerce';
-import { TransactionWrapper } from './transaction-wrapper';
+import type { TransactionWrapper } from './transaction-wrapper';
+import type { FirestoreConnectorModel } from '../model';
 
 
 export class QueryableFirestoreCollection<T = DocumentData> implements QueryableCollection<T> {
 
   private readonly collection: CollectionReference<T>
-  private readonly conv: Converter<T, any>;
+  private readonly conv: FirestoreDataConverter<T>;
   
   private readonly allowNonNativeQueries: boolean
   private readonly maxQuerySize: number
@@ -33,9 +34,10 @@ export class QueryableFirestoreCollection<T = DocumentData> implements Queryable
       this._offset = modelOrOther._offset;
     } else {
       
+      const userConverter = modelOrOther.converter;
       this.conv = {
-        toFirestore: data => userConverter.toFirestore(coerceModelToFirestore(model, data)),
-        fromFirestore: snap => coerceModelFromFirestore(model, snap.id, userConverter.fromFirestore(snap.data())),
+        toFirestore: data => userConverter.toFirestore(coerceModelToFirestore(modelOrOther, data)),
+        fromFirestore: snap => coerceModelFromFirestore(modelOrOther, snap.id, userConverter.fromFirestore(snap.data())),
       };
 
       this.collection = modelOrOther.firestore
@@ -43,8 +45,8 @@ export class QueryableFirestoreCollection<T = DocumentData> implements Queryable
         .withConverter(this.conv);
 
       this.query = this.collection;
-      this.allowNonNativeQueries = modelOrOther.options.allowNonNativeQueries || options!.allowNonNativeQueries || false;
-      this.maxQuerySize = modelOrOther.options.maxQuerySize || options!.maxQuerySize || 0;
+      this.allowNonNativeQueries = modelOrOther.options.allowNonNativeQueries;
+      this.maxQuerySize = modelOrOther.options.maxQuerySize;
       
       if (this.maxQuerySize < 0) {
         throw new Error("maxQuerySize cannot be less than zero");
@@ -98,12 +100,12 @@ export class QueryableFirestoreCollection<T = DocumentData> implements Queryable
     // HACK:
     // It seems that Firestore does not call the converter
     // for update operations?
-    data = this.conv.toFirestore(data);
+    const d = this.conv.toFirestore(data, { merge: true });
 
     if (trans) {
-      trans.addWrite((trans)  => trans.update(ref, data));
+      trans.addWrite((trans)  => trans.update(ref, d));
     } else {
-      await ref.update(data);
+      await ref.update(d);
     }
   };
 

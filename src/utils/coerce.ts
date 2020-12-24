@@ -14,15 +14,15 @@ export interface CoerceFn {
 /**
  * Coerces an entire document to Firestore based on the model schema.
  */
-export function coerceModelToFirestore(model: FirestoreConnectorModel, values: DocumentData): DocumentData {
-  return coerceModel(model, undefined, values, toFirestore);
+export function coerceModelToFirestore<T>(model: FirestoreConnectorModel<T>, values: DocumentData): Partial<T> {
+  return coerceModel(model, undefined, values, toFirestore) as Partial<T>;
 }
 
 /**
  * Coerces an entire document from Firestore based on the model schema.
  */
-export function coerceModelFromFirestore(model: FirestoreConnectorModel, docId: string, values: DocumentData): DocumentData {
-  return coerceModel(model, docId, values, fromFirestore);
+export function coerceModelFromFirestore<T>(model: FirestoreConnectorModel<T>, docId: string, values: DocumentData): T {
+  return coerceModel(model, docId, values, fromFirestore) as T;
 }
 
 
