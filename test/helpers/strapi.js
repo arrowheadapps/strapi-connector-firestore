@@ -74,7 +74,7 @@ async function stopStrapi() {
   }
 }
 
-async function waitForStrapi(timeoutMs = 30_000) {
+async function waitForStrapi(timeoutMs = 60_000) {
   log('Waiting for Strapi to come online... ');
   try {
     await waitOn({

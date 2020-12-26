@@ -8,7 +8,7 @@ import type { TransactionWrapper } from './transaction-wrapper';
 import type { FirestoreConnectorModel } from '../model';
 
 
-export class QueryableFirestoreCollection<T = DocumentData> implements QueryableCollection<T> {
+export class QueryableFirestoreCollection<T extends object = DocumentData> implements QueryableCollection<T> {
 
   private readonly collection: CollectionReference<T>
   private readonly conv: FirestoreDataConverter<T>;
@@ -208,7 +208,7 @@ export class QueryableFirestoreCollection<T = DocumentData> implements Queryable
 }
 
 
-async function* queryChunked<T>(query: Query<T>, chunkSize:number, transaction: Transaction | undefined) {
+async function* queryChunked<T extends object>(query: Query<T>, chunkSize:number, transaction: Transaction | undefined) {
   let cursor: QueryDocumentSnapshot<T> | undefined
   while (true) {
     let q = query.limit(chunkSize);
@@ -235,7 +235,7 @@ async function* queryChunked<T>(query: Query<T>, chunkSize:number, transaction: 
   }
 }
 
-async function queryWithManualFilters<T>(query: Query<T>, filters: ManualFilter[], limit: number, offset: number, transaction: Transaction | undefined): Promise<QuerySnapshot<T>> {
+async function queryWithManualFilters<T extends object>(query: Query<T>, filters: ManualFilter[], limit: number, offset: number, transaction: Transaction | undefined): Promise<QuerySnapshot<T>> {
 
   // Use a chunk size of 10 for the native query
   // E.g. if we only want 1 result, we will still query

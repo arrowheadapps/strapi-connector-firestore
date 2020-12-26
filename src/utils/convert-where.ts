@@ -44,7 +44,7 @@ export function convertWhere(field: string | FieldPath, operator: WhereFilterOp 
   switch (operator) {
     case '==':
     case 'eq':
-      if (_.isArray(value)) {
+      if (Array.isArray(value)) {
         // Equals any (OR)
         // I.e. "in"
         return convertWhere(field, 'in', value, mode);
@@ -56,7 +56,7 @@ export function convertWhere(field: string | FieldPath, operator: WhereFilterOp 
 
     case '!=':
     case 'ne':
-      if (_.isArray(value)) {
+      if (Array.isArray(value)) {
         // Not equals any (OR)
         // I.e. "nin"
         return convertWhere(field, 'nin', value, mode);
@@ -121,7 +121,7 @@ export function convertWhere(field: string | FieldPath, operator: WhereFilterOp 
 
     case '<':
     case 'lt':
-      if (_.isArray(value)) {
+      if (Array.isArray(value)) {
         // Less than any (OR)
         // Just take the maximum
         value = _.max(value);
@@ -132,7 +132,7 @@ export function convertWhere(field: string | FieldPath, operator: WhereFilterOp 
 
     case '<=':
     case 'lte':
-      if (_.isArray(value)) {
+      if (Array.isArray(value)) {
         // Less than any (OR)
         // Just take the maximum
         value = _.max(value);
@@ -143,7 +143,7 @@ export function convertWhere(field: string | FieldPath, operator: WhereFilterOp 
 
     case '>':
     case 'gt':
-      if (_.isArray(value)) {
+      if (Array.isArray(value)) {
         // Greater than any (OR)
         // Just take the minimum
         value = _.min(value);
@@ -154,7 +154,7 @@ export function convertWhere(field: string | FieldPath, operator: WhereFilterOp 
 
     case '>=':
     case 'gte':
-      if (_.isArray(value)) {
+      if (Array.isArray(value)) {
         // Greater than any (OR)
         // Just take the minimum
         value = _.min(value);
@@ -183,7 +183,7 @@ export function convertWhere(field: string | FieldPath, operator: WhereFilterOp 
             case 'array-contains':
               // Array contains value
               op = manualWhere(field, v => {
-                if (_.isArray(v)) {
+                if (Array.isArray(v)) {
                   return _.some(v, eq(value));
                 } else {
                   return false;
@@ -196,7 +196,7 @@ export function convertWhere(field: string | FieldPath, operator: WhereFilterOp 
               // `value` must be an array
               value = _.castArray(value);
               op = manualWhere(field, v => {
-                if (_.isArray(v)) {
+                if (Array.isArray(v)) {
                   return _.some(v, val => _.some(value, eq(val)));
                 } else {
                   return false;

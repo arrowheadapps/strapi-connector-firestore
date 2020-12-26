@@ -3,7 +3,7 @@ import { FirestoreConnectorModel } from '../model';
 import type { QueryableCollection } from './queryable-collection';
 
 
-export class QueryableComponentCollection<T = never> implements QueryableCollection<T> {
+export class QueryableComponentCollection<T extends object = never> implements QueryableCollection<T> {
 
   private dummyCollection: CollectionReference
   constructor(model: FirestoreConnectorModel<T>) {

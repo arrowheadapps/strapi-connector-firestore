@@ -3,7 +3,7 @@ import * as utils from 'strapi-utils';
 import { QueryableFirestoreCollection } from './utils/queryable-firestore-collection';
 import { QueryableFlatCollection } from './utils/queryable-flat-collection';
 import { QueryableComponentCollection } from './utils/queryable-component-collection';
-import type { ConnectorOptions, Converter, ModelConfig, ModelOptions, StrapiAssociation, StrapiAttributeType, StrapiModel, StrapiRelation } from './types';
+import type { AttributeKey, ConnectorOptions, Converter, ModelConfig, ModelOptions, StrapiAssociation, StrapiAttributeType, StrapiModel, StrapiRelation } from './types';
 import { TransactionWrapper, TransactionWrapperImpl } from './utils/transaction-wrapper';
 import { populateDoc, populateDocs } from './populate';
 import { buildPrefixQuery } from './utils/prefix-query';
@@ -14,15 +14,18 @@ export const DEFAULT_CREATE_TIME_KEY = 'createdAt';
 export const DEFAULT_UPDATE_TIME_KEY = 'updatedAt';
 
 
-export interface FirestoreConnectorModelOpts {
+export interface FirestoreConnectorModelArgs {
   firestore: Firestore
   options: ConnectorOptions
-  connection: StrapiModel
+  model: StrapiModel
   modelKey: string
   isComponent: boolean
 }
 
-export class FirestoreConnectorModel<T = DocumentData> implements StrapiModel {
+/**
+ * Firestore connector implentation of the Strapi model interface.
+ */
+export class FirestoreConnectorModel<T extends object = DocumentData> implements StrapiModel<T> {
 
   readonly orm: 'firestore';
   readonly primaryKey: string;
@@ -32,50 +35,50 @@ export class FirestoreConnectorModel<T = DocumentData> implements StrapiModel {
   readonly config: ModelConfig<T>;
   readonly modelKey: string;
   readonly kind: 'collectionType' | 'singleType';
-  readonly assocKeys: string[];
-  readonly componentKeys: string[];
-  readonly defaultPopulate: string[];
+  readonly assocKeys: AttributeKey<T>[];
+  readonly componentKeys: AttributeKey<T>[];
+  readonly defaultPopulate: AttributeKey<T>[];
   readonly connector: string;
   readonly connection: string;
-  readonly attributes: Record<string, StrapiRelation>;
-  readonly privateAttributes: Record<string, StrapiRelation>;
+  readonly attributes: Record<AttributeKey<T>, StrapiRelation>;
+  readonly privateAttributes: Record<AttributeKey<T>, StrapiRelation>;
   readonly collectionName: string;
   readonly globalId: string;
   readonly modelName: string;
   readonly uid: string;
-  readonly associations: StrapiAssociation[];
+  readonly associations: StrapiAssociation<AttributeKey<T>>[];
 
   readonly db: QueryableCollection<T>;
   readonly morphRelatedModels: Record<string, FirestoreConnectorModel[]>;
   readonly flattenedKey: string | null;
   readonly converter: Converter<T>;
+  readonly timestamps: [string, string] | null
 
   private readonly singleKey: string | null;
 
-  constructor({ modelKey, connection, options, firestore, isComponent }: FirestoreConnectorModelOpts) {
-
+  constructor({ modelKey, model, options, firestore, isComponent }: FirestoreConnectorModelArgs) {
     this.orm = 'firestore'; 
     this.firestore = firestore;
-    this.collectionName = connection.collectionName || connection.globalId;
-    this.globalId = connection.globalId;
-    this.kind = connection.kind;
-    this.uid = connection.uid;
-    this.modelName = connection.modelName;
-    this.primaryKey = connection.primaryKey || 'id';
-    this.primaryKeyType = connection.primaryKeyType || 'string';
-    this.connector = connection.connector;
-    this.connection = connection.connection;
-    this.attributes = connection.attributes;
-    this.config = connection.config;
+    this.collectionName = model.collectionName || model.globalId;
+    this.globalId = model.globalId;
+    this.kind = model.kind;
+    this.uid = model.uid;
+    this.modelName = model.modelName;
+    this.primaryKey = model.primaryKey || 'id';
+    this.primaryKeyType = model.primaryKeyType || 'string';
+    this.connector = 'firestore';
+    this.connection = model.connection;
+    this.attributes = model.attributes || {};
+    this.config = model.config || {};
     
     // FIXME: what is the difference from modelName?
     this.modelKey = modelKey;
 
-    const opts: ModelOptions = connection.options || {};
+    const opts: ModelOptions = model.options || {};
     this.flattenedKey = this.defaultFlattenOpts(opts, options);
 
     this.options = {
-      timestamps: (opts.timestamps === true) ? [DEFAULT_CREATE_TIME_KEY, DEFAULT_UPDATE_TIME_KEY] : false,
+      timestamps: opts.timestamps || false,
       singleId: opts.singleId || options.singleId,
       flatten: this.flattenedKey != null,
       searchAttribute: this.defaultSearchAttrOpts(opts, options),
@@ -84,10 +87,12 @@ export class FirestoreConnectorModel<T = DocumentData> implements StrapiModel {
       allowNonNativeQueries: this.defaultAllowNonNativeQueries(opts, options),
     };
 
+    this.timestamps = (typeof this.options.timestamps === 'boolean')
+      ? (this.options.timestamps ? [DEFAULT_CREATE_TIME_KEY, DEFAULT_UPDATE_TIME_KEY] : null)
+      : this.options.timestamps;
     this.singleKey = this.kind === 'singleType' ? this.options.singleId : null;
 
-    const cfg: ModelConfig<T> = connection.config || {};
-    this.converter = cfg.converter || { 
+    this.converter = this.config.converter || { 
       toFirestore: data => data,
       fromFirestore: data => data as T,
     };
@@ -117,8 +122,7 @@ export class FirestoreConnectorModel<T = DocumentData> implements StrapiModel {
 
     this.privateAttributes = utils.contentTypes.getPrivateAttributes(this);
     this.assocKeys = this.associations.map(ast => ast.alias);
-    this.componentKeys = Object
-      .keys(this.attributes)
+    this.componentKeys = (Object.keys(this.attributes) as AttributeKey<T>[])
       .filter(key =>
         ['component', 'dynamiczone'].includes(this.attributes[key].type)
       );
@@ -151,12 +155,12 @@ export class FirestoreConnectorModel<T = DocumentData> implements StrapiModel {
     });
   }
 
-  async populate(data: Snapshot<T>, transaction: TransactionWrapper, populate?: (keyof T)[]): Promise<any> {
-    return await populateDoc(this, data, (populate as string[]) || this.defaultPopulate, transaction);
+  async populate(data: Snapshot<T>, transaction: TransactionWrapper, populate?: AttributeKey<T>[]): Promise<any> {
+    return await populateDoc(this, data, populate || this.defaultPopulate, transaction);
   }
 
-  async populateAll(datas: Snapshot<T>[], transaction: TransactionWrapper, populate?: (keyof T)[]): Promise<any[]> {
-    return await populateDocs(this, datas, (populate as string[]) || this.defaultPopulate, transaction);
+  async populateAll(datas: Snapshot<T>[], transaction: TransactionWrapper, populate?: AttributeKey<T>[]): Promise<any[]> {
+    return await populateDocs(this, datas, populate || this.defaultPopulate, transaction);
   }
 
 
@@ -280,5 +284,9 @@ export class FirestoreConnectorModel<T = DocumentData> implements StrapiModel {
     }
 
     return searchAttr;
+  }
+
+  toString(): string {
+    return `${FirestoreConnectorModel.name}("${this.collectionName}")`;
   }
 }

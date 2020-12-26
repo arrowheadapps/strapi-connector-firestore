@@ -3,8 +3,12 @@ import * as fs from 'fs';
 import * as _ from 'lodash';
 import { Firestore, Settings, DocumentReference, Timestamp } from '@google-cloud/firestore';
 import { FirestoreConnectorModel, DEFAULT_CREATE_TIME_KEY, DEFAULT_UPDATE_TIME_KEY } from './model';
-import { queries } from './queries';
-import type { Strapi, StrapiModel, ConnectorOptions } from './types';
+import { FirestoreConnectorQuery } from './query';
+import type { Strapi, StrapiModel, ConnectorOptions, StrapiContext } from './types';
+
+export * from './types';
+export * from './model';
+export * from './utils/queryable-collection';
 
 
 /**
@@ -41,7 +45,7 @@ module.exports = (strapi: Strapi) => {
   (Timestamp.prototype as any).toJSON = function() { return this.toDate().toJSON(); };
 
 
-  const initialize = () => {
+  const initialize = ({ strapi }: StrapiContext) => {
     const { connections } = strapi.config;
 
     for (const [connectionName, connection] of Object.entries(connections)) {
@@ -91,13 +95,20 @@ module.exports = (strapi: Strapi) => {
       
       const mountModels = (models: Record<string, StrapiModel>, isComponent: boolean = false) => {
         Object.keys(models).forEach(modelKey => {
-          models[modelKey] = new FirestoreConnectorModel({
+          const model = new FirestoreConnectorModel({
             firestore,
             modelKey,
+            model: models[modelKey],
             options,
-            connection,
             isComponent,
           });
+
+          // FIXME:
+          // We are trying to replace every instance of the model
+          // This will break easily as references to the model may be
+          // stored in other places in future versions
+          models[modelKey] = model;
+          strapi.contentTypes[model.uid] = model;
         });
       }
 
@@ -110,6 +121,10 @@ module.exports = (strapi: Strapi) => {
       });
     }
   }
+
+  const queries = (args: StrapiContext) => {
+    return new FirestoreConnectorQuery(args);
+  };
 
   return {
     defaults,

@@ -1,20 +1,20 @@
 import * as _ from 'lodash';
 import { getComponentModel } from './utils/validate-components';
 import { coerceReference } from './utils/coerce';
-import type { FirestoreConnectorModel } from './types';
+import type { FirestoreConnectorModel } from './model';
 import type { TransactionWrapper } from './utils/transaction-wrapper';
 import type { Reference, Snapshot } from './utils/queryable-collection';
 import { StatusError } from './utils/status-error';
 import { AsyncSnapshot, findReverse, getReverseAssocByAssoc, ReverseActionParams } from './relations';
 
 
-export type PartialSnapshot = Pick<Snapshot, 'data'> & Pick<Snapshot, 'ref'>
+export type PartialSnapshot<T extends object> = Pick<Snapshot<T>, 'data'> & Pick<Snapshot<T>, 'ref'>
 
 
 /**
  * Populates all the requested relational field on the given documents.
  */
-export async function populateDocs<T>(model: FirestoreConnectorModel<T>, docs: PartialSnapshot[], populateFields: string[], transaction: TransactionWrapper) {
+export async function populateDocs<T extends object>(model: FirestoreConnectorModel<T>, docs: PartialSnapshot<T>[], populateFields: Extract<keyof T, string>[], transaction: TransactionWrapper) {
   return await Promise.all(docs.map(doc => populateDoc(model, doc, populateFields, transaction)));
 };
 
@@ -22,7 +22,7 @@ export async function populateDocs<T>(model: FirestoreConnectorModel<T>, docs: P
 /**
  * Populates all the requested relational field on the given document.
  */
-export async function populateDoc<T>(model: FirestoreConnectorModel<T>, doc: PartialSnapshot, populateFields: string[], transaction: TransactionWrapper) {
+export async function populateDoc<T extends object>(model: FirestoreConnectorModel<T>, doc: PartialSnapshot<T>, populateFields: Extract<keyof T, string>[], transaction: TransactionWrapper) {
   const values = doc.data();
   if (!values) {
     throw new StatusError(`Document not found: ${doc.ref.path}`, 404);
@@ -41,14 +41,18 @@ export async function populateDoc<T>(model: FirestoreConnectorModel<T>, doc: Par
       // In the future, components embedding or not may be configurable
       // so we need a way to handle and differentiate this
 
+      // FIXME:
+      // The typeings were a bit hard to get working here so I ended up
+      // casting them all as `any`
+
       if (Array.isArray(component)) {
-        data[componentKey] = await Promise.all(component.map(c => {
+        data[componentKey] = await Promise.all((component as any[]).map(c => {
           const componentModel = getComponentModel(model, componentKey, c);
           return populateDoc(componentModel, { ref: doc.ref, data: () => c }, componentModel.defaultPopulate, transaction);
-        }));
+        })) as any;
       } else {
         const componentModel = getComponentModel(model, componentKey, component);
-        data[componentKey] = await populateDoc(componentModel, { ref: doc.ref, data: () => component }, componentModel.defaultPopulate, transaction);
+        data[componentKey] = await populateDoc(componentModel, { ref: doc.ref, data: () => component }, componentModel.defaultPopulate, transaction) as any;
       }
     }
   }));
@@ -59,7 +63,7 @@ export async function populateDoc<T>(model: FirestoreConnectorModel<T>, doc: Par
 }
 
 
-export async function populateField(model: FirestoreConnectorModel, docRef: Reference, field: string, data: any, transaction: TransactionWrapper) {
+export async function populateField<T extends object>(model: FirestoreConnectorModel<T>, docRef: Reference, field: string, data: any, transaction: TransactionWrapper) {
   const assoc = model.associations.find(assoc => assoc.alias === field)!;
   const reverse = getReverseAssocByAssoc(assoc);
 

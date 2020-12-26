@@ -5,23 +5,23 @@ import type { ManualFilter, WhereFilter } from './convert-where';
 import type { DeepReference } from './deep-reference';
 import { TransactionWrapper } from './transaction-wrapper';
 
-export type Reference<T = DocumentData> = DocumentReference<T> | DeepReference<T>;
+export type Reference<T extends object = DocumentData> = DocumentReference<T> | DeepReference<T>;
 
 
-export interface Snapshot<T = DocumentData> {
+export interface Snapshot<T extends object = DocumentData> {
   data(): T | undefined
   ref: Reference<T>
   id: string
   exists: boolean
 }
 
-export interface QuerySnapshot<T = DocumentData> {
+export interface QuerySnapshot<T extends object = DocumentData> {
   docs: Snapshot<T>[]
   empty: boolean
 }
 
 
-export interface Queryable<T = DocumentData> {
+export interface Queryable<T extends object = DocumentData> {
   get(trans?: Transaction): Promise<QuerySnapshot<T>>;
   
   where(field: string | FieldPath, opStr: WhereFilterOp | StrapiWhereOperator | RegExp, value: any): Queryable<T>;
@@ -32,7 +32,7 @@ export interface Queryable<T = DocumentData> {
   offset(offset: number): Queryable<T>;
 }
 
-export interface QueryableCollection<T = DocumentData> extends Queryable<T> {
+export interface QueryableCollection<T extends object = DocumentData> extends Queryable<T> {
   readonly path: string
   
   autoId(): string;

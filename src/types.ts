@@ -1,7 +1,6 @@
-import type { Firestore, DocumentData } from '@google-cloud/firestore';
-import type { QueryableCollection, Snapshot } from './utils/queryable-collection';
-import type { TransactionWrapper } from './utils/transaction-wrapper';
+import type { DocumentData } from '@google-cloud/firestore';
 import type { Logger } from 'pino';
+import type { FirestoreConnectorModel } from './model';
 
 export interface ConnectorOptions {
   useEmulator?: boolean
@@ -11,8 +10,7 @@ export interface ConnectorOptions {
    * Indicate which models to flatten by RegEx. Matches against the
    * model's `uid` property.
    * 
-   * Defaults to `[{ test: /^strapi::/, doc: ({ uid }) => uid.replace('::', '/') }]` so that internal Strapi models
-   * are flattened into a single collection called `"strapi"`.
+   * Defaults to `[]` so that no models are flattened.
    */
   flattenModels: (string | RegExp | { test: string | RegExp, doc?: (model: StrapiModel) => string })[]
 
@@ -111,6 +109,12 @@ declare global {
   }
 }
 
+export interface StrapiContext {
+  strapi: Strapi
+  modelKey: string
+  model: FirestoreConnectorModel<any>
+}
+
 export interface Strapi {
   config: {
     connections: Record<string, any>
@@ -119,6 +123,7 @@ export interface Strapi {
   }
   components: StrapiModelRecord
   models: StrapiModelRecord
+  contentTypes: Record<string, StrapiModel>
   admin: Readonly<StrapiPlugin>
   plugins: Record<string, Readonly<StrapiPlugin>>
   db: StrapiDatabaseManager
@@ -131,7 +136,7 @@ export interface Strapi {
 }
 
 export type StrapiModelRecord = {
-  [modelKel in keyof StrapiModelMap]: Readonly<FirestoreConnectorModel<StrapiModelMap[modelKel]>>
+  [modelKey in keyof StrapiModelMap]: Readonly<FirestoreConnectorModel<StrapiModelMap[modelKey]>>
 };
 
 export interface StrapiDatabaseManager {
@@ -145,14 +150,16 @@ export interface StrapiPlugin {
   models: StrapiModelRecord
 }
 
-export interface StrapiQuery<T = DocumentData> {
-  find(params?: any, populate?: (keyof T)[]): Promise<T[]>
-  findOne(params?: any, populate?: (keyof T)[]): Promise<T>
-  create(values: T, populate?: (keyof T)[]): Promise<T>
-  update(params: any, values: T, merge?: boolean, populate?: (keyof T)[]): Promise<T>
-  delete(params: any, populate?: (keyof T)[]): Promise<T>
+export type AttributeKey<T extends object> = Extract<keyof T, string>;
+
+export interface StrapiQuery<T extends object = DocumentData> {
+  find(params?: any, populate?: AttributeKey<T>[]): Promise<T[]>
+  findOne(params?: any, populate?: AttributeKey<T>[]): Promise<T | null>
+  create(values: T, populate?: AttributeKey<T>[]): Promise<T>
+  update(params: any, values: T, populate?: AttributeKey<T>[]): Promise<T>
+  delete(params: any, populate?: AttributeKey<T>[]): Promise<T[]>
   count(params?: any): Promise<number>
-  search(params: any, populate?: (keyof T)[]): Promise<T[]>
+  search(params: any, populate?: AttributeKey<T>[]): Promise<T[]>
   countSearch(params: any): Promise<number>
 }
 
@@ -162,13 +169,13 @@ export interface StrapiQueryParams {
   strapi: Strapi
 }
 
-export interface StrapiModel {
+export interface StrapiModel<T extends object = any> {
   connector: string
   connection: string
   primaryKey: string
   primaryKeyType: string
-  attributes: Record<string, StrapiRelation>
-  privateAttributes: Record<string, StrapiRelation>
+  attributes: Record<AttributeKey<T>, StrapiRelation>
+  privateAttributes: Record<AttributeKey<T>, StrapiRelation>
   collectionName: string
   kind: 'collectionType' | 'singleType'
   globalId: string
@@ -179,7 +186,7 @@ export interface StrapiModel {
     timestamps?: boolean | [string, string]
   }
   config?: any;
-  associations: StrapiAssociation[]
+  associations: StrapiAssociation<AttributeKey<T>>[]
 }
 
 export type StrapiRelationType = 'oneWay' | 'manyWay' | 'oneToMany' | 'oneToOne' | 'manyToMany' | 'manyToOne' | 'oneToManyMorph' | 'manyToManyMorph' | 'manyMorphToMany' | 'manyMorphToOne' | 'oneMorphToOne' | 'oneMorphToMany';
@@ -202,8 +209,8 @@ export interface StrapiRelation {
   max: number
 }
 
-export interface StrapiAssociation extends StrapiRelation {
-  alias: string
+export interface StrapiAssociation<K extends string = string> extends StrapiRelation {
+  alias: K
   nature: StrapiRelationType
 }
 
@@ -220,32 +227,4 @@ export interface StrapiWhereFilter {
   field: string
   operator: StrapiWhereOperator
   value: any
-}
-
-export interface FirestoreConnectorContext {
-  instance: Firestore
-  strapi: Strapi
-  connection: StrapiModel,
-  modelKey: string
-  options: ConnectorOptions
-  isComponent?: boolean
-}
-
-export interface FirestoreConnectorModel<T = DocumentData> extends StrapiModel {
-  firestore: Firestore;
-  db: QueryableCollection<T>;
-
-  runTransaction<TResult>(fn: (transaction: TransactionWrapper) => Promise<TResult>): Promise<TResult>;
-
-  populate(data: Snapshot<T>, transaction: TransactionWrapper, populate?: (keyof T)[]): Promise<T>
-  populateAll(datas: Snapshot<T>[], transaction: TransactionWrapper, populate?: (keyof T)[]): Promise<T[]>
-
-  assocKeys: string[];
-  componentKeys: string[];
-  defaultPopulate: string[];
-  options: ModelOptions;
-  morphRelatedModels: Record<string, FirestoreConnectorModel[]>
-  
-  hasPK: (obj: any) => boolean;
-  getPK: (obj: any) => string;
 }

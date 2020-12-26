@@ -1,6 +1,7 @@
 import * as _ from 'lodash';
-import { FieldValue, DocumentReference, DocumentData } from '@google-cloud/firestore';;
-import type { FirestoreConnectorModel, StrapiAssociation } from './types';
+import { FieldValue, DocumentReference, DocumentData } from '@google-cloud/firestore';
+import type { FirestoreConnectorModel } from './model';
+import type { StrapiAssociation } from './types';
 import type { TransactionWrapper } from './utils/transaction-wrapper';
 import type { Reference, Snapshot } from './utils/queryable-collection';
 import { DeepReference } from './utils/deep-reference';
@@ -13,7 +14,7 @@ import { StatusError } from './utils/status-error';
  * Parse relation attributes on this updated model and update the referred-to
  * models accordingly.
  */
-export async function relationsUpdate(model: FirestoreConnectorModel, ref: Reference, prevData: DocumentData | undefined, newData: DocumentData | undefined, transaction: TransactionWrapper) {
+export async function relationsUpdate<T extends object>(model: FirestoreConnectorModel<T>, ref: Reference, prevData: T | undefined, newData: T | undefined, transaction: TransactionWrapper) {
   const promises: Promise<any>[] = [];
 
   model.associations.forEach(assoc => {
@@ -105,19 +106,24 @@ export async function relationsUpdate(model: FirestoreConnectorModel, ref: Refer
 /**
  * When this model is being deleted, parse and update the referred-to models accordingly.
  */
-export async function relationsDelete(model: FirestoreConnectorModel, ref: Reference, prevData: DocumentData, transaction: TransactionWrapper) {
+export async function relationsDelete<T extends object>(model: FirestoreConnectorModel<T>, ref: Reference, prevData: T, transaction: TransactionWrapper) {
   await relationsUpdate(model, ref, prevData, undefined, transaction); 
 }
 
 /**
  * When this model is being creted, parse and update the referred-to models accordingly.
  */
-export async function relationsCreate(model: FirestoreConnectorModel, ref: Reference, newData: DocumentData, transaction: TransactionWrapper) {
+export async function relationsCreate<T extends object>(model: FirestoreConnectorModel<T>, ref: Reference, newData: T, transaction: TransactionWrapper) {
   await relationsUpdate(model, ref, undefined, newData, transaction); 
 }
 
 
 
+export type MorphRefValue = {
+  ref: Reference
+} & {
+  [field: string]: string
+}
 
 export interface ReverseAssocDetails {
   model: FirestoreConnectorModel
@@ -144,11 +150,11 @@ export interface ReverseActionParams extends AsyncSnapshot, ReverseAssocDetails 
    * then this is the value of the reference (pointing to this document)
    * that was queried for.
    */
-  refValue?: any
+  refValue?: MorphRefValue
 }
 
 export interface FindReverseArgs {
-  model: FirestoreConnectorModel
+  model: FirestoreConnectorModel<any>
   ref: Reference
   assoc: StrapiAssociation
   transaction: TransactionWrapper
@@ -349,7 +355,7 @@ export function getReverseAssocByModel(model: FirestoreConnectorModel | undefine
   };
 }
 
-function makeRefValue(assoc: StrapiAssociation, otherAssoc: StrapiAssociation | undefined, ref: Reference): any {
+function makeRefValue(assoc: StrapiAssociation, otherAssoc: StrapiAssociation | undefined, ref: Reference): MorphRefValue | Reference {
   if ((assoc.collection || assoc.model) == '*') {
     const value: any = { ref };
     if (assoc.filter) {
@@ -360,7 +366,7 @@ function makeRefValue(assoc: StrapiAssociation, otherAssoc: StrapiAssociation | 
     }
     return value;
   } else {
-    ref;
+    return ref;
   }
 }
 

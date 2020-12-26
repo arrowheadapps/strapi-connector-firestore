@@ -6,7 +6,7 @@ import type { QueryableCollection } from "./queryable-collection";
  * References an item in a flattened collection 
  * (i.e.) a field within a document.
  */
-export class DeepReference<T = DocumentData> {
+export class DeepReference<T extends object = DocumentData> {
 
   constructor(readonly doc: DocumentReference<Record<string, T>>, readonly id: string) {
     if (!id) {

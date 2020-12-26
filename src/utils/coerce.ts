@@ -1,7 +1,8 @@
 import * as _ from 'lodash';
-import type { FirestoreConnectorModel, StrapiRelation } from "../types";
+import type { FirestoreConnectorModel } from "../model";
+import type { StrapiRelation } from "../types";
 import * as parseType from 'strapi-utils/lib/parse-type';
-import { Timestamp, DocumentReference, DocumentData } from '@google-cloud/firestore';
+import { Timestamp, DocumentReference, DocumentData, FieldValue } from '@google-cloud/firestore';
 import { getComponentModel } from './validate-components';
 import { Reference } from './queryable-collection';
 import { DeepReference } from './deep-reference';
@@ -14,14 +15,14 @@ export interface CoerceFn {
 /**
  * Coerces an entire document to Firestore based on the model schema.
  */
-export function coerceModelToFirestore<T>(model: FirestoreConnectorModel<T>, values: DocumentData): Partial<T> {
+export function coerceModelToFirestore<T extends object>(model: FirestoreConnectorModel<T>, values: DocumentData): Partial<T> {
   return coerceModel(model, undefined, values, toFirestore) as Partial<T>;
 }
 
 /**
  * Coerces an entire document from Firestore based on the model schema.
  */
-export function coerceModelFromFirestore<T>(model: FirestoreConnectorModel<T>, docId: string, values: DocumentData): T {
+export function coerceModelFromFirestore<T extends object>(model: FirestoreConnectorModel<T>, docId: string, values: DocumentData): T {
   return coerceModel(model, docId, values, fromFirestore) as T;
 }
 
@@ -34,7 +35,7 @@ export function coerceModelFromFirestore<T>(model: FirestoreConnectorModel<T>, d
  * @param coerceFn The coerce function `toFirestore` or `fromFirestore` depending
  * on which direction the document should be coerced.
  */
-function coerceModel(model: FirestoreConnectorModel, docId: string | undefined, values: DocumentData, coerceFn: CoerceFn): DocumentData {
+function coerceModel<T extends object>(model: FirestoreConnectorModel<T>, docId: string | undefined, values: DocumentData, coerceFn: CoerceFn): DocumentData {
   if (!model || !values) {
     return values;
   }
@@ -48,7 +49,7 @@ function coerceModel(model: FirestoreConnectorModel, docId: string | undefined, 
   return root;
 }
 
-function coerceModelRecursive(model: FirestoreConnectorModel, values: DocumentData, parentPath: string | null, coerceFn: CoerceFn) {
+function coerceModelRecursive<T extends object>(model: FirestoreConnectorModel<T>, values: DocumentData, parentPath: string | null, coerceFn: CoerceFn) {
   return _.cloneDeepWith(values, (value, key) => {
     if (key === undefined) {
       // Root object, pass through
@@ -75,7 +76,7 @@ export function coerceValue(model: FirestoreConnectorModel, field: string, value
 }
 
 export function coerceAttribute(relation: StrapiRelation | undefined, value: unknown, coerceFn: CoerceFn) {
-  if (_.isArray(value)) {
+  if (Array.isArray(value)) {
     value = value.map(v => coerceFn(relation, v));
   } else {
     value = coerceFn(relation, value);
@@ -92,6 +93,11 @@ export function coerceAttribute(relation: StrapiRelation | undefined, value: unk
  */
 export function toFirestore(relation: Partial<StrapiRelation> | undefined, value: unknown): unknown {
   
+  if (value instanceof FieldValue) {
+    // Do not coerce `FieldValue`
+    return value;
+  }
+
   if (value instanceof DeepReference) {
     return value.toFirestoreValue();
   }
@@ -112,7 +118,7 @@ export function toFirestore(relation: Partial<StrapiRelation> | undefined, value
   // type == 'component'
   if (relation.component) {
     const componentModel = getComponentModel(relation.component);
-    if (_.isArray(value)) {
+    if (Array.isArray(value)) {
       // Generate ID if setting dictates
       return value.map(v => coerceModel(componentModel, getIdOrAuto(componentModel, v), v, toFirestore));
     } else {
@@ -131,7 +137,7 @@ export function toFirestore(relation: Partial<StrapiRelation> | undefined, value
   // Recursively coerce dynamiczone
   // type == 'dynamiczone'
   if (relation.components) {
-    if (_.isArray(value)) {
+    if (Array.isArray(value)) {
       return value.map(v => {
         // Generate ID if setting dictates
         const componentModel = getComponentModel(v.__component);
@@ -222,7 +228,7 @@ export function toFirestore(relation: Partial<StrapiRelation> | undefined, value
 
         // Convert DeepReference instances to a string value
         // that can be serialised to Firestore
-        if (_.isArray(value)) {
+        if (Array.isArray(value)) {
           value = value.map(v => {
             return v instanceof DeepReference ? v.toFirestoreValue() : v;
           });
@@ -273,7 +279,7 @@ export function fromFirestore(relation: Partial<StrapiRelation> | undefined, val
   // type == 'component'
   if (relation.component) {
     const componentModel = getComponentModel(relation.component);
-    if (_.isArray(value)) {
+    if (Array.isArray(value)) {
       // Keep primary key coming out of Firestore if it exists
       return value.map(v => coerceModel(componentModel, v[componentModel.primaryKey], v, fromFirestore));
     } else {
@@ -294,7 +300,7 @@ export function fromFirestore(relation: Partial<StrapiRelation> | undefined, val
   // Recursively coerce dynamiczone
   // type == 'dynamiczone'
   if (relation.components) {
-    if (_.isArray(value)) {
+    if (Array.isArray(value)) {
       return value.map(v => {
         // Keep primary key coming out of Firestore if it exists
         const componentModel = getComponentModel(v.__component);
@@ -327,7 +333,7 @@ export function fromFirestore(relation: Partial<StrapiRelation> | undefined, val
         return DeepReference.parse(v);
       }
     };
-    if (_.isArray(value)) {
+    if (Array.isArray(value)) {
       value = value.map(toRef);
     } else {
       value = toRef(value);
@@ -346,7 +352,7 @@ export function fromFirestore(relation: Partial<StrapiRelation> | undefined, val
  * Coerces a value to a `Reference` if it is one.
  */
 export function coerceReference(value: any, to: FirestoreConnectorModel | undefined, strict?: boolean): Reference | Reference[] | null {
-  if (_.isArray(value)) {
+  if (Array.isArray(value)) {
     return value.map(v => coerceToReferenceSingle(v, to, strict)!).filter(Boolean);
   } else {
     return coerceToReferenceSingle(value, to, strict);

@@ -10,7 +10,7 @@ import type { TransactionWrapper, TransactionWrapperImpl } from './transaction-w
 import type { FirestoreConnectorModel } from '../model';
 
 
-export class QueryableFlatCollection<T = DocumentData> implements QueryableCollection<T> {
+export class QueryableFlatCollection<T extends object = DocumentData> implements QueryableCollection<T> {
 
 
   private readonly conv: FirestoreDataConverter<Record<string, T>>;

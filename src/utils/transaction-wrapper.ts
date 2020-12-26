@@ -5,9 +5,9 @@ import { DeepReference } from './deep-reference';
 
 export interface TransactionWrapper {
 
-  get<T>(documentRef: Reference<T>): Promise<Snapshot<T>>;
-  get<T>(query: Queryable<T>): Promise<QuerySnapshot<T>>;
-  getAll<T>(...refs: Reference<T>[]): Promise<Snapshot<T>[]>;
+  get<T extends object>(documentRef: Reference<T>): Promise<Snapshot<T>>;
+  get<T extends object>(query: Queryable<T>): Promise<QuerySnapshot<T>>;
+  getAll<T extends object>(...refs: Reference<T>[]): Promise<Snapshot<T>[]>;
 
   addWrite(writeOp: (trans: Transaction) => void): void;
   addWrites(writeOps: ((trans: Transaction) => void)[]): void;
@@ -19,6 +19,7 @@ export class TransactionWrapperImpl implements TransactionWrapper {
 
   private readonly keyedContext: Record<string, DocumentData> = {};
   private readonly docReads: Record<string, Promise<DocumentSnapshot>> = {};
+  private uncachedReads = 0;
 
   constructor(transaction: Transaction) {
     this.transaction = transaction;
@@ -59,8 +60,8 @@ export class TransactionWrapperImpl implements TransactionWrapper {
   }
 
 
-  get<T>(documentRef: Reference<T>): Promise<Snapshot<T>>;
-  get<T>(query: Queryable<T>): Promise<QuerySnapshot<T>>;
+  get<T extends object>(documentRef: Reference<T>): Promise<Snapshot<T>>;
+  get<T extends object>(query: Queryable<T>): Promise<QuerySnapshot<T>>;
   async get(val: Reference | Queryable): Promise<any> {
     // Deep reference to flat collection
     if (val instanceof DeepReference) {
@@ -81,7 +82,9 @@ export class TransactionWrapperImpl implements TransactionWrapper {
     }
 
     if (val instanceof Query) {
-      return await this.transaction.get(val);
+      const result = await this.transaction.get(val);
+      this.uncachedReads += result.docs.length;
+      return result;
     }
     
     // Queryable
@@ -143,6 +146,10 @@ export class TransactionWrapperImpl implements TransactionWrapper {
    * @private
    */
   doWrites() {
+    if (process.env.NODE_ENV !== 'production') {
+      const cachedReads = Object.keys(this.docReads).length;
+      strapi.log.debug(`Comitting Firestore transaction: ${this.writes.length} writes, ${cachedReads + this.uncachedReads} reads (${cachedReads} cached).`);
+    }
     this.writes.forEach(w => w(this.transaction));
   }
 }

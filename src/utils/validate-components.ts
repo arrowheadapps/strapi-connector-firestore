@@ -1,19 +1,21 @@
+import { DocumentData } from '@google-cloud/firestore';
 import * as _ from 'lodash';
-import type { FirestoreConnectorModel, StrapiRelation } from "../types";
+import type { FirestoreConnectorModel } from "../model";
+import type { AttributeKey, StrapiRelation } from "../types";
 import { StatusError } from "./status-error";
 
-export interface Component {
+export interface Component<T extends object> {
   key: string
   value: any
-  model: FirestoreConnectorModel
+  model: FirestoreConnectorModel<T>
 }
 
-export function getComponentModel(componentName: string): FirestoreConnectorModel
-export function getComponentModel(hostModel: FirestoreConnectorModel, key: string, value: any): FirestoreConnectorModel
-export function getComponentModel(hostModelOrName: FirestoreConnectorModel | string, key?: string, value?: any): FirestoreConnectorModel {
+export function getComponentModel<R extends object>(componentName: string): FirestoreConnectorModel<R>
+export function getComponentModel<T extends object, R extends object = DocumentData>(hostModel: FirestoreConnectorModel<T>, key: AttributeKey<T>, value: T[AttributeKey<T>]): FirestoreConnectorModel<R>
+export function getComponentModel<T extends object, R extends object = DocumentData>(hostModelOrName: FirestoreConnectorModel<T> | string, key?: AttributeKey<T>, value?: any): FirestoreConnectorModel<R> {
   const modelName = typeof hostModelOrName === 'string'
     ? hostModelOrName
-    : value.__component || hostModelOrName.attributes[key!].component;
+    : value!.__component || hostModelOrName.attributes[key!].component;
   
   const model = strapi.components[modelName];
   if (!model) {
@@ -22,8 +24,8 @@ export function getComponentModel(hostModelOrName: FirestoreConnectorModel | str
   return model;
 }
 
-export function validateComponents(values, model: FirestoreConnectorModel): Component[] {
-  const components: { value: any, key: string }[] = [];
+export function validateComponents<T extends object>(values: T, model: FirestoreConnectorModel<T>): Component<T>[] {
+  const components: { value: T[AttributeKey<T>], key: AttributeKey<T> }[] = [];
   for (const key of model.componentKeys) {
     const attr = model.attributes[key];
     const { type } = attr;
@@ -39,7 +41,7 @@ export function validateComponents(values, model: FirestoreConnectorModel): Comp
 
       if (repeatable === true) {
         validateRepeatableInput(componentValue, { key, ...attr });
-        components.push(...(componentValue as any[]).map(value => ({ value, key })));
+        components.push(..._.castArray(componentValue).map(value => ({ value, key })));
       } else {
         validateNonRepeatableInput(componentValue, { key, ...attr });
         components.push({ value: componentValue, key });
@@ -57,7 +59,7 @@ export function validateComponents(values, model: FirestoreConnectorModel): Comp
       const dynamiczoneValues = _.get(values, key);
 
       validateDynamiczoneInput(dynamiczoneValues, { key, ...attr });
-      components.push(...(dynamiczoneValues as any[]).map(value => ({ value, key })));
+      components.push(..._.castArray(dynamiczoneValues).map(value => ({ value, key })));
 
       continue;
     }
@@ -65,7 +67,7 @@ export function validateComponents(values, model: FirestoreConnectorModel): Comp
 
   return components.map(c => ({
     ...c,
-    model: getComponentModel(model, c.key, c.value)
+    model: getComponentModel(model, c.key, c.value),
   }));
 }
 
