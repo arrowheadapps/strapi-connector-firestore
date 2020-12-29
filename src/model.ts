@@ -4,11 +4,11 @@ import { QueryableFirestoreCollection } from './utils/queryable-firestore-collec
 import { QueryableFlatCollection } from './utils/queryable-flat-collection';
 import { QueryableComponentCollection } from './utils/queryable-component-collection';
 import type { AttributeKey, ConnectorOptions, Converter, ModelConfig, ModelOptions, StrapiAssociation, StrapiAttributeType, StrapiModel, StrapiRelation } from './types';
-import { TransactionWrapper, TransactionWrapperImpl } from './utils/transaction-wrapper';
 import { populateDoc, populateDocs } from './populate';
 import { buildPrefixQuery } from './utils/prefix-query';
 import type{ QueryableCollection, Snapshot } from './utils/queryable-collection';
 import type { DocumentData, Firestore } from '@google-cloud/firestore';
+import { Transaction, TransactionImpl } from './utils/transaction';
 
 export const DEFAULT_CREATE_TIME_KEY = 'createdAt';
 export const DEFAULT_UPDATE_TIME_KEY = 'updatedAt';
@@ -16,7 +16,7 @@ export const DEFAULT_UPDATE_TIME_KEY = 'updatedAt';
 
 export interface FirestoreConnectorModelArgs {
   firestore: Firestore
-  options: ConnectorOptions
+  options: Required<ConnectorOptions>
   model: StrapiModel
   modelKey: string
   isComponent: boolean
@@ -100,10 +100,10 @@ export class FirestoreConnectorModel<T extends object = DocumentData> implements
     if (isComponent) {
       this.db = new QueryableComponentCollection<T>(this);
     } else {
-      if (this.options.flatten) {
-        this.db = new QueryableFlatCollection<T>(this, options);
+      if (this.flattenedKey) {
+        this.db = new QueryableFlatCollection<T>(this);
       } else {
-        this.db = new QueryableFirestoreCollection<T>(this, options);
+        this.db = new QueryableFirestoreCollection<T>(this);
       }
     }
 
@@ -146,20 +146,20 @@ export class FirestoreConnectorModel<T extends object = DocumentData> implements
   }
 
 
-  async runTransaction<TResult>(fn: (transaction: TransactionWrapper) => Promise<TResult>): Promise<TResult> {
+  async runTransaction<TResult>(fn: (transaction: Transaction) => PromiseLike<TResult>): Promise<TResult> {
     return await this.firestore.runTransaction(async (trans) => {
-      const wrapper = new TransactionWrapperImpl(trans);
+      const wrapper = new TransactionImpl(this.firestore, trans);
       const result = await fn(wrapper);
-      wrapper.doWrites();
+      wrapper.commit();
       return result;
     });
   }
 
-  async populate(data: Snapshot<T>, transaction: TransactionWrapper, populate?: AttributeKey<T>[]): Promise<any> {
+  async populate(data: Snapshot<T>, transaction: Transaction, populate?: AttributeKey<T>[]): Promise<any> {
     return await populateDoc(this, data, populate || this.defaultPopulate, transaction);
   }
 
-  async populateAll(datas: Snapshot<T>[], transaction: TransactionWrapper, populate?: AttributeKey<T>[]): Promise<any[]> {
+  async populateAll(datas: Snapshot<T>[], transaction: Transaction, populate?: AttributeKey<T>[]): Promise<any[]> {
     return await populateDocs(this, datas, populate || this.defaultPopulate, transaction);
   }
 
@@ -222,7 +222,7 @@ export class FirestoreConnectorModel<T extends object = DocumentData> implements
   }
 
 
-  private defaultAllowNonNativeQueries(options: ModelOptions, rootOptions: ConnectorOptions) {
+  private defaultAllowNonNativeQueries(options: ModelOptions, rootOptions: Required<ConnectorOptions>) {
     if (options.allowNonNativeQueries === undefined) {
       const rootAllow = rootOptions.allowNonNativeQueries;
       return (rootAllow instanceof RegExp)
@@ -233,7 +233,7 @@ export class FirestoreConnectorModel<T extends object = DocumentData> implements
     }
   }
 
-  private defaultFlattenOpts(options: ModelOptions, rootOptions: ConnectorOptions) {
+  private defaultFlattenOpts(options: ModelOptions, rootOptions: Required<ConnectorOptions>) {
     if (options.flatten === undefined) {
       
       const [flattenedId] = rootOptions.flattenModels

@@ -1,10 +1,30 @@
-import type { DocumentData } from '@google-cloud/firestore';
+import type { DocumentData, Settings } from '@google-cloud/firestore';
 import type { Logger } from 'pino';
 import type { FirestoreConnectorModel } from './model';
 
+export interface Connector {
+  connector: string
+  options: ConnectorOptions
+  settings?: Settings
+}
+
 export interface ConnectorOptions {
+
+  /**
+   * Indicates whether to connect to a locally running
+   * Firestore emulator instance.
+   * 
+   * Defaults to `false`.
+   */
   useEmulator?: boolean
-  singleId: string
+
+  /**
+   * Designates the document ID to use to store the data
+   * for "singleType" models, or when flattening is enabled.
+   * 
+   * Defaults to `"default"`.
+   */
+  singleId?: string
 
   /**
    * Indicate which models to flatten by RegEx. Matches against the
@@ -12,22 +32,24 @@ export interface ConnectorOptions {
    * 
    * Defaults to `[]` so that no models are flattened.
    */
-  flattenModels: (string | RegExp | { test: string | RegExp, doc?: (model: StrapiModel) => string })[]
+  flattenModels?: (string | RegExp | { test: string | RegExp, doc?: (model: StrapiModel) => string })[]
 
   /**
    * Globally allow queries that are not Firestore native.
    * These are implemented manually and will have poor performance,
    * and potentially expensive resource usage.
+   * 
+   * Defaults to `false`.
    */
-  allowNonNativeQueries: boolean | RegExp
+  allowNonNativeQueries?: boolean | RegExp
 
   /**
    * If `true`, then IDs are automatically generated and assigned
    * to embedded components (incl. dynamic zone).
    * 
-   * Defults to `false`.
+   * Defults to `true`.
    */
-  ensureCompnentIds: boolean
+  ensureCompnentIds?: boolean
 
   /**
    * If defined, enforces a maximum limit on the size of all queries.
@@ -38,7 +60,7 @@ export interface ConnectorOptions {
    * 
    * Defaults to `200`.
    */
-  maxQuerySize: number
+  maxQuerySize?: number
 }
 
 export interface ModelOptions {
@@ -117,7 +139,7 @@ export interface StrapiContext {
 
 export interface Strapi {
   config: {
-    connections: Record<string, any>
+    connections: Record<string, Connector>
     hook: any
     appPath: string
   }
@@ -153,6 +175,7 @@ export interface StrapiPlugin {
 export type AttributeKey<T extends object> = Extract<keyof T, string>;
 
 export interface StrapiQuery<T extends object = DocumentData> {
+  model: StrapiModel<T>
   find(params?: any, populate?: AttributeKey<T>[]): Promise<T[]>
   findOne(params?: any, populate?: AttributeKey<T>[]): Promise<T | null>
   create(values: T, populate?: AttributeKey<T>[]): Promise<T>

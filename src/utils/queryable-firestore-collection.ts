@@ -1,10 +1,9 @@
 import * as _ from 'lodash';
 import { ManualFilter, convertWhere, WhereFilter } from './convert-where';
-import { Query, Transaction, QueryDocumentSnapshot, FieldPath, WhereFilterOp, DocumentData, CollectionReference, DocumentReference, FirestoreDataConverter } from '@google-cloud/firestore';
+import { Query, Transaction, QueryDocumentSnapshot, FieldPath, WhereFilterOp, DocumentData, CollectionReference, FirestoreDataConverter } from '@google-cloud/firestore';
 import type { QueryableCollection, QuerySnapshot, Reference, Snapshot } from './queryable-collection';
-import type { ConnectorOptions, StrapiWhereOperator } from '../types';
+import type { StrapiWhereOperator } from '../types';
 import { coerceModelFromFirestore, coerceModelToFirestore } from './coerce';
-import type { TransactionWrapper } from './transaction-wrapper';
 import type { FirestoreConnectorModel } from '../model';
 
 
@@ -21,8 +20,8 @@ export class QueryableFirestoreCollection<T extends object = DocumentData> imple
   private _offset?: number;
 
   constructor(other: QueryableFirestoreCollection<T>)
-  constructor(model: FirestoreConnectorModel<T>, options: ConnectorOptions)
-  constructor(modelOrOther: FirestoreConnectorModel<T> | QueryableFirestoreCollection<T>, options?: ConnectorOptions) {
+  constructor(model: FirestoreConnectorModel<T>)
+  constructor(modelOrOther: FirestoreConnectorModel<T> | QueryableFirestoreCollection<T>) {
     if (modelOrOther instanceof QueryableFirestoreCollection) {
       this.collection = modelOrOther.collection;
       this.conv = modelOrOther.conv;
@@ -69,56 +68,6 @@ export class QueryableFirestoreCollection<T extends object = DocumentData> imple
   doc(id?: string) {
     return id ? this.collection.doc(id.toString()) : this.collection.doc();
   }
-
-  async delete(ref: Reference<T>, trans: TransactionWrapper | undefined) {
-    if (!(ref instanceof DocumentReference)) {
-      throw new Error('Non-flattened collection must have reference of type `DocumentReference`');
-    }
-    if (trans) {
-      trans.addWrite((trans)  => trans.delete(ref));
-    } else {
-      await ref.delete();
-    }
-  };
-
-  async create(ref: Reference<T>, data: T, trans: TransactionWrapper | undefined) {
-    if (!(ref instanceof DocumentReference)) {
-      throw new Error('Non-flattened collection must have reference of type `DocumentReference`');
-    }
-    if (trans) {
-      trans.addWrite((trans)  => trans.create(ref, data));
-    } else {
-      await ref.create(data);
-    }
-  };
-
-  async update(ref: Reference<T>, data: Partial<T>, trans: TransactionWrapper | undefined) {
-    if (!(ref instanceof DocumentReference)) {
-      throw new Error('Non-flattened collection must have reference of type `DocumentReference`');
-    }
-
-    // HACK:
-    // It seems that Firestore does not call the converter
-    // for update operations?
-    const d = this.conv.toFirestore(data, { merge: true });
-
-    if (trans) {
-      trans.addWrite((trans)  => trans.update(ref, d));
-    } else {
-      await ref.update(d);
-    }
-  };
-
-  async setMerge(ref: Reference<T>, data: Partial<T>, trans: TransactionWrapper | undefined) {
-    if (!(ref instanceof DocumentReference)) {
-      throw new Error('Non-flattened collection must have reference of type `DocumentReference`');
-    }
-    if (trans) {
-      trans.addWrite((trans)  => trans.set(ref, data, { merge: true }));
-    } else {
-      await ref.set(data, { merge: true });
-    }
-  };
 
 
   private warnQueryLimit(limit: number | 'unlimited') {

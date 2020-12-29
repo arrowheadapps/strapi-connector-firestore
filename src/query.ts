@@ -11,7 +11,7 @@ import { validateComponents } from './utils/validate-components';
 import type { FirestoreConnectorModel } from './model';
 import type { StrapiQuery, StrapiAttributeType, StrapiFilter, AttributeKey } from './types';
 import type { Queryable, Snapshot } from './utils/queryable-collection';
-import type { TransactionWrapper } from './utils/transaction-wrapper';
+import type { Transaction } from './utils/transaction';
 
 
 export interface FirestoreConnectorQueryArgs {
@@ -30,39 +30,39 @@ export class FirestoreConnectorQuery<T extends object> implements StrapiQuery<T>
   }
 
   
-  async find(params: any, populate?: AttributeKey<T>[]): Promise<T[]> {
+  find = async (params: any, populate?: AttributeKey<T>[]) => {
     const populateOpt = populate || this.model.defaultPopulate;
-
+    
     return await this.model.runTransaction(async trans => {
       let docs: Snapshot<T>[];
       if (this.model.hasPK(params)) {
         const ref = this.model.db.doc(this.model.getPK(params));
-        const snap = await trans.get(ref);
+        const snap = await trans.getNonAtomic(ref);
         if (!snap.exists) {
           docs = [];
         } else {
           docs = [snap];
         }
       } else {
-        docs = await this.runFirestoreQuery(params, null, trans);
+        docs = await this._runFirestoreQuery(params, null, trans);
       }
 
       return await populateDocs(this.model, docs, populateOpt, trans);
     });
   }
 
-  async findOne(params: any, populate?: AttributeKey<T>[]): Promise<T | null> {
+  findOne = async (params: any, populate?: AttributeKey<T>[]) => {
     const entries = await this.find({ ...params, _limit: 1 }, populate);
     return entries[0] || null;
   }
 
-  async count(params: any): Promise<number> {
+  count = async (params: any) => {
     // Don't populate any fields, we are just counting
-    const docs = await this.runFirestoreQuery(params, null, null);
+    const docs = await this._runFirestoreQuery(params, null, null);
     return docs.length;
   }
 
-  async create(values: any, populate?: AttributeKey<T>[]): Promise<T> {
+  create = async (values: any, populate?: AttributeKey<T>[]) => {
     const populateOpt = populate || this.model.defaultPopulate;
 
     // Validate components dynamiczone
@@ -93,12 +93,12 @@ export class FirestoreConnectorQuery<T extends object> implements StrapiQuery<T>
       // Populate relations
       const entry = await populateDoc(this.model, { ref, data: () => values }, populateOpt, trans);
 
-      await this.model.db.create(ref, values, trans);
+      trans.create(ref, values);
       return entry;
     });
   }
 
-  async update(params: any, values: any, populate?: AttributeKey<T>[], merge = false): Promise<T> {
+  update = async (params: any, values: any, populate?: AttributeKey<T>[], merge = false) => {
     const populateOpt = populate || this.model.defaultPopulate;
 
     // Validate components dynamiczone
@@ -119,9 +119,9 @@ export class FirestoreConnectorQuery<T extends object> implements StrapiQuery<T>
 
       let snap: Snapshot<T>;
       if (this.model.hasPK(params)) {
-        snap = await trans.get(this.model.db.doc(this.model.getPK(params)));
+        snap = await trans.getAtomic(this.model.db.doc(this.model.getPK(params)));
       } else {
-        const docs = await this.runFirestoreQuery({ ...params, _limit: 1 }, null, trans);
+        const docs = await this._runFirestoreQuery({ ...params, _limit: 1 }, null, trans);
         snap = docs[0];
       }
 
@@ -143,21 +143,15 @@ export class FirestoreConnectorQuery<T extends object> implements StrapiQuery<T>
       // Populate relations
       const entry = await populateDoc(this.model, { ref: snap.ref, data: () => values }, populateOpt, trans);
 
-      // Update entry without
-      if (merge) {
-        await this.model.db.setMerge(snap.ref, values, trans);
-      } else {
-        await this.model.db.update(snap.ref, values, trans);
-      }
-
+      // Write the entry
+      trans.set(snap.ref, values, { merge });
       return entry;
-
     });
   }
 
-  async delete(params: any, populate?: AttributeKey<T>[]): Promise<T[]> {
+  delete = async (params: any, populate?: AttributeKey<T>[]) => {
     if (this.model.hasPK(params)) {
-      const result = await this.deleteOne(this.model.getPK(params), populate);
+      const result = await this._deleteOne(this.model.getPK(params), populate);
       return [result];
     } else {
       // TODO: FIXME: Running multiple deletes at the same time
@@ -165,46 +159,46 @@ export class FirestoreConnectorQuery<T extends object> implements StrapiQuery<T>
       // All are transacted so they all may interfere with eachother
       // Should run in the same transaction
       const entries = await this.find(params);
-      return Promise.all(entries.map(entry => this.deleteOne(this.model.getPK(entry), populate)));
+      return Promise.all(entries.map(entry => this._deleteOne(this.model.getPK(entry), populate)));
     }
   }
 
-  async search(params: any, populate?: AttributeKey<T>[]): Promise<T[]> {
+  search = async (params: any, populate?: AttributeKey<T>[]) => {
     const populateOpt = populate || this.model.defaultPopulate;
 
     return await this.model.runTransaction(async trans => {
       let docs: Snapshot<T>[];
       if (this.model.hasPK(params)) {
         const ref = this.model.db.doc(this.model.getPK(params));
-        const snap = await trans.get(ref);
+        const snap = await trans.getNonAtomic(ref);
         if (!snap.exists) {
           docs = [];
         } else {
           docs = [snap];
         }
       } else {
-        docs = await this.runFirestoreQuery(params, params._q, trans);
+        docs = await this._runFirestoreQuery(params, params._q, trans);
       }
 
       return await populateDocs(this.model, docs, populateOpt, trans);
     });
   }
 
-  async countSearch(params: any): Promise<number> {
+  countSearch = async (params: any) => {
     // Don't populate any fields, we are just counting
-    const docs = await this.runFirestoreQuery(params, params._q, null);
+    const docs = await this._runFirestoreQuery(params, params._q, null);
     return docs.length;
   }
 
 
 
-  private async deleteOne(id: string, populate: AttributeKey<T>[] | undefined): Promise<T> {
+  private async _deleteOne(id: string, populate: AttributeKey<T>[] | undefined): Promise<T> {
     const populateOpt = populate || this.model.defaultPopulate;
 
     return await this.model.runTransaction(async trans => {
 
       const ref = this.model.db.doc(id);
-      const snap = await trans.get(ref);
+      const snap = await trans.getAtomic(ref);
       const data = snap.data();
       if (!data) {
         throw new StatusError('entry.notFound', 404);
@@ -214,14 +208,14 @@ export class FirestoreConnectorQuery<T extends object> implements StrapiQuery<T>
 
       await relationsDelete(this.model, ref, data, trans);
 
-      await this.model.db.delete(ref, trans);
+      trans.delete(ref);
       return doc;
     });
   }
 
   
 
-  private buildSearchQuery(value: any, query: Queryable<T>) {
+  private _buildSearchQuery(value: any, query: Queryable<T>) {
 
     if (this.model.options.searchAttribute) {
       const field = this.model.options.searchAttribute;
@@ -325,7 +319,7 @@ export class FirestoreConnectorQuery<T extends object> implements StrapiQuery<T>
     }
   };
 
-  private buildFirestoreQuery(params, searchQuery: string | null, query: Queryable<T>): Queryable<T> | null {
+  private _buildFirestoreQuery(params, searchQuery: string | null, query: Queryable<T>): Queryable<T> | null {
     // Remove any search query
     // because we extract and handle it separately
     // Otherwise `convertRestQueryParams` will also handle it
@@ -333,7 +327,7 @@ export class FirestoreConnectorQuery<T extends object> implements StrapiQuery<T>
     const filters: StrapiFilter = convertRestQueryParams(params);
 
     if (searchQuery) {
-      query = this.buildSearchQuery(searchQuery, query);
+      query = this._buildSearchQuery(searchQuery, query);
     } else {
       for (const where of (filters.where || [])) {
         let { operator, value } = where;
@@ -409,13 +403,13 @@ export class FirestoreConnectorQuery<T extends object> implements StrapiQuery<T>
     return query;
   }
 
-  private async runFirestoreQuery(params, searchQuery: string | null, transaction: TransactionWrapper | null) {
-    const query = this.buildFirestoreQuery(params, searchQuery, this.model.db);
+  private async _runFirestoreQuery(params, searchQuery: string | null, transaction: Transaction | null) {
+    const query = this._buildFirestoreQuery(params, searchQuery, this.model.db);
     if (!query) {
       return [];
     }
 
-    const result = await (transaction ? transaction.get(query) : query.get());
+    const result = await (transaction ? transaction.getNonAtomic(query) : query.get());
     return result.docs;
   }
 }

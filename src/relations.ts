@@ -2,8 +2,8 @@ import * as _ from 'lodash';
 import { FieldValue, DocumentReference, DocumentData } from '@google-cloud/firestore';
 import type { FirestoreConnectorModel } from './model';
 import type { StrapiAssociation } from './types';
-import type { TransactionWrapper } from './utils/transaction-wrapper';
 import type { Reference, Snapshot } from './utils/queryable-collection';
+import type { Transaction } from './utils/transaction';
 import { DeepReference } from './utils/deep-reference';
 import { coerceReference, coerceToReferenceSingle } from './utils/coerce';
 import { StatusError } from './utils/status-error';
@@ -14,7 +14,7 @@ import { StatusError } from './utils/status-error';
  * Parse relation attributes on this updated model and update the referred-to
  * models accordingly.
  */
-export async function relationsUpdate<T extends object>(model: FirestoreConnectorModel<T>, ref: Reference, prevData: T | undefined, newData: T | undefined, transaction: TransactionWrapper) {
+export async function relationsUpdate<T extends object>(model: FirestoreConnectorModel<T>, ref: Reference, prevData: T | undefined, newData: T | undefined, transaction: Transaction) {
   const promises: Promise<any>[] = [];
 
   model.associations.forEach(assoc => {
@@ -30,7 +30,7 @@ export async function relationsUpdate<T extends object>(model: FirestoreConnecto
         ? (r.assoc.collection ? FieldValue.arrayUnion(refValue) : refValue)
         : (r.assoc.collection ? FieldValue.arrayRemove(refValue) : null);
 
-      return r.model.db.update(r.ref, { [r.assoc.alias]: reverseValue }, transaction);
+      return transaction.update(r.ref, { [r.assoc.alias]: reverseValue });
     };
 
     const findAndSetReverse = (added: Reference[], removed: Reference[]) => {
@@ -41,6 +41,7 @@ export async function relationsUpdate<T extends object>(model: FirestoreConnecto
           assoc,
           reverse,
           transaction,
+          atomic: true,
           added: {
             refs: added,
             action: (refs) => Promise.all(refs.map(r => setReverse(r, true))),
@@ -106,14 +107,14 @@ export async function relationsUpdate<T extends object>(model: FirestoreConnecto
 /**
  * When this model is being deleted, parse and update the referred-to models accordingly.
  */
-export async function relationsDelete<T extends object>(model: FirestoreConnectorModel<T>, ref: Reference, prevData: T, transaction: TransactionWrapper) {
+export async function relationsDelete<T extends object>(model: FirestoreConnectorModel<T>, ref: Reference, prevData: T, transaction: Transaction) {
   await relationsUpdate(model, ref, prevData, undefined, transaction); 
 }
 
 /**
  * When this model is being creted, parse and update the referred-to models accordingly.
  */
-export async function relationsCreate<T extends object>(model: FirestoreConnectorModel<T>, ref: Reference, newData: T, transaction: TransactionWrapper) {
+export async function relationsCreate<T extends object>(model: FirestoreConnectorModel<T>, ref: Reference, newData: T, transaction: Transaction) {
   await relationsUpdate(model, ref, undefined, newData, transaction); 
 }
 
@@ -157,7 +158,8 @@ export interface FindReverseArgs {
   model: FirestoreConnectorModel<any>
   ref: Reference
   assoc: StrapiAssociation
-  transaction: TransactionWrapper
+  transaction: Transaction
+  atomic: boolean
 
   /**
    * The opposite (reverse) end of the association.
@@ -186,7 +188,7 @@ export interface FindReverseArgs {
  * Centralised logic for finding the targets on the opposite (reverse) end
  * of relations and performing actions on those targets.
  */
-export async function findReverse({ model, ref, assoc, reverse, added, removed, transaction }: FindReverseArgs) {
+export async function findReverse({ model, ref, assoc, reverse, added, removed, transaction, atomic }: FindReverseArgs) {
   const promises: Promise<void>[] = [];
   const searchExisting = removed && !added;
 
@@ -210,9 +212,12 @@ export async function findReverse({ model, ref, assoc, reverse, added, removed, 
           const q = reverse.assoc.model
             ? reverse.model.db.where(reverse.assoc.alias, '==', refValue)
             : reverse.model.db.where(reverse.assoc.alias, 'array-contains', refValue);
+          const getAsync = atomic
+            ? transaction.getAtomic(q)
+            : transaction.getNonAtomic(q);
 
           promises.push(
-            transaction.get(q).then(snap => {
+            getAsync.then(snap => {
               promises.push(removed.action(snap.docs.map(d => actFromSnap(reverse, d, refValue))));
             })
           );
@@ -273,7 +278,11 @@ export async function findReverse({ model, ref, assoc, reverse, added, removed, 
             const q = morphReverse.assoc.collection
               ? m.db.where(morphReverse.assoc.alias, 'array-contains', refValue)
               : m.db.where(morphReverse.assoc.alias, '==', refValue);
-            return transaction.get(q).then(snap => {
+            const getAsync = atomic
+              ? transaction.getAtomic(q)
+              : transaction.getNonAtomic(q);
+            
+            return getAsync.then(snap => {
               return snap.docs.map(d => actFromSnap(morphReverse, d, refValue));
             });
           } else {
@@ -315,17 +324,18 @@ function actFromSnap(reverse: ReverseAssocDetails, snap: Snapshot, refValue: any
   }
 }
 
-function actFromRef(reverse: ReverseAssocDetails, ref: Reference, transaction: TransactionWrapper): ReverseActionParams {
+function actFromRef(reverse: ReverseAssocDetails, ref: Reference, transaction: Transaction | undefined): ReverseActionParams {
   return {
     ...reverse,
     ref,
-    data: () => transaction.get(ref).then(snap => {
-      const d = snap.data();
-      if (!d) {
+    data: async () => {
+      const snap = await (transaction ? transaction.getNonAtomic(ref) : ref.get());
+      const data = snap.data();
+      if (!data) {
         throw new StatusError(`The document referred to by "${ref.path}" doesn't exist`, 404);
       }
-      return d;
-    })
+      return data;
+    }
   }
 }
 
@@ -344,7 +354,13 @@ export function getReverseAssocByModel(model: FirestoreConnectorModel | undefine
     throw new Error(`Associated model "${thisAssoc.collection || thisAssoc.model}" not found.`);
   }
 
-  const assoc = model.associations.find(a => a.alias === thisAssoc.via);
+  const assoc = model.associations.find(a => {
+    if (a.via) {
+      return a.via === thisAssoc.alias;
+    } else {
+      return a.alias === thisAssoc.via;
+    }
+  });
   if (!assoc) {
     throw new Error(`Related attribute "${thisAssoc.via}" on the associated model "${model.globalId}" not found.`);
   }

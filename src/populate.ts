@@ -2,10 +2,11 @@ import * as _ from 'lodash';
 import { getComponentModel } from './utils/validate-components';
 import { coerceReference } from './utils/coerce';
 import type { FirestoreConnectorModel } from './model';
-import type { TransactionWrapper } from './utils/transaction-wrapper';
 import type { Reference, Snapshot } from './utils/queryable-collection';
+import type { Transaction } from './utils/transaction';
 import { StatusError } from './utils/status-error';
 import { AsyncSnapshot, findReverse, getReverseAssocByAssoc, ReverseActionParams } from './relations';
+import { AttributeKey } from './types';
 
 
 export type PartialSnapshot<T extends object> = Pick<Snapshot<T>, 'data'> & Pick<Snapshot<T>, 'ref'>
@@ -14,15 +15,15 @@ export type PartialSnapshot<T extends object> = Pick<Snapshot<T>, 'data'> & Pick
 /**
  * Populates all the requested relational field on the given documents.
  */
-export async function populateDocs<T extends object>(model: FirestoreConnectorModel<T>, docs: PartialSnapshot<T>[], populateFields: Extract<keyof T, string>[], transaction: TransactionWrapper) {
-  return await Promise.all(docs.map(doc => populateDoc(model, doc, populateFields, transaction)));
+export async function populateDocs<T extends object>(model: FirestoreConnectorModel<T>, docs: PartialSnapshot<T>[], populate: AttributeKey<T>[], transaction: Transaction) {
+  return await Promise.all(docs.map(doc => populateDoc(model, doc, populate, transaction)));
 };
 
 
 /**
  * Populates all the requested relational field on the given document.
  */
-export async function populateDoc<T extends object>(model: FirestoreConnectorModel<T>, doc: PartialSnapshot<T>, populateFields: Extract<keyof T, string>[], transaction: TransactionWrapper) {
+export async function populateDoc<T extends object>(model: FirestoreConnectorModel<T>, doc: PartialSnapshot<T>, populate: AttributeKey<T>[], transaction: Transaction) {
   const values = doc.data();
   if (!values) {
     throw new StatusError(`Document not found: ${doc.ref.path}`, 404);
@@ -31,7 +32,7 @@ export async function populateDoc<T extends object>(model: FirestoreConnectorMod
   // Clone the object (shallow)
   const data = Object.assign({}, values);
 
-  const relationPromises =  Promise.all(populateFields.map(f => populateField(model, doc.ref, f, data, transaction)));
+  const relationPromises =  Promise.all(populate.map(f => populateField(model, doc.ref, f, data, transaction)));
 
   const componentPromises = Promise.all(model.componentKeys.map(async componentKey => {
     const component = data[componentKey];
@@ -63,7 +64,7 @@ export async function populateDoc<T extends object>(model: FirestoreConnectorMod
 }
 
 
-export async function populateField<T extends object>(model: FirestoreConnectorModel<T>, docRef: Reference, field: string, data: any, transaction: TransactionWrapper) {
+export async function populateField<T extends object>(model: FirestoreConnectorModel<T>, docRef: Reference, field: string, data: any, transaction: Transaction) {
   const assoc = model.associations.find(assoc => assoc.alias === field)!;
   const reverse = getReverseAssocByAssoc(assoc);
 
@@ -118,6 +119,7 @@ export async function populateField<T extends object>(model: FirestoreConnectorM
     assoc: assoc,
     reverse,
     transaction,
+    atomic: false,
     removed: {
       refs,
       action,

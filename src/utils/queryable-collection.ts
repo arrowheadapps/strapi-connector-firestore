@@ -1,9 +1,8 @@
 import * as _ from 'lodash';
-import type { OrderByDirection, DocumentData, DocumentReference, Transaction, FieldPath, WhereFilterOp } from '@google-cloud/firestore';
+import type { OrderByDirection, DocumentData, DocumentReference, FieldPath, WhereFilterOp, Transaction } from '@google-cloud/firestore';
 import type { StrapiWhereOperator, } from '../types';
 import type { ManualFilter, WhereFilter } from './convert-where';
 import type { DeepReference } from './deep-reference';
-import { TransactionWrapper } from './transaction-wrapper';
 
 export type Reference<T extends object = DocumentData> = DocumentReference<T> | DeepReference<T>;
 
@@ -38,8 +37,4 @@ export interface QueryableCollection<T extends object = DocumentData> extends Qu
   autoId(): string;
   doc(): Reference<T>;
   doc(id: string): Reference<T>;
-  create(ref: Reference<T>, data: T, transaction: TransactionWrapper | undefined): Promise<void>;
-  update(ref: Reference<T>, data: Partial<T>, transaction: TransactionWrapper | undefined): Promise<void>;
-  setMerge(ref: Reference<T>, data: Partial<T>, transaction: TransactionWrapper | undefined): Promise<void>;
-  delete(ref: Reference<T>, transaction: TransactionWrapper | undefined): Promise<void>;
 }

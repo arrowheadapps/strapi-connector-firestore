@@ -31,22 +31,6 @@ export class QueryableComponentCollection<T extends object = never> implements Q
     return this.throw();
   }
 
-  create() {
-    return this.throw();
-  }
-
-  update() {
-    return this.throw();
-  }
-
-  setMerge() {
-    return this.throw();
-  }
-
-  delete() {
-    return this.throw();
-  }
-
   get() {
     return this.throw();
   }
