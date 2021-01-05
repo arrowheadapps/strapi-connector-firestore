@@ -1,13 +1,13 @@
-import { CollectionReference } from '@google-cloud/firestore';
-import { FirestoreConnectorModel } from '../model';
+import type { CollectionReference } from '@google-cloud/firestore';
+import type { FirestoreConnectorModel } from '../model';
 import type { QueryableCollection } from './queryable-collection';
 
 
 export class QueryableComponentCollection<T extends object = never> implements QueryableCollection<T> {
 
   private dummyCollection: CollectionReference
-  constructor(model: FirestoreConnectorModel<T>) {
-    this.dummyCollection = model.firestore.collection(model.collectionName);
+  constructor({ firestore, collectionName }: FirestoreConnectorModel<T>) {
+    this.dummyCollection = firestore.collection(collectionName);
   }
 
   private throw(): never {

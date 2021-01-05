@@ -1,11 +1,9 @@
 import * as _ from 'lodash';
 import { getComponentModel } from './utils/validate-components';
-import { coerceReference } from './utils/coerce';
 import type { FirestoreConnectorModel } from './model';
-import type { Reference, Snapshot } from './utils/queryable-collection';
+import type { Snapshot } from './utils/queryable-collection';
 import type { Transaction } from './utils/transaction';
 import { StatusError } from './utils/status-error';
-import { AsyncSnapshot, findReverse, getReverseAssocByAssoc, ReverseActionParams } from './relations';
 import { AttributeKey } from './types';
 
 
@@ -32,10 +30,15 @@ export async function populateDoc<T extends object>(model: FirestoreConnectorMod
   // Clone the object (shallow)
   const data = Object.assign({}, values);
 
-  const relationPromises =  Promise.all(populate.map(f => populateField(model, doc.ref, f, data, transaction)));
+  const relationPromises = Promise.all(populate.map(field => {
+    const relation = model.relations.find(r => r.alias === field);
+    return relation
+      ? relation.populateRelated(doc.ref, data, transaction)
+      : null;
+  }));
 
   const componentPromises = Promise.all(model.componentKeys.map(async componentKey => {
-    const component = data[componentKey];
+    const component = _.get(data, componentKey);
     if (component) {
       // FIXME:
       // `ref` is pointing to the parent document that the component is embedded into
@@ -47,13 +50,21 @@ export async function populateDoc<T extends object>(model: FirestoreConnectorMod
       // casting them all as `any`
 
       if (Array.isArray(component)) {
-        data[componentKey] = await Promise.all((component as any[]).map(c => {
-          const componentModel = getComponentModel(model, componentKey, c);
-          return populateDoc(componentModel, { ref: doc.ref, data: () => c }, componentModel.defaultPopulate, transaction);
-        })) as any;
+        _.set(
+          data, 
+          componentKey, 
+          await Promise.all((component as any[]).map(c => {
+            const componentModel = getComponentModel(model, componentKey, c);
+            return populateDoc(componentModel, { ref: doc.ref, data: () => c }, componentModel.defaultPopulate, transaction);
+          })) as any
+        );
       } else {
         const componentModel = getComponentModel(model, componentKey, component);
-        data[componentKey] = await populateDoc(componentModel, { ref: doc.ref, data: () => component }, componentModel.defaultPopulate, transaction) as any;
+        _.set(
+          data,
+          componentKey,
+          await populateDoc(componentModel, { ref: doc.ref, data: () => component }, componentModel.defaultPopulate, transaction) as any
+        );
       }
     }
   }));
@@ -61,71 +72,4 @@ export async function populateDoc<T extends object>(model: FirestoreConnectorMod
   await Promise.all([relationPromises, componentPromises]);
 
   return data;
-}
-
-
-export async function populateField<T extends object>(model: FirestoreConnectorModel<T>, docRef: Reference, field: string, data: any, transaction: Transaction) {
-  const assoc = model.associations.find(assoc => assoc.alias === field)!;
-  const reverse = getReverseAssocByAssoc(assoc);
-
-  const processPopulatedDoc = async (snap: AsyncSnapshot) => {
-    try {
-      return await snap.data();
-    } catch {
-      // TODO:
-      // Should we through an error if the reference can't be found
-      // or just silently omit it?
-      // For now we log a warning
-      strapi.log.warn(`The document referenced by "${snap.ref.path}" no longer exists`);
-      return null;
-    }
-  }
-
-  let action: (refs: ReverseActionParams[]) => Promise<any>;
-  if (assoc.collection) {
-    action = async (refs) => {
-      const datas = await Promise.all(refs.map(processPopulatedDoc));
-      data[field] = datas.filter(d => d != null);
-    };
-  } else {
-    action = async ([ref]) => {
-      if (ref) {
-        data[field] = await processPopulatedDoc(ref);
-      } else {
-        data[field] = null;
-      }
-    };
-  }
-
-  let refs: Reference[];
-  if (assoc.dominant) {
-    const ref = coerceReference(data[field], reverse?.model);
-    if (assoc.collection) {
-      refs = ref
-        ? _.castArray(ref)
-        : [];
-    } else {
-      refs = ref
-        ? Array.isArray(ref) ? ref.slice(0, 1) : [ref]
-        : [];
-    }
-  } else {
-    refs = [];
-  }
-
-  await findReverse({
-    model,
-    ref: docRef,
-    assoc: assoc,
-    reverse,
-    transaction,
-    atomic: false,
-    removed: {
-      refs,
-      action,
-    },
-    // Trigger special case for `removed` actions
-    // to be performed
-    added: undefined,
-  });
 }

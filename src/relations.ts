@@ -1,431 +1,138 @@
 import * as _ from 'lodash';
-import { FieldValue, DocumentReference, DocumentData } from '@google-cloud/firestore';
-import type { FirestoreConnectorModel } from './model';
-import type { StrapiAssociation } from './types';
-import type { Reference, Snapshot } from './utils/queryable-collection';
+import { allModels, FirestoreConnectorModel } from './model';
+import type { StrapiModel, StrapiAttribute } from './types';
+import type { Reference } from './utils/queryable-collection';
 import type { Transaction } from './utils/transaction';
-import { DeepReference } from './utils/deep-reference';
-import { coerceReference, coerceToReferenceSingle } from './utils/coerce';
-import { StatusError } from './utils/status-error';
-
+import { RelationAttrInfo, RelationHandler, RelationInfo } from './utils/relation-handler';
 
 
 /**
  * Parse relation attributes on this updated model and update the referred-to
  * models accordingly.
  */
-export async function relationsUpdate<T extends object>(model: FirestoreConnectorModel<T>, ref: Reference, prevData: T | undefined, newData: T | undefined, transaction: Transaction) {
-  const promises: Promise<any>[] = [];
-
-  model.associations.forEach(assoc => {
-
-    const reverse = getReverseAssocByAssoc(assoc);
-
-    const setReverse = (r: ReverseActionParams, set: boolean) => {
-      // Store a plain reference for normal relations
-      // but an object with extra info for polymorphic relations
-      const refValue = r.refValue || makeRefValue(r.assoc, assoc, ref);
-      
-      const reverseValue = set
-        ? (r.assoc.collection ? FieldValue.arrayUnion(refValue) : refValue)
-        : (r.assoc.collection ? FieldValue.arrayRemove(refValue) : null);
-
-      return transaction.update(r.ref, { [r.assoc.alias]: reverseValue });
-    };
-
-    const findAndSetReverse = (added: Reference[], removed: Reference[]) => {
-      promises.push(
-        findReverse({
-          model,
-          ref,
-          assoc,
-          reverse,
-          transaction,
-          atomic: true,
-          added: {
-            refs: added,
-            action: (refs) => Promise.all(refs.map(r => setReverse(r, true))),
-          },
-          removed: {
-            refs: removed,
-            action: (refs) => Promise.all(refs.map(r => setReverse(r, false))),
-          },
-        })
-      )
-    };
-
-    const setThis = (value: Reference | Reference[] | null) => {
-      if (newData) {
-        if (assoc.dominant) {
-          const refValue = value && (Array.isArray(value)
-            ? value.map(v => makeRefValue(assoc, reverse?.assoc, v))
-            : makeRefValue(assoc, reverse?.assoc, value));
-
-          _.set(newData, assoc.alias, refValue);
-        } else {
-          _.unset(newData, assoc.alias);
-        }
-      }
-    };
-
-    if (assoc.collection) {
-      const prevValue = valueAsArray(prevData, assoc, reverse, true);
-      const newValue = valueAsArray(newData, assoc, reverse, true);
-      
-      // Set the value stored in this document appropriately
-      setThis(newValue || []);
-
-      // Set the value stored in the references documents appropriately
-      const removed = _.differenceWith(prevValue, newValue || [], refEquals);
-      const added = _.differenceWith(newValue, prevValue || [], refEquals)
-      findAndSetReverse(added, removed);
-
-      return;
-    }
-
-    if (assoc.model) {
-      const prevValue = valueAsSingle(prevData, assoc, reverse, true);
-      const newValue = valueAsSingle(newData, assoc, reverse, true);
-      
-      // Set the value stored in this document appropriately
-      setThis(newValue || null);
-
-      // Set the value stored in the references documents appropriately
-      const added = newValue ? [newValue] : [];
-      const removed = prevValue ? [prevValue] : [];
-      findAndSetReverse(added, removed);
-
-      return;
-    }
-
-    throw new Error('Unexpected type of association. Expected `collection` or `model` to be defined.')
-  });
-
-  await Promise.all(promises);
+export async function relationsUpdate<T extends object>(model: FirestoreConnectorModel<T>, ref: Reference<T>, prevData: T | undefined, newData: T | undefined, transaction: Transaction) {
+  await Promise.all(
+    model.relations.map(r => r.update(ref, prevData, newData, transaction))
+  );
 }
 
 /**
  * When this model is being deleted, parse and update the referred-to models accordingly.
  */
-export async function relationsDelete<T extends object>(model: FirestoreConnectorModel<T>, ref: Reference, prevData: T, transaction: Transaction) {
+export async function relationsDelete<T extends object>(model: FirestoreConnectorModel<T>, ref: Reference<T>, prevData: T, transaction: Transaction) {
   await relationsUpdate(model, ref, prevData, undefined, transaction); 
 }
 
 /**
  * When this model is being creted, parse and update the referred-to models accordingly.
  */
-export async function relationsCreate<T extends object>(model: FirestoreConnectorModel<T>, ref: Reference, newData: T, transaction: Transaction) {
+export async function relationsCreate<T extends object>(model: FirestoreConnectorModel<T>, ref: Reference<T>, newData: T, transaction: Transaction) {
   await relationsUpdate(model, ref, undefined, newData, transaction); 
 }
 
 
-
-export type MorphRefValue = {
-  ref: Reference
-} & {
-  [field: string]: string
-}
-
-export interface ReverseAssocDetails {
-  model: FirestoreConnectorModel
-  assoc: StrapiAssociation
-}
-
-export interface AsyncSnapshot<T = DocumentData> {
-  ref: Reference
-  /**
-   * Returns a `Promise` that resolves with the document data
-   * or rejects if the document referred to by `ref` doesn't exist.
-   */
-  data: () => Promise<T>
-}
-
-export interface ReverseAction {
-  refs: Reference[]
-  action: (refs: ReverseActionParams[]) => Promise<any>
-}
-
-export interface ReverseActionParams extends AsyncSnapshot, ReverseAssocDetails {
-  /**
-   * If the shapshot has been found by querying the related collection,
-   * then this is the value of the reference (pointing to this document)
-   * that was queried for.
-   */
-  refValue?: MorphRefValue
-}
-
-export interface FindReverseArgs {
-  model: FirestoreConnectorModel<any>
-  ref: Reference
-  assoc: StrapiAssociation
-  transaction: Transaction
-  atomic: boolean
-
-  /**
-   * The opposite (reverse) end of the association.
-   * Pass `undefined` if it is polymorphic (i.e.) the other 
-   * end is not hardcoded.
-   */
-  reverse: ReverseAssocDetails | undefined
+export function buildRelations<T extends object>(model: FirestoreConnectorModel<T>, strapiInstance = strapi) {
   
-  /**
-   * Actions to perform on related documents that are 
-   * new to this relation.
-   * 
-   * If this is `undefined` then a special case will be triggered
-   * where `removed` actions are performed even when the reverse
-   * association isn't dominant.
-   */
-  added?: ReverseAction
+  model.relations = [];
 
-  /**
-   * Actions to perform on related documents that are existing on this relation.
-   */
-  removed?: ReverseAction
-}
+  // Build the dominant relations (these exist as attributes on this model)
+  // The non-dominant relations will be populated as a matter of course
+  // when the other models are built
+  Object.keys(model.attributes).forEach(alias => {
+    const attr = model.attributes[alias];
+    const targetModelName = attr.model! || attr.collection!;
+    const isMorph = targetModelName === '*';
+    const thisEnd: RelationInfo<any> = {
+      model,
+      attr: {
+        alias,
+        isArray: !attr.model,
+        isMorph,
+        filter: attr.filter,
+      },
+    };
 
-/**
- * Centralised logic for finding the targets on the opposite (reverse) end
- * of relations and performing actions on those targets.
- */
-export async function findReverse({ model, ref, assoc, reverse, added, removed, transaction, atomic }: FindReverseArgs) {
-  const promises: Promise<void>[] = [];
-  const searchExisting = removed && !added;
-
-  if (reverse) {
-    // NORMAL RELATION (not polymorphic)
-
-    if (reverse.assoc.dominant || searchExisting) {
-      if (added) {
-        promises.push(added.action(added.refs.map(r => actFromRef(reverse, r, transaction))));
-      }
-
-      if (removed) {
-        if (assoc.dominant) {
-          // Previous references were stored in this document
-          // so we can find them directly
-          promises.push(removed.action(removed.refs.map(r => actFromRef(reverse, r, transaction))));
-        } else {
-          // Previous references were not stored in this document
-          // so we need to search for them
-          const refValue = makeRefValue(reverse.assoc, assoc, ref);
-          const q = reverse.assoc.model
-            ? reverse.model.db.where(reverse.assoc.alias, '==', refValue)
-            : reverse.model.db.where(reverse.assoc.alias, 'array-contains', refValue);
-          const getAsync = atomic
-            ? transaction.getAtomic(q)
-            : transaction.getNonAtomic(q);
-
-          promises.push(
-            getAsync.then(snap => {
-              promises.push(removed.action(snap.docs.map(d => actFromSnap(reverse, d, refValue))));
-            })
-          );
-        }
-      }
-
+    let otherEnds: RelationInfo<any>[];
+    if (isMorph) {
+      otherEnds = findModelsRelatingTo(
+        { model, attr, alias }, 
+        strapiInstance
+      );
     } else {
-      // I.e. reverse.assoc.dominant == false
-      // Other association is not dominant
-      // so there is no storage on the other end
-    }
-
-  } else {
-    // POLYMORPHIC RELATION
-
-    // Assign this reference to new values
-    if (added) {
-      const refs = added.refs
-        .map(morphRef => {
-          const morphReverse = getReverseAssocByModel(getModelByRef(morphRef), assoc);
-          if (morphReverse.assoc.dominant || searchExisting) {
-            return actFromRef(morphReverse, morphRef, transaction);
-          } else {
-            return null!;
-          }
-        })
-        .filter(r => r != null);
-      
-      promises.push(added.action(refs));
-    }
-
-    // Remove this reference from old values
-    if (removed) {
-      if (assoc.dominant) {
-        // Previous references were stored in this document
-        // so we can find them directly
-        const refs = removed.refs
-          .map(morphRef => {
-            const morphReverse = getReverseAssocByModel(getModelByRef(morphRef), assoc);
-            if (morphReverse.assoc.dominant || searchExisting) {
-              return actFromRef(morphReverse, morphRef, transaction);
-            } else {
-              return null!;
-            }
-          })
-          .filter(r => r != null);
-
-        promises.push(removed.action(refs));
-      } else {
-        // Previous references were not stored in this document
-        // so we need to search for them
-        const relatedModels = model.morphRelatedModels[assoc.alias];
-
-        const refsPromise = relatedModels.map(m => {
-          const morphReverse = getReverseAssocByModel(m, assoc);
-          if(morphReverse.assoc.dominant || searchExisting) {
-            const refValue = makeRefValue(morphReverse.assoc, assoc, ref);
-            const q = morphReverse.assoc.collection
-              ? m.db.where(morphReverse.assoc.alias, 'array-contains', refValue)
-              : m.db.where(morphReverse.assoc.alias, '==', refValue);
-            const getAsync = atomic
-              ? transaction.getAtomic(q)
-              : transaction.getNonAtomic(q);
-            
-            return getAsync.then(snap => {
-              return snap.docs.map(d => actFromSnap(morphReverse, d, refValue));
-            });
-          } else {
-            return Promise.resolve([]);
-          }
-        });
-
-        promises.push(
-          Promise.all(refsPromise).then(refs => {
-            return removed.action(refs.flat());
-          })
+      const targetModel = strapiInstance.db.getModel(targetModelName, attr.plugin);
+      if (!targetModel) {
+        throw new Error(
+          `Problem building relations. The model targetted by attribute "${alias}" ` +
+          `on model "${model.uid}" does not exist.`
         );
       }
+      otherEnds = [{
+        model: targetModel,
+        attr: findOtherAttr(alias, attr, targetModel),
+      }];
     }
-  }
 
-  await Promise.all(promises);
-};
+    model.relations.push(new RelationHandler(thisEnd, otherEnds));
 
-
-
-
-
-
-
-
-function actFromSnap(reverse: ReverseAssocDetails, snap: Snapshot, refValue: any): ReverseActionParams {
-  return {
-    ...reverse,
-    refValue,
-    ref: snap.ref,
-    data: () => {
-      const d = snap.data();
-      if (!d) {
-        throw new StatusError(`The document referred to by "${snap.ref.path}" doesn't exist`, 404);
+    // If there are any non-dominant other ends
+    // Then we add them to the other model also
+    // so that the other model knows about the relation
+    // (I.e. This is necessary when that model is deleting itself)
+    otherEnds.forEach(other => {
+      if (!other.attr) {
+        other.model.relations = other.model.relations || [];
+        other.model.relations.push(new RelationHandler(other, [thisEnd]));
       }
-      return Promise.resolve(d);
-    }
-  }
-}
-
-function actFromRef(reverse: ReverseAssocDetails, ref: Reference, transaction: Transaction | undefined): ReverseActionParams {
-  return {
-    ...reverse,
-    ref,
-    data: async () => {
-      const snap = await (transaction ? transaction.getNonAtomic(ref) : ref.get());
-      const data = snap.data();
-      if (!data) {
-        throw new StatusError(`The document referred to by "${ref.path}" doesn't exist`, 404);
-      }
-      return data;
-    }
-  }
-}
-
-export function getReverseAssocByAssoc(thisAssoc: StrapiAssociation): ReverseAssocDetails | undefined {
-  if ((thisAssoc.collection || thisAssoc.model) === '*') {
-    // Polymorphic relation
-    return undefined;
-  }
-  
-  const model = strapi.db.getModelByAssoc(thisAssoc);
-  return getReverseAssocByModel(model, thisAssoc);
-}
-
-export function getReverseAssocByModel(model: FirestoreConnectorModel | undefined, thisAssoc: StrapiAssociation): ReverseAssocDetails {
-  if (!model) {
-    throw new Error(`Associated model "${thisAssoc.collection || thisAssoc.model}" not found.`);
-  }
-
-  const assoc = model.associations.find(a => {
-    if (a.via) {
-      return a.via === thisAssoc.alias;
-    } else {
-      return a.alias === thisAssoc.via;
-    }
+    });
   });
-  if (!assoc) {
-    throw new Error(`Related attribute "${thisAssoc.via}" on the associated model "${model.globalId}" not found.`);
-  }
-
-  return {
-    model,
-    assoc,
-  };
 }
 
-function makeRefValue(assoc: StrapiAssociation, otherAssoc: StrapiAssociation | undefined, ref: Reference): MorphRefValue | Reference {
-  if ((assoc.collection || assoc.model) == '*') {
-    const value: any = { ref };
-    if (assoc.filter) {
-      if (!otherAssoc) {
-        throw new Error('Cannot assign polymorphic reference because the filter is unknown.');
-      }
-      value[assoc.filter] = otherAssoc.alias;
+
+
+function findModelsRelatingTo(info: { model: FirestoreConnectorModel<any>, attr: StrapiAttribute, alias: string }, strapiInstance = strapi): RelationInfo<any>[] {
+  const related: RelationInfo<any>[] = [];
+  for (const model of allModels(strapiInstance)) {
+    Object.keys(model.attributes)
+      .forEach(alias => {
+        const attr = model.attributes[alias];
+        const otherModelName = attr.model || attr.collection;
+        if ((otherModelName === info.model.modelName)
+          && ((attr.via === info.alias) || (info.attr.via === alias))) {
+          related.push({
+            model: model as FirestoreConnectorModel<any>,
+            attr: {
+              alias,
+              isArray: !attr.model,
+              isMorph: false,
+              filter: attr.filter,
+            },
+          });
+        }
+      });
+  }
+  return related;
+}
+
+function findOtherAttr(key: string, attr: StrapiAttribute, otherModel: StrapiModel): RelationAttrInfo | undefined {
+  const alias = Object.keys(otherModel.attributes).find(alias => {
+    if (attr.via && (attr.via === alias)) {
+      return true;
     }
-    return value;
-  } else {
-    return ref;
-  }
-}
-
-function refEquals(a: Reference | null | undefined, b: Reference | null | undefined): boolean {
-  if (a == b) {
-    // I.e. both are `null` or `undefined`, or
-    // the exact same instance
-    return true;
-  }
-  if (a instanceof DocumentReference) {
-    return a.isEqual(b as any);
-  }
-  if (a instanceof DeepReference) {
-    return a.isEqual(b as any);
-  }
-  return false;
-}
-
-function valueAsArray(data: DocumentData | undefined, { alias, nature }: StrapiAssociation, reverse: ReverseAssocDetails | undefined, strict: boolean): Reference[] | undefined {
-  if (data) {
-    const value = coerceReference(data[alias] || [], reverse?.model, strict);
-    if (!Array.isArray(value)) {
-      throw new Error(`Value of ${nature} association must be an array.`);
+    const otherAttr = otherModel.attributes[alias];
+    if (otherAttr.via && (otherAttr.via === key)) {
+      return true;
     }
-    return value;
-  } else {
-    return undefined;
-  }
-}
+    return false;
+  });
 
-function valueAsSingle(data: DocumentData | undefined, { alias, nature }: StrapiAssociation, reverse: ReverseAssocDetails | undefined, strict: boolean): Reference | null | undefined {
-  if (data) {
-    const value = data[alias] || null;
-    if (Array.isArray(value)) {
-      throw new Error(`Value of ${nature} association must not be an array.`);
-    }
-    return coerceToReferenceSingle(value, reverse?.model, strict);
-  } else {
-    return undefined;
+  if (alias) {
+    const otherAttr = otherModel.attributes[alias];
+    return {
+      alias,
+      isArray: !otherAttr.model,
+      isMorph: (otherAttr.model || otherAttr.collection) === '*',
+      filter: otherAttr.filter,
+    };
   }
-}
-
-function getModelByRef(ref: Reference): FirestoreConnectorModel | undefined {
-  const collectionName = ref.parent.path;
-  return strapi.db.getModelByCollectionName(collectionName);
+  return undefined;
 }

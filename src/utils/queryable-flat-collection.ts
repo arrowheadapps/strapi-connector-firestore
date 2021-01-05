@@ -2,7 +2,7 @@ import * as _ from 'lodash';
 import * as path from 'path';
 import { getFieldPath, convertWhere, ManualFilter, WhereFilter } from './convert-where';
 import { DocumentReference, OrderByDirection, Transaction, FieldPath, WhereFilterOp, DocumentData, FirestoreDataConverter } from '@google-cloud/firestore';
-import type { QueryableCollection, QuerySnapshot, Reference, Snapshot } from './queryable-collection';
+import type { QueryableCollection, QuerySnapshot, Snapshot } from './queryable-collection';
 import type { StrapiWhereOperator } from '../types';
 import { DeepReference } from './deep-reference';
 import { coerceModelFromFirestore, coerceModelToFirestore } from './coerce';
@@ -11,8 +11,8 @@ import type { FirestoreConnectorModel } from '../model';
 
 export class QueryableFlatCollection<T extends object = DocumentData> implements QueryableCollection<T> {
 
-  readonly flatDoc: DocumentReference<Record<string, T>>;
-  readonly conv: FirestoreDataConverter<Record<string, T>>;
+  readonly flatDoc: DocumentReference<{ [id: string]: T }>;
+  readonly conv: FirestoreDataConverter<{ [id: string]: T }>;
 
   private _filters: ManualFilter[] = [];
   private _orderBy: { field: string | FieldPath, directionStr: OrderByDirection }[] = [];
@@ -56,9 +56,9 @@ export class QueryableFlatCollection<T extends object = DocumentData> implements
     return this.flatDoc.parent.doc().id;
   }
 
-  doc(): Reference<T>
-  doc(id: string): Reference<T>
-  doc(id?: string): Reference<T> {
+  doc(): DeepReference<T>;
+  doc(id: string): DeepReference<T>;
+  doc(id?: string) {
     return new DeepReference(id?.toString() || this.autoId(), this);
   };
 
@@ -70,7 +70,7 @@ export class QueryableFlatCollection<T extends object = DocumentData> implements
    * This operation is cached, so that it will happen at most once
    * for the life of the model instance.
    */
-  async ensureDocument() {
+  async ensureDocument(): Promise<void> {
     // Set and merge with empty object
     // This will ensure that the document exists using
     // as single write operation
@@ -83,14 +83,6 @@ export class QueryableFlatCollection<T extends object = DocumentData> implements
     }
     return this._ensureDocument;
   }
-
-
-
-
-
-
-
-
 
   async get(trans?: Transaction): Promise<QuerySnapshot<T>> {
     const snap = await (trans ? trans.get(this.flatDoc) : this.flatDoc.get());

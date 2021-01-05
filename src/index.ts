@@ -2,9 +2,9 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as _ from 'lodash';
 import { Firestore, Settings, DocumentReference, Timestamp } from '@google-cloud/firestore';
-import { FirestoreConnectorModel, DEFAULT_CREATE_TIME_KEY, DEFAULT_UPDATE_TIME_KEY } from './model';
-import { FirestoreConnectorQuery } from './query';
-import type { Strapi, StrapiModel, ConnectorOptions, StrapiContext } from './types';
+import { allModels, DEFAULT_CREATE_TIME_KEY, DEFAULT_UPDATE_TIME_KEY, mountModel } from './model';
+import { queries } from './queries';
+import type { Strapi, ConnectorOptions } from './types';
 
 export type { 
   Strapi,
@@ -49,7 +49,7 @@ module.exports = (strapi: Strapi) => {
   }
 
   // Patch Firestore types to allow JSON serialization
-  (DocumentReference.prototype as any).toJSON = function() { return this.path; };
+  (DocumentReference.prototype as any).toJSON = function() { return this.id; };
   (Timestamp.prototype as any).toJSON = function() { return this.toDate().toJSON(); };
 
 
@@ -100,40 +100,17 @@ module.exports = (strapi: Strapi) => {
         if (await fs.promises.access(initFunctionPath).then(() => true, () => false)) {
           require(initFunctionPath)(firestore, connection);
         }
-        
-        const mountModels = (models: Record<string, StrapiModel>, isComponent: boolean = false) => {
-          Object.keys(models).forEach(modelKey => {
-            const model = new FirestoreConnectorModel({
-              firestore,
-              modelKey,
-              model: models[modelKey],
-              options,
-              isComponent,
-            });
 
-            // FIXME:
-            // We are trying to replace every instance of the model
-            // This will break easily as references to the model may be
-            // stored in other places in future versions
-            models[modelKey] = model;
-            strapi.contentTypes[model.uid] = model;
+        for (const model of allModels(strapi)) {
+          mountModel({
+            firestore,
+            model,
+            connectorOptions: options,
           });
         }
-
-        mountModels(strapi.models);
-        mountModels(strapi.admin.models);
-        mountModels(strapi.components, true);
-
-        Object.values(strapi.plugins).forEach(plugin => {
-          mountModels(plugin.models);
-        });
       })
     );
   }
-
-  const queries = (args: StrapiContext) => {
-    return new FirestoreConnectorQuery(args);
-  };
 
   return {
     defaults,

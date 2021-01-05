@@ -1,7 +1,7 @@
 import { DocumentData } from '@google-cloud/firestore';
 import * as _ from 'lodash';
 import type { FirestoreConnectorModel } from "../model";
-import type { AttributeKey, StrapiRelation } from "../types";
+import type { AttributeKey, StrapiAttribute } from "../types";
 import { StatusError } from "./status-error";
 
 export interface Component<T extends object> {
@@ -72,7 +72,7 @@ export function validateComponents<T extends object>(values: T, model: Firestore
 }
 
 
-function validateRepeatableInput(value, { key, min, max, required }: { key } & StrapiRelation) {
+function validateRepeatableInput(value, { key, min, max, required }: { key } & StrapiAttribute) {
   if (!Array.isArray(value)) {
     throw new StatusError(`Component ${key} is repetable. Expected an array`, 400);
   }
@@ -92,7 +92,7 @@ function validateRepeatableInput(value, { key, min, max, required }: { key } & S
   }
 }
 
-function validateNonRepeatableInput(value, { key, required }: { key } & StrapiRelation) {
+function validateNonRepeatableInput(value, { key, required }: { key } & StrapiAttribute) {
   if (typeof value !== 'object' || Array.isArray(value)) {
     throw new StatusError(`Component ${key} should be an object`, 400);
   }
@@ -102,7 +102,7 @@ function validateNonRepeatableInput(value, { key, required }: { key } & StrapiRe
   }
 }
 
-function validateDynamiczoneInput(value, { key, min, max, components, required }: { key } & StrapiRelation) {
+function validateDynamiczoneInput(value, { key, min, max, components, required }: { key } & StrapiAttribute) {
   if (!Array.isArray(value)) {
     throw new StatusError(`Dynamiczone ${key} is invalid. Expected an array`, 400);
   }

@@ -1,9 +1,9 @@
 import * as _ from 'lodash';
 import * as path from 'path';
-import { DocumentData, DocumentReference, FieldValue, SetOptions, Transaction } from "@google-cloud/firestore";
-import type { Snapshot } from "./queryable-collection";
+import type { DocumentData, DocumentReference, SetOptions } from "@google-cloud/firestore";
+import type { FlatReferenceShape, Snapshot } from "./queryable-collection";
 import type { QueryableFlatCollection } from './queryable-flat-collection';
-import { mapToFlattenedDoc } from './map-to-flattened-doc';
+import { getFlattenedDoc, mapToFlattenedDoc } from './flattened-doc';
 
 /**
  * References an item in a flattened collection 
@@ -11,7 +11,7 @@ import { mapToFlattenedDoc } from './map-to-flattened-doc';
  */
 export class DeepReference<T extends object = DocumentData> {
 
-  readonly doc: DocumentReference<Record<string, T>>
+  readonly doc: DocumentReference<{ [id: string]: T }>
 
   constructor(readonly id: string, readonly parent: QueryableFlatCollection<T>) {
     if (!id) {
@@ -19,36 +19,6 @@ export class DeepReference<T extends object = DocumentData> {
     }
 
     this.doc = parent.flatDoc;
-  }
-
-  static parse(path: string): DeepReference {
-    if (typeof path !== 'string') {
-      throw new Error(`Can only parse a DeepReference from a string, received: "${typeof path}".`);
-    }
-    if (!path.startsWith('/')) {
-      throw new Error('Reference has invalid format');
-    }
-
-    // A deep reference is in the format
-    // /{collectionPath}/{docId}/{id}
-    // e.g.
-    //  - "/collectionName/default/abcd123"
-    //  - "/collectionName/defg456/subCollection/default/abcd123"
-    
-    const lastSlash = path.lastIndexOf('/');
-    const secondToLastSlash = path.lastIndexOf('/', lastSlash - 1);
-    const id = path.slice(lastSlash + 1);
-    const targetCollectionName = path.slice(1, secondToLastSlash);
-    if ((lastSlash === -1) || (secondToLastSlash === -1) || !id || !targetCollectionName) {
-      throw new Error('Reference has invalid format');
-    }
-
-    const targetModel = strapi.db.getModelByCollectionName(targetCollectionName);
-    if (!targetModel) {
-      throw new Error(`Could not find model referred to by "${targetCollectionName}"`);
-    }
-
-    return targetModel.db.doc(id) as DeepReference;
   }
 
   get path() {
@@ -60,63 +30,44 @@ export class DeepReference<T extends object = DocumentData> {
     return this.doc.firestore;
   }
 
-  async delete(transaction?: Transaction) {
-    await this._set(FieldValue.delete(), transaction, false);
+  async delete() {
+    await this._set(null, false);
   };
 
-  async create(data: T, transaction?: Transaction) {
+  async create(data: T) {
     // TODO:
     // Error if document already exists
-    await this._set(data, transaction, false);
+    await this._set(data, false);
   };
 
-  async update(data: Partial<T>, transaction?: Transaction) {
+  async update(data: Partial<T>) {
     // TODO:
     // Error if document doesn't exist
-    await this._set(data, transaction, false);
+    await this._set(data, false);
   };
 
-  set(data: T, transaction?: Transaction): Promise<void>
-  set(data: Partial<T>, options: SetOptions, transaction?: Transaction): Promise<void>
-  async set(data: Partial<T>, optionsOrTrans?: SetOptions | Transaction, trans?: Transaction) {
-    if (optionsOrTrans instanceof Transaction) {
-      await this._set(data, optionsOrTrans, false);
-    } else {
-      await this._set(data, trans, optionsOrTrans?.merge || false);
-    }
+  set(data: T): Promise<void>
+  set(data: T | Partial<T>, options: SetOptions): Promise<void>
+  async set(data: Partial<T>, options?: SetOptions) {
+    await this._set(data, options?.merge || false);
   }
 
-  
-  private async _set(data: any, trans: Transaction | undefined, merge: boolean) {
+  async get(): Promise<Snapshot<T>> {
+    return await getFlattenedDoc(this, null);
+  }
 
-    data = mapToFlattenedDoc(this.id, data, merge);
+  private async _set(data: Partial<T> | null, merge: boolean) {
 
     // HACK:
     // It seems that Firestore does not call the converter
     // for update operations?
-    data = this.parent.conv.toFirestore(data);
+    const out = this.parent.conv.toFirestore(mapToFlattenedDoc(this, data, merge));
 
     // Ensure document exists
     // This costs one write operation at startup only
     await this.parent.ensureDocument();
 
-    if (trans) {
-      trans.update(this.doc, data);
-    } else {
-      await this.doc.update(data);
-    }
-  }
-
-  async get(transaction?: Transaction): Promise<Snapshot<T>> {
-    const snap = await (transaction ? transaction.get(this.doc) : this.doc.get());
-    const data = snap.data()?.[this.id];
-
-    return {
-      ref: this,
-      data: () => data,
-      id: this.id,
-      exists: data !== undefined,
-    };
+    await this.doc.update(out);
   }
 
   isEqual(other: DeepReference<T>) {
@@ -130,18 +81,21 @@ export class DeepReference<T extends object = DocumentData> {
    * Allow serialising to JSON.
    */
   toJSON() {
-    return this.toFirestoreValue();
+    return this.id;
   }
 
   /**
    * Returns a value that can be serialised
    * to Firestore.
    */
-  toFirestoreValue() {
-    return '/' + this.path;
+  toFirestoreValue(): FlatReferenceShape<T> {
+    return {
+      ref: this.doc,
+      id: this.id,
+    };
   }
 
   toString() {
-    return this.toFirestoreValue();
+    return this.path;
   }
 };

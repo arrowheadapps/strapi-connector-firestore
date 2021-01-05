@@ -131,23 +131,23 @@ declare global {
   }
 }
 
-export interface StrapiContext {
+export interface StrapiContext<T extends object = object> {
   strapi: Strapi
   modelKey: string
-  model: FirestoreConnectorModel<any>
+  model: FirestoreConnectorModel<T>
 }
 
 export interface Strapi {
   config: {
-    connections: Record<string, Connector>
+    connections: { [c: string]: Connector }
     hook: any
     appPath: string
   }
   components: StrapiModelRecord
   models: StrapiModelRecord
-  contentTypes: Record<string, StrapiModel>
+  contentTypes: { [key: string]: StrapiModel }
   admin: Readonly<StrapiPlugin>
-  plugins: Record<string, Readonly<StrapiPlugin>>
+  plugins: { [key: string]: Readonly<StrapiPlugin> }
   db: StrapiDatabaseManager
   log: Logger
 
@@ -162,15 +162,16 @@ export type StrapiModelRecord = {
 };
 
 export interface StrapiDatabaseManager {
-  getModel(name: string, plugin: string | undefined): FirestoreConnectorModel | undefined
-  getModelByAssoc(assoc: StrapiRelation): FirestoreConnectorModel | undefined
-  getModelByCollectionName(collectionName: string): FirestoreConnectorModel | undefined
-  getModelByGlobalId(globalId: string): FirestoreConnectorModel | undefined
+  getModel(name: string, plugin: string | undefined): FirestoreConnectorModel<any> | undefined
+  getModelByAssoc(assoc: StrapiAttribute): FirestoreConnectorModel<any> | undefined
+  getModelByCollectionName(collectionName: string): FirestoreConnectorModel<any> | undefined
+  getModelByGlobalId(globalId: string): FirestoreConnectorModel<any> | undefined
 }
 
 export interface StrapiPlugin {
   models: StrapiModelRecord
 }
+
 
 export type AttributeKey<T extends object> = Extract<keyof T, string>;
 
@@ -184,12 +185,12 @@ export interface StrapiQuery<T extends object = DocumentData> {
   count(params?: any): Promise<number>
   search(params: any, populate?: AttributeKey<T>[]): Promise<T[]>
   countSearch(params: any): Promise<number>
+  fetchRelationCounters(attribute: AttributeKey<T>, entitiesIds?: string[]): Promise<RelationCounter[]>
 }
 
-export interface StrapiQueryParams {
-  model: FirestoreConnectorModel
-  modelKey: string
-  strapi: Strapi
+export interface RelationCounter {
+  id: string
+  count: number
 }
 
 export interface StrapiModel<T extends object = any> {
@@ -197,12 +198,14 @@ export interface StrapiModel<T extends object = any> {
   connection: string
   primaryKey: string
   primaryKeyType: string
-  attributes: Record<AttributeKey<T>, StrapiRelation>
-  privateAttributes: Record<AttributeKey<T>, StrapiRelation>
+  attributes: { [key: string]: StrapiAttribute }
+  privateAttributes: { [key: string]: StrapiAttribute }
   collectionName: string
   kind: 'collectionType' | 'singleType'
   globalId: string
   modelName: string
+  modelType?: 'contentType' | 'component'
+  internal?: boolean
   uid: string
   orm: string
   options: {
@@ -215,26 +218,42 @@ export interface StrapiModel<T extends object = any> {
 export type StrapiRelationType = 'oneWay' | 'manyWay' | 'oneToMany' | 'oneToOne' | 'manyToMany' | 'manyToOne' | 'oneToManyMorph' | 'manyToManyMorph' | 'manyMorphToMany' | 'manyMorphToOne' | 'oneMorphToOne' | 'oneMorphToMany';
 export type StrapiAttributeType = 'integer' | 'float' | 'decimal' | 'biginteger' | 'string' | 'text' | 'richtext' | 'email' | 'enumeration' | 'uid' | 'date' | 'time' | 'datetime' | 'timestamp' | 'json' | 'boolean' | 'password' | 'dynamiczone' | 'component';
 
-export interface StrapiRelation {
-  dominant: boolean
-  via: string
-  model: string
-  collection: string
-  filter: string
-  plugin: string
-  autoPopulate: boolean
-  type: StrapiAttributeType
-  required: boolean
-  component: string
-  components: string[]
-  repeatable: boolean
-  min: number
-  max: number
+export interface StrapiAttribute {
+  dominant?: boolean
+  via?: string
+  model?: string
+  collection?: string
+  filter?: string
+  plugin?: string
+  autoPopulate?: boolean
+  type?: StrapiAttributeType
+  required?: boolean
+  component?: string
+  components?: string[]
+  repeatable?: boolean
+  min?: number
+  max?: number
 }
 
-export interface StrapiAssociation<K extends string = string> extends StrapiRelation {
+export interface StrapiAssociation<K extends string = string> {
   alias: K
   nature: StrapiRelationType
+  autoPopulate: boolean
+
+  /**
+   * The `uid` of the target model, or `"*"` if this is
+   * polymorphic.
+   */
+  targetUid: string
+  type: 'model' | 'collection'
+  collection?: string
+  model?: string
+  dominant?: boolean
+  via?: string
+  plugin?: string
+  filter?: string
+  related?: FirestoreConnectorModel<any>[]
+  tableCollectionName?: string
 }
 
 export interface StrapiFilter {

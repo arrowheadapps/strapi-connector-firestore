@@ -1,14 +1,15 @@
 import * as _ from 'lodash';
-import type { FirestoreConnectorModel } from "../model";
-import type { StrapiRelation } from "../types";
+import type { FirestoreConnectorModel } from '../model';
+import type { StrapiAttribute } from '../types';
 import * as parseType from 'strapi-utils/lib/parse-type';
 import { Timestamp, DocumentReference, DocumentData, FieldValue } from '@google-cloud/firestore';
 import { getComponentModel } from './validate-components';
-import { Reference } from './queryable-collection';
+import { FlatReferenceShape, MorphReferenceShape, Reference, ReferenceShape } from './queryable-collection';
 import { DeepReference } from './deep-reference';
+import { MorphReference } from './morph-reference';
 
 export interface CoerceFn {
-  (relation: Partial<StrapiRelation> | undefined, value: unknown): unknown
+  (relation: Partial<StrapiAttribute> | undefined, value: unknown): unknown
 }
 
 
@@ -75,7 +76,7 @@ export function coerceValue(model: FirestoreConnectorModel, field: string, value
   return coerceAttribute(model.attributes[field], value, coerceFn);
 }
 
-export function coerceAttribute(relation: StrapiRelation | undefined, value: unknown, coerceFn: CoerceFn) {
+export function coerceAttribute(relation: StrapiAttribute | undefined, value: unknown, coerceFn: CoerceFn) {
   if (Array.isArray(value)) {
     value = value.map(v => coerceFn(relation, v));
   } else {
@@ -91,14 +92,14 @@ export function coerceAttribute(relation: StrapiRelation | undefined, value: unk
  * **Note:**
  * This will automatically generate IDs for embedded components if they don't already have IDs.
  */
-export function toFirestore(relation: Partial<StrapiRelation> | undefined, value: unknown): unknown {
+export function toFirestore(relation: Partial<StrapiAttribute> | undefined, value: unknown): unknown {
   
   if (value instanceof FieldValue) {
     // Do not coerce `FieldValue`
     return value;
   }
 
-  if (value instanceof DeepReference) {
+  if ((value instanceof DeepReference) || (value instanceof MorphReference)) {
     return value.toFirestoreValue();
   }
 
@@ -224,16 +225,16 @@ export function toFirestore(relation: Partial<StrapiRelation> | undefined, value
     if (target) {
       const assocModel = strapi.db.getModel(target, relation.plugin);
       if (assocModel) {
-        value = coerceReference(value, assocModel);
-
         // Convert DeepReference instances to a string value
         // that can be serialised to Firestore
         if (Array.isArray(value)) {
           value = value.map(v => {
-            return v instanceof DeepReference ? v.toFirestoreValue() : v;
+            const ref = coerceToReference(v, assocModel, false);
+            return ref && coerceToReferenceShape(ref);
           });
         } else {
-          value = value instanceof DeepReference ? value.toFirestoreValue(): value;
+          const ref = coerceToReference(value, assocModel, false);
+          value = ref && coerceToReferenceShape(ref);
         }
       }
     }
@@ -246,7 +247,7 @@ export function toFirestore(relation: Partial<StrapiRelation> | undefined, value
  * Coerces a given attribute value to out of the value stored in Firestore to the
  * value expected by the given attribute schema.
  */
-export function fromFirestore(relation: Partial<StrapiRelation> | undefined, value: unknown): unknown {
+export function fromFirestore(relation: Partial<StrapiAttribute> | undefined, value: unknown): unknown {
   // Firestore returns Timestamp for all Date values
   if (value instanceof Timestamp) {
     return value.toDate();
@@ -323,20 +324,13 @@ export function fromFirestore(relation: Partial<StrapiRelation> | undefined, val
   }
 
   // Reconstruct DeepReference instances from string
-  if (relation.model || relation.collection) {
-    const toRef = (v) => {
-      if (v instanceof DocumentReference) {
-        // No coersion needed
-        return v;
-      } else {
-        // This must be a DeepReference
-        return DeepReference.parse(v);
-      }
-    };
+  const target = relation.model || relation.collection;
+  if (target) {
+    const assocModel = strapi.db.getModel(target, relation.plugin);
     if (Array.isArray(value)) {
-      value = value.map(toRef);
+      value = value.map(v => coerceToReference(v, assocModel, false));
     } else {
-      value = toRef(value);
+      value = coerceToReference(value, assocModel, false);
     }
   }
 
@@ -351,15 +345,7 @@ export function fromFirestore(relation: Partial<StrapiRelation> | undefined, val
 /**
  * Coerces a value to a `Reference` if it is one.
  */
-export function coerceReference(value: any, to: FirestoreConnectorModel | undefined, strict?: boolean): Reference | Reference[] | null {
-  if (Array.isArray(value)) {
-    return value.map(v => coerceToReferenceSingle(v, to, strict)!).filter(Boolean);
-  } else {
-    return coerceToReferenceSingle(value, to, strict);
-  }
-}
-
-export function coerceToReferenceSingle(value: any, to: FirestoreConnectorModel | undefined, strict?: boolean): Reference | null {
+export function coerceToReference<T extends object = object>(value: any, to: FirestoreConnectorModel<T> | undefined, strict = false): Reference<T> | null {
   if ((value === undefined) || (value === null)) {
     return null;
   }
@@ -367,28 +353,42 @@ export function coerceToReferenceSingle(value: any, to: FirestoreConnectorModel 
   if (value instanceof DocumentReference) {
     // When deserialised from Firestore it comes without any converters
     // We want to get the appropraite converters so we reinstantiate it
-    if (to) {
-      const newRef = to.db.doc(value.id);
-      if (newRef.path !== value.path) {
-        return fault(strict, `Reference is pointing to the wrong model. Expected "${newRef.path}", got "${value.path}".`);
-      }
-      return newRef;
-    } else {
-      const model = strapi.db.getModelByCollectionName(value.parent.path);
-      if (!model) {
-        return fault(strict, `The model referred to by "${value.parent.path}" doesn't exist`);
-      }
-      return model.db.doc(value.id);
-    }
+    return reinstantiateReference(value, to, strict);
   }
-  if (value instanceof DeepReference) {
-    // DeepReference is not native to Firestore
+
+  if ((value instanceof DeepReference) || (value instanceof MorphReference)) {
+    // DeepReference and DeepReference are not native to Firestore
     // to it has already been instantiated with 
     // the appropriate converters
     return value;
   }
 
+  if ((typeof value === 'object')
+    && ('ref' in value) 
+    && (value.ref instanceof DocumentReference)) {
+
+    const obj: FlatReferenceShape<T> | MorphReferenceShape<T> = value;
+    const ref = reinstantiateReference(obj.ref, to, strict);
+    if (!ref) {
+      return ref;
+    }
+
+    if ('filter' in obj) {
+      if (typeof obj.filter !== 'string') {
+        return fault(strict, 'Malformed polymorphic reference: `filter` must be a string');
+      }
+      return new MorphReference(ref, obj.filter);
+    } else {
+      return ref;
+    }
+  }
+
   if (typeof value === 'string') {
+    // TODO:
+    // Remove this string parsing behaviour before stable release
+    // DeepReference is no longer serialised to string
+    // this is for alpha support only
+
     const lastSep = value.lastIndexOf('/');
     if (lastSep === -1) {
       // No path separators so it is just an ID
@@ -421,6 +421,33 @@ export function coerceToReferenceSingle(value: any, to: FirestoreConnectorModel 
   }
 
   return fault(strict, `Value could not be coerced to a reference: "${JSON.stringify(value)}"`);
+}
+
+export function coerceToReferenceShape<T extends object>(ref: Reference<T>): ReferenceShape<T> {
+  return ('toFirestoreValue' in ref)
+    ? ref.toFirestoreValue()
+    : ref;
+}
+
+/**
+ * When deserialised from Firestore, references comes without any converters.
+ * Reinstantiates the reference via the target model so that it comes
+ * loaded with the appropriate converter.
+ */
+function reinstantiateReference<T extends object>(value: DocumentReference<T | { [id: string]: T }>, to: FirestoreConnectorModel<T> | undefined, strict: boolean): DocumentReference<T> | DeepReference<T> | null {
+  if (to) {
+    const newRef = to.db.doc(value.id);
+    if (newRef.path !== value.path) {
+      return fault(strict, `Reference is pointing to the wrong model. Expected "${newRef.path}", got "${value.path}".`);
+    }
+    return newRef;
+  } else {
+    const model = strapi.db.getModelByCollectionName(value.parent.path);
+    if (!model) {
+      return fault(strict, `The model referred to by "${value.parent.path}" doesn't exist`);
+    }
+    return model.db.doc(value.id);
+  }
 }
 
 function getIdOrAuto(model: FirestoreConnectorModel, value: any): string | undefined {

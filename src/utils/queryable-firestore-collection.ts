@@ -1,7 +1,7 @@
 import * as _ from 'lodash';
 import { ManualFilter, convertWhere, WhereFilter } from './convert-where';
-import { Query, Transaction, QueryDocumentSnapshot, FieldPath, WhereFilterOp, DocumentData, CollectionReference, FirestoreDataConverter } from '@google-cloud/firestore';
-import type { QueryableCollection, QuerySnapshot, Reference, Snapshot } from './queryable-collection';
+import { Query, Transaction, QueryDocumentSnapshot, FieldPath, WhereFilterOp, DocumentData, CollectionReference, FirestoreDataConverter, DocumentReference } from '@google-cloud/firestore';
+import type { QueryableCollection, QuerySnapshot, Snapshot } from './queryable-collection';
 import type { StrapiWhereOperator } from '../types';
 import { coerceModelFromFirestore, coerceModelToFirestore } from './coerce';
 import type { FirestoreConnectorModel } from '../model';
@@ -63,8 +63,8 @@ export class QueryableFirestoreCollection<T extends object = DocumentData> imple
     return this.collection.doc().id;
   }
 
-  doc(): Reference<T>
-  doc(id: string): Reference<T>
+  doc(): DocumentReference<T>;
+  doc(id: string): DocumentReference<T>;
   doc(id?: string) {
     return id ? this.collection.doc(id.toString()) : this.collection.doc();
   }

@@ -1,14 +1,18 @@
 import * as _ from 'lodash';
 import { DocumentReference, Transaction as FirestoreTransaction, DocumentData, Query, Firestore, SetOptions } from '@google-cloud/firestore';
-import type { Queryable, Snapshot, QuerySnapshot, Reference } from './queryable-collection';
 import { DeepReference } from './deep-reference';
-import { mapToFlattenedDoc } from './map-to-flattened-doc';
+import { makeFlattenedSnap, mapToFlattenedDoc } from './flattened-doc';
 import { ReadRepository } from './read-repository';
+import { MorphReference } from './morph-reference';
+import type { Converter } from '../types';
+import type { FirestoreConnectorModel } from '../model';
+import type { Queryable, Snapshot, QuerySnapshot, Reference } from './queryable-collection';
 
 interface WriteOp {
   ref: DocumentReference
   data: DocumentData | null
   create: boolean
+  conv: Converter<any>
 }
 
 
@@ -90,7 +94,7 @@ export class TransactionImpl implements Transaction {
 
   private readonly atomicReads: ReadRepository;
   private readonly nonAtomicReads: ReadRepository;
-
+  private readonly ensureFlatCollections: Promise<void>[] = [];
 
 
   constructor(firestore: Firestore, private readonly transaction: FirestoreTransaction) {
@@ -121,26 +125,10 @@ export class TransactionImpl implements Transaction {
   }
 
   private async _get(refOrQuery: Reference<any> | Queryable<any>, repo: ReadRepository): Promise<Snapshot<any> | QuerySnapshot<any>> {
-    // Deep reference to flat collection
-    if (refOrQuery instanceof DeepReference) {
-      const { doc, id } = refOrQuery;
-      const flatDoc = await repo.get(doc);
-      const data = flatDoc ? flatDoc.data()?.[id] : undefined;
-      const snap: Snapshot<any> = {
-        exists: data !== undefined,
-        data: () => data,
-        ref: refOrQuery,
-        id
-      };
-      return snap;
-    }
-
-    if (refOrQuery instanceof DocumentReference) {
-      return await repo.get(refOrQuery);
-    }
-
-    if (refOrQuery instanceof Query) {
-      return await repo.getQuery(refOrQuery);
+    if ((refOrQuery instanceof DocumentReference)
+      || (refOrQuery instanceof DeepReference)
+      || (refOrQuery instanceof MorphReference)) {
+      return (await this._getAll([refOrQuery], repo))[0];
     }
     
     // Queryable
@@ -149,32 +137,27 @@ export class TransactionImpl implements Transaction {
 
 
   private async _getAll(refs: Reference<any>[], repo: ReadRepository): Promise<Snapshot<any>[]> {
-    const docs: DocumentReference<any>[] = new Array(refs.length);
-    const ids: (string | null)[] = new Array(refs.length);
-    refs.forEach((ref, i) => {
-      if (ref instanceof DocumentReference) {
-        docs[i] = ref;
-        ids[i] = null;
-      } else {
-        docs[i] = ref.doc;
-        ids[i] = ref.id;
+    const docs: DocumentReference[] = new Array(refs.length);
+    const deep: (DeepReference<any> | undefined)[] = new Array(refs.length);
+    refs.forEach((r, i) => {
+      const { ref, deepRef } = getDocRef(r);
+      docs[i] = ref;
+      deep[i] = deepRef;
+      if (deepRef) {
+        this.ensureFlatCollections.push(deepRef.parent.ensureDocument());
       }
     });
 
     const results = await repo.getAll(docs);
-    return results.map((snap, i) => {
-      const id = ids[i];
-      if (id) {
-        const data = snap.data()?.[id];
-        return {
-          ref: refs[i],
-          data: () => data,
-          exists: data !== undefined,
-          id
-        };
-      } else {
-        return snap;
-      }
+    return results.map((s, i) => {
+      const deepRef = deep[i];
+      const snap = deepRef ? makeFlattenedSnap(deepRef, s) : s;
+      return {
+        id: snap.id,
+        ref: snap.ref,
+        exists: snap.exists,
+        data: () => snap.data(),
+      };
     });
   }
   
@@ -184,7 +167,7 @@ export class TransactionImpl implements Transaction {
   getAtomic<T extends object>(refOrQuery: Reference<T> | Reference<T>[] | Queryable<T>): Promise<Snapshot<T> | Snapshot<T>[] | QuerySnapshot<T>> {
     if (Array.isArray(refOrQuery)) {
       return this._getAll(refOrQuery, this.atomicReads);
-    } else {
+    }  else {
       return this._get(refOrQuery, this.atomicReads);
     }
   }
@@ -203,8 +186,13 @@ export class TransactionImpl implements Transaction {
   /**
    * @private
    */
-  commit() {
+  async commit() {
     // strapi.log.debug(`Comitting Firestore transaction: ${this.writes.size} writes, ${this.atomicReads.size + this.nonAtomicReads.size} reads.`);
+
+    // If we have fetched flat documents then we need to wait to
+    // ensure that the document exists so that the update
+    // operate will succeed
+    await Promise.all(this.ensureFlatCollections);
 
     this.writes.forEach(op => {
       if (op.data === null) {
@@ -213,6 +201,9 @@ export class TransactionImpl implements Transaction {
         if (op.create) {
           this.transaction.create(op.ref, op.data);
         } else {
+          // Firestore does not run the converter 
+          // on update operations
+          op.data = op.conv.toFirestore(op.data);
           this.transaction.update(op.ref, op.data);
         }
       }
@@ -239,11 +230,14 @@ export class TransactionImpl implements Transaction {
 
   private _mergeData(ref: Reference<any>, data: DocumentData | null, isCreating?: boolean) {
     const { path } = ref;
+    const { deepRef } = getDocRef(ref);
+
     if (!this.writes.has(path)) {
       const op: WriteOp = {
-        ref: (ref instanceof DeepReference) ? ref.doc : ref,
+        ref: getDocRef(ref).ref,
         data: {},
         create: false,
+        conv: getModelByRef(ref).converter,
       };
       this.writes.set(path, op);
     }
@@ -254,9 +248,12 @@ export class TransactionImpl implements Transaction {
       return;
     }
 
-    op.create = op.create || isCreating || false;
-    if (ref instanceof DeepReference) {
-      Object.assign(op.data, mapToFlattenedDoc(ref.id, data, true));
+    // Don't create documents for flattened collections
+    // because we use ensureDocument() and then update()
+    op.create = op.create || (isCreating && !deepRef) || false;
+
+    if (deepRef) {
+      Object.assign(op.data, mapToFlattenedDoc(deepRef, data, true));
     } else {
       if (data === null) {
         op.data = null;
@@ -265,4 +262,27 @@ export class TransactionImpl implements Transaction {
       }
     }
   }
+}
+
+interface RefInfo {
+  ref: DocumentReference<any>,
+  deepRef?: DeepReference<any>,
+}
+
+function getDocRef(ref: Reference<any>): RefInfo {
+  if (ref instanceof DeepReference) {
+    return { ref: ref.doc, deepRef: ref };
+  }
+  if (ref instanceof MorphReference) {
+    return getDocRef(ref.ref);
+  }
+  return { ref };
+}
+
+function getModelByRef({ parent: { path } }: Reference<any>): FirestoreConnectorModel<any> {
+  const model = strapi.db.getModelByCollectionName(path);
+  if (!model) {
+    throw new Error(`Model for path "${path}" not found`);
+  }
+  return model;
 }
