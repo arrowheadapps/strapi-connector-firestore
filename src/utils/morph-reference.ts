@@ -74,8 +74,8 @@ export class MorphReference<T extends object> {
    */
   toFirestoreValue(): MorphReferenceShape<T> {
     const value: MorphReferenceShape<T> = this.ref instanceof DeepReference
-      ? { ...this.ref.toFirestoreValue(), field: this.filter } 
-      : { ref: this.ref, field: this.filter };
+      ? { ...this.ref.toFirestoreValue(), filter: this.filter } 
+      : { ref: this.ref, filter: this.filter };
 
     return value;
   }

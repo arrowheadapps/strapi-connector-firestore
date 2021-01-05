@@ -102,10 +102,11 @@ function validateNonRepeatableInput(value, { key, required }: { key } & StrapiAt
   }
 }
 
-function validateDynamiczoneInput(value, { key, min, max, components, required }: { key } & StrapiAttribute) {
+function validateDynamiczoneInput(value, { key, min, max, components = [], required }: { key } & StrapiAttribute) {
   if (!Array.isArray(value)) {
     throw new StatusError(`Dynamiczone ${key} is invalid. Expected an array`, 400);
   }
+  
 
   value.forEach(val => {
     if (typeof val !== 'object' || Array.isArray(val) || val === null) {

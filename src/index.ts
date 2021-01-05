@@ -103,6 +103,7 @@ module.exports = (strapi: Strapi) => {
 
         for (const model of allModels(strapi)) {
           mountModel({
+            strapi,
             firestore,
             model,
             connectorOptions: options,

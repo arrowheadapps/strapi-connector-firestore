@@ -239,7 +239,7 @@ function buildSearchQuery<T extends object>(model: FirestoreConnectorModel<T>, v
 
   if (model.options.searchAttribute) {
     const field = model.options.searchAttribute;
-    const type: StrapiAttributeType = (field === model.primaryKey)
+    const type: StrapiAttributeType | undefined = (field === model.primaryKey)
       ? 'uid'
       : model.attributes[field].type;
 
