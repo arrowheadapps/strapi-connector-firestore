@@ -233,6 +233,7 @@ export interface StrapiAttribute {
   repeatable?: boolean
   min?: number
   max?: number
+  indexed?: boolean
 }
 
 export interface StrapiAssociation<K extends string = string> {

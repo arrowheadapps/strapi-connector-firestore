@@ -11,6 +11,7 @@ import type { Firestore } from '@google-cloud/firestore';
 import { Transaction, TransactionImpl } from './utils/transaction';
 import type { RelationHandler } from './utils/relation-handler';
 import { buildRelations } from './relations';
+import { componentMetaKey } from './utils/components';
 
 export const DEFAULT_CREATE_TIME_KEY = 'createdAt';
 export const DEFAULT_UPDATE_TIME_KEY = 'updatedAt';
@@ -52,6 +53,13 @@ export interface FirestoreConnectorModel<T extends object = object> extends Stra
   
   isComponent: boolean;
   relations: RelationHandler<T, any>[];
+
+  /**
+   * If this model is a component, then this is a
+   * list of attributes for which to maintain an index
+   * when embedded as an array (dynamiczone or repeatable).
+   */
+  indexedAttributes: AttributeKey<T>[];
 
   firestore: Firestore;
   db: QueryableCollection<T>;
@@ -117,17 +125,33 @@ export function mountModel<T extends object>({ strapi, model: strapiModel, fires
     fromFirestore: data => data as T,
   };
 
-  const privateAttributes: AttributeKey<T>[] = utils.contentTypes.getPrivateAttributes(strapiModel);
-  const assocKeys: AttributeKey<T>[] = strapiModel.associations.map(ast => ast.alias);
   const componentKeys = (Object.keys(strapiModel.attributes) as AttributeKey<T>[])
     .filter(key => {
       const { type } = strapiModel.attributes[key];
       return type && ['component', 'dynamiczone'].includes(type);
     });
 
-  const defaultPopulate = strapiModel.associations
-    .filter(ast => ast.autoPopulate !== false)
-    .map(ast => ast.alias);
+  const componentMapKeys = componentKeys.map(key => componentMetaKey(strapiModel, key));
+  const privateAttributes: AttributeKey<T>[] = _.uniq(
+    utils.contentTypes.getPrivateAttributes(strapiModel).concat(componentMapKeys)
+  );
+  const assocKeys: AttributeKey<T>[] = (Object.keys(strapiModel.attributes) as AttributeKey<T>[])
+    .filter(alias => {
+      const { model, collection } = strapiModel.attributes[alias];
+      return model || collection;
+    });
+  
+  const indexedKeys = (Object.keys(strapiModel.attributes) as AttributeKey<T>[])
+    .filter(key => strapiModel.attributes[key].indexed);
+  const indexedAttributes = isComponent
+    ? _.uniq(assocKeys.concat(indexedKeys))
+    : [];
+
+  const defaultPopulate = assocKeys
+    .filter(alias => {
+      const attr = strapiModel.attributes[alias];
+      return attr.autoPopulate ?? true;
+    });
 
 
   const hasPK = (obj: any) => {
@@ -210,6 +234,7 @@ export function mountModel<T extends object>({ strapi, model: strapiModel, fires
     assocKeys,
     componentKeys,
     defaultPopulate,
+    indexedAttributes,
 
     // We assign this next
     db: db!,

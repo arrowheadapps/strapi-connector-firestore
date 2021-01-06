@@ -4,6 +4,7 @@ import type { StrapiModel, StrapiAttribute } from './types';
 import type { Reference } from './utils/queryable-collection';
 import type { Transaction } from './utils/transaction';
 import { RelationAttrInfo, RelationHandler, RelationInfo } from './utils/relation-handler';
+import { componentMetaKey } from './utils/components';
 
 
 /**
@@ -42,14 +43,11 @@ export function buildRelations<T extends object>(model: FirestoreConnectorModel<
     const attr = model.attributes[alias];
     const targetModelName = attr.model! || attr.collection!;
     const isMorph = targetModelName === '*';
+    const attrInfo = makeAttrInfo(alias, attr);
     const thisEnd: RelationInfo<any> = {
       model,
-      attr: {
-        alias,
-        isArray: !attr.model,
-        isMorph,
-        filter: attr.filter,
-      },
+      parentModels: findParentModels(model, attrInfo, strapiInstance),
+      attr: attrInfo,
     };
 
     let otherEnds: RelationInfo<any>[];
@@ -63,12 +61,14 @@ export function buildRelations<T extends object>(model: FirestoreConnectorModel<
       if (!targetModel) {
         throw new Error(
           `Problem building relations. The model targetted by attribute "${alias}" ` +
-          `on model "${model.uid}" does not exist.`
+          `on model "${model.modelName}" does not exist.`
         );
       }
+      const attrInfo = findOtherAttr(alias, attr, targetModel);
       otherEnds = [{
         model: targetModel,
-        attr: findOtherAttr(alias, attr, targetModel),
+        parentModels: findParentModels(model, attrInfo, strapiInstance),
+        attr: attrInfo,
       }];
     }
 
@@ -98,14 +98,11 @@ function findModelsRelatingTo(info: { model: FirestoreConnectorModel<any>, attr:
         const otherModelName = attr.model || attr.collection;
         if ((otherModelName === info.model.modelName)
           && ((attr.via === info.alias) || (info.attr.via === alias))) {
+          const attrInfo = makeAttrInfo(alias, attr);
           related.push({
             model: model as FirestoreConnectorModel<any>,
-            attr: {
-              alias,
-              isArray: !attr.model,
-              isMorph: false,
-              filter: attr.filter,
-            },
+            parentModels: findParentModels(model, attrInfo, strapiInstance),
+            attr: attrInfo,
           });
         }
       });
@@ -127,12 +124,48 @@ function findOtherAttr(key: string, attr: StrapiAttribute, otherModel: StrapiMod
 
   if (alias) {
     const otherAttr = otherModel.attributes[alias];
-    return {
-      alias,
-      isArray: !otherAttr.model,
-      isMorph: (otherAttr.model || otherAttr.collection) === '*',
-      filter: otherAttr.filter,
-    };
+    return makeAttrInfo(alias, otherAttr);
   }
   return undefined;
+}
+
+function findParentModels<T extends object>(componentModel: FirestoreConnectorModel<T>, componentAttr: RelationAttrInfo | undefined, strapiInstance = strapi): RelationInfo<T>[] {
+  const models: RelationInfo<T>[] = [];
+  if (componentModel.isComponent) {
+    for (const otherModel of allModels(strapiInstance)) {
+      if (componentModel.uid !== otherModel.uid) {
+        Object.keys(otherModel.attributes).forEach(alias => {
+          const attr = otherModel.attributes[alias];
+          if ((attr.component === componentModel.uid)
+             || (attr.components && attr.components.includes(componentModel.uid))) {
+            const isRepeatable = !attr.components;
+            models.push({
+              model: otherModel,
+              attr: componentAttr ? {
+                actualAlias: isRepeatable ? componentAttr.alias : undefined,
+                isArray: componentAttr.isArray,
+                alias: isRepeatable 
+                  ? [componentMetaKey(otherModel, alias), componentAttr.alias].join('.')
+                  : [alias, componentAttr.alias].join('.'),
+                isMorph: componentAttr.isMorph,
+                filter: componentAttr.filter,
+              } : undefined,
+              parentModels: undefined,
+            });
+          }
+        });
+      }
+    }
+  }
+  return models;
+}
+
+function makeAttrInfo(alias: string, attr: StrapiAttribute): RelationAttrInfo {
+  return {
+    alias,
+    isArray: !attr.model || Boolean(attr.collection) || attr.repeatable || (attr.type === 'dynamiczone'),
+    isMorph: (attr.model || attr.collection) === '*',
+    filter: attr.filter,
+    actualAlias: undefined,
+  };
 }

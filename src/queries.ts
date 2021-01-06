@@ -7,7 +7,7 @@ import { coerceAttribute, toFirestore } from './utils/coerce';
 import { convertWhere, ManualFilter } from './utils/convert-where';
 import { buildPrefixQuery } from './utils/prefix-query';
 import { StatusError } from './utils/status-error';
-import { validateComponents } from './utils/validate-components';
+import { updateComponentsMetadata, validateComponents } from './utils/components';
 import type { FirestoreConnectorModel } from './model';
 import type { StrapiQuery, StrapiAttributeType, StrapiFilter, AttributeKey, StrapiContext } from './types';
 import type { Queryable, Snapshot } from './utils/queryable-collection';
@@ -57,7 +57,8 @@ export function queries<T extends object>({ model }: StrapiContext<T>): Firestor
   const create = async (values: any, populate = model.defaultPopulate) => {
 
     // Validate components dynamiczone
-    const components = validateComponents(values, model);
+    const components = validateComponents(model, values);
+    updateComponentsMetadata(model, values);
 
     // Add timestamp data
     if (model.timestamps) {
@@ -92,7 +93,8 @@ export function queries<T extends object>({ model }: StrapiContext<T>): Firestor
   const update = async (params: any, values: any, populate = model.defaultPopulate, merge = false) => {
 
     // Validate components dynamiczone
-    const components = validateComponents(values, model);
+    const components = validateComponents(model, values);
+    updateComponentsMetadata(model, values);
 
     // Add timestamp data
     if (model.timestamps) {

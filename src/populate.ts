@@ -1,10 +1,10 @@
 import * as _ from 'lodash';
-import { getComponentModel } from './utils/validate-components';
+import { getComponentModel } from './utils/components';
 import type { FirestoreConnectorModel } from './model';
 import type { Snapshot } from './utils/queryable-collection';
 import type { Transaction } from './utils/transaction';
 import { StatusError } from './utils/status-error';
-import { AttributeKey } from './types';
+import type { AttributeKey } from './types';
 
 
 export type PartialSnapshot<T extends object> = Pick<Snapshot<T>, 'data'> & Pick<Snapshot<T>, 'ref'>

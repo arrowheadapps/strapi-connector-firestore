@@ -1,9 +1,9 @@
 import * as _ from 'lodash';
-import type { OrderByDirection, DocumentData, DocumentReference, FieldPath, WhereFilterOp, Transaction } from '@google-cloud/firestore';
+import { OrderByDirection, DocumentData, DocumentReference, FieldPath, WhereFilterOp, Transaction } from '@google-cloud/firestore';
 import type { StrapiWhereOperator, } from '../types';
 import type { ManualFilter, WhereFilter } from './convert-where';
-import type { DeepReference } from './deep-reference';
-import type { MorphReference } from './morph-reference';
+import { DeepReference } from './deep-reference';
+import { MorphReference } from './morph-reference';
 
 export type Reference<T extends object = DocumentData> = DocumentReference<T> | DeepReference<T> | MorphReference<T>;
 
@@ -19,6 +19,17 @@ export function refEquals(a: Reference<any> | null | undefined, b: Reference<any
   }
   
   return false;
+}
+
+export function refShapeEquals(a: ReferenceShape<any> | null | undefined, b: ReferenceShape<any> | null | undefined): boolean {
+  return _.isEqualWith(a, b, (aValue, bValue) => {
+    if ((aValue instanceof DocumentReference)
+      || (aValue instanceof DeepReference)
+      || (aValue instanceof MorphReference)) {
+      return aValue.isEqual(bValue);
+    }
+    return undefined;
+  });
 }
 
 /**

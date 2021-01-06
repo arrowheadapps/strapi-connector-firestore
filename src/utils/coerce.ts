@@ -3,10 +3,11 @@ import type { FirestoreConnectorModel } from '../model';
 import type { StrapiAttribute } from '../types';
 import * as parseType from 'strapi-utils/lib/parse-type';
 import { Timestamp, DocumentReference, DocumentData, FieldValue } from '@google-cloud/firestore';
-import { getComponentModel } from './validate-components';
+import { getComponentModel } from './components';
 import { FlatReferenceShape, MorphReferenceShape, Reference, ReferenceShape } from './queryable-collection';
 import { DeepReference } from './deep-reference';
 import { MorphReference } from './morph-reference';
+import { StatusError } from './status-error';
 
 export interface CoerceFn {
   (relation: Partial<StrapiAttribute> | undefined, value: unknown): unknown
@@ -125,7 +126,7 @@ export function toFirestore(relation: Partial<StrapiAttribute> | undefined, valu
     } else {
       if (value) {
         if (typeof value !== 'object') {
-          throw new Error('Invalid value provided. Component must be an array or an object.');
+          throw new StatusError('Invalid value provided. Component must be an array or an object.', 400);
         }
         // Generate ID if setting dictates
         return coerceModel(componentModel, getIdOrAuto(componentModel, value), value!, toFirestore);
@@ -147,7 +148,7 @@ export function toFirestore(relation: Partial<StrapiAttribute> | undefined, valu
     } else {
       if (value) {
         if (typeof value !== 'object') {
-          throw new Error('Invalid value provided. Component must be an array or an object.');
+          throw new StatusError('Invalid value provided. Component must be an array or an object.', 400);
         }
         // Generate ID if setting dictates
         const componentModel = getComponentModel((value as any).__component);
@@ -366,6 +367,8 @@ export function coerceToReference<T extends object = object>(value: any, to: Fir
   if ((typeof value === 'object')
     && ('ref' in value) 
     && (value.ref instanceof DocumentReference)) {
+    // Coerce from ReferenceShape
+    // i.e. the Firestore representation of DeepReference and MorphReference
 
     const obj: FlatReferenceShape<T> | MorphReferenceShape<T> = value;
     const ref = reinstantiateReference(obj.ref, to, strict);
@@ -381,6 +384,12 @@ export function coerceToReference<T extends object = object>(value: any, to: Fir
     } else {
       return ref;
     }
+  }
+
+  if (typeof value === 'object') {
+    // TODO:
+    // Coerce from the incoming Strapi API representation of
+    // morph references
   }
 
   if (typeof value === 'string') {
@@ -462,7 +471,7 @@ function getIdOrAuto(model: FirestoreConnectorModel, value: any): string | undef
 
 function fault(strict: boolean | undefined, message: string): null {
   if (strict) {
-    throw new Error(message);
+    throw new StatusError(message, 400);
   } else {
     strapi.log.warn(message);
     return null;

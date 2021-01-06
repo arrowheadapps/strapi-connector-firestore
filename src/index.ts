@@ -1,5 +1,5 @@
 import * as path from 'path';
-import * as fs from 'fs';
+import * as fs from 'fs-extra';
 import * as _ from 'lodash';
 import { Firestore, Settings, DocumentReference, Timestamp } from '@google-cloud/firestore';
 import { allModels, DEFAULT_CREATE_TIME_KEY, DEFAULT_UPDATE_TIME_KEY, mountModel } from './model';
@@ -97,7 +97,7 @@ module.exports = (strapi: Strapi) => {
           'firebase.js'
         );
 
-        if (await fs.promises.access(initFunctionPath).then(() => true, () => false)) {
+        if (await fs.pathExists(initFunctionPath)) {
           require(initFunctionPath)(firestore, connection);
         }
 
