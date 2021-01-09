@@ -2,6 +2,7 @@ import { DocumentData } from '@google-cloud/firestore';
 import * as _ from 'lodash';
 import type { FirestoreConnectorModel } from "../model";
 import type { AttributeKey, StrapiAttribute, StrapiModel } from "../types";
+import { toFirestore } from './coerce';
 import { StatusError } from "./status-error";
 
 export interface Component<T extends object> {
@@ -30,26 +31,30 @@ export function componentMetaKey<T extends object>(model: StrapiModel<T>, key: A
   return`${key}$meta`;
 }
 
-export function updateComponentsMetadata<T extends object>(model: FirestoreConnectorModel<T>, data: T) {
+export function updateComponentsMetadata<T extends object>(model: FirestoreConnectorModel<T>, data: T, output: T = data) {
   for (const key of model.componentKeys) {
     const attr = model.attributes[key];
     if ((attr.type === 'dynamiczone')
       || (attr.type === 'component' && attr.repeatable)) {
-      // Array of components
-      // Cannot be queryied in Firestore
+      // Array of components cannot be queryied in Firestore
       // So we need to maintain a map of metadata that we can query
-      if (model.indexedAttributes.length) {
-        const meta: any = {};
-        const values: any[] = _.castArray(_.get(data, key) || []);
-        model.indexedAttributes.forEach(alias => {
-          // Make an array containing the value of this attribute
-          // from all the components in the array
-          // If the value itself is an array then is is concatenated/flattened
-          meta[alias] = values.map(v => _.castArray(_.get(v, alias, []))).flat();
-        });
+      const meta: any = {};
+      const components: any[] = _.castArray(_.get(data, key) || []);
 
-        data[componentMetaKey(model, key)] = meta;
-      }
+      // Make an array containing the value of this attribute
+      // from all the components in the array
+      // If the value itself is an array then is is concatenated/flattened
+      components.forEach(component => {
+        const componentModel = getComponentModel(model, key, component);
+        componentModel.indexedAttributes.forEach(alias => {
+          meta[alias] = meta[alias] || [];
+          meta[alias].push(..._.castArray(_.get(component, alias, [])).map(v => {
+            return toFirestore(componentModel.attributes[alias], v);
+          }));
+        });
+      });
+
+      output[componentMetaKey(model, key)] = meta;
     }
   }
 }

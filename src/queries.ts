@@ -18,7 +18,7 @@ import type { Transaction } from './utils/transaction';
  * Firestore connector implementation of the Strapi query interface.
  */
 export interface FirestoreConnectorQueries<T extends object> extends StrapiQuery<T> {
-  update(params: any, values: any, populate?: AttributeKey<T>[], merge?: boolean): Promise<T>;
+
 }
 
 
@@ -71,6 +71,7 @@ export function queries<T extends object>({ model }: StrapiContext<T>): Firestor
     // Create entry without relational data
     const id = model.getPK(values);
     const ref = id ? model.db.doc(id) : model.db.doc();
+    values[model.primaryKey] = ref.id;
 
     return await model.runTransaction(async trans => {
       
@@ -90,7 +91,7 @@ export function queries<T extends object>({ model }: StrapiContext<T>): Firestor
     });
   };
 
-  const update = async (params: any, values: any, populate = model.defaultPopulate, merge = false) => {
+  const update = async (params: any, values: any, populate = model.defaultPopulate) => {
 
     // Validate components dynamiczone
     const components = validateComponents(model, values);
@@ -125,7 +126,7 @@ export function queries<T extends object>({ model }: StrapiContext<T>): Firestor
 
       // Update components
       await Promise.all(components.map(async ({ model, key, value }) => {
-        const prevValue = _.castArray(_.get(prevData, key)).find(c => model.getPK(c) === model.getPK(value));
+        const prevValue = _.castArray(_.get(prevData, key) || []).find(c => model.getPK(c) === model.getPK(value));
         await relationsUpdate(model, snap.ref, prevValue, value, trans);
       }));
 
@@ -136,7 +137,7 @@ export function queries<T extends object>({ model }: StrapiContext<T>): Firestor
       const entry = await populateDoc(model, { ref: snap.ref, data: () => values }, populate, trans);
 
       // Write the entry
-      trans.set(snap.ref, values, { merge });
+      trans.update(snap.ref, values);
       return entry;
     });
   };
@@ -380,8 +381,6 @@ function buildFirestoreQuery<T extends object>(model: FirestoreConnectorModel<T>
       
       if ((field === model.primaryKey) || (field === 'id')) {
         // Detect and enable filtering on document ID
-        // FIXME:
-        // Does the value need to be coerceed to a DocumentReference? 
         value = Array.isArray(value)
           ? value.map(v => v?.toString())
           : value?.toString();

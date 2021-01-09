@@ -387,16 +387,28 @@ export function coerceToReference<T extends object = object>(value: any, to: Fir
   }
 
   if (typeof value === 'object') {
-    // TODO:
     // Coerce from the incoming Strapi API representation of
     // morph references
+    // This isn't really documented
+    const {
+      ref: targetModelName,
+      source: plugin,
+      refId: id,
+      field,
+    } = value;
+    if ((typeof targetModelName === 'string') 
+      && (typeof id === 'string')
+      && (!plugin || (typeof plugin === 'string'))
+      && (!field || (typeof field === 'string'))) {
+      const targetModel = strapi.db.getModel(targetModelName, plugin);
+      if (!targetModel) {
+        return fault(strict, `The model "${targetModelName}" with plugin "${plugin}" in polymorphic relation could not be found`)
+      }
+      return new MorphReference(targetModel.db.doc(id), field);
+    }
   }
 
   if (typeof value === 'string') {
-    // TODO:
-    // Remove this string parsing behaviour before stable release
-    // DeepReference is no longer serialised to string
-    // this is for alpha support only
 
     const lastSep = value.lastIndexOf('/');
     if (lastSep === -1) {
@@ -407,6 +419,12 @@ export function coerceToReference<T extends object = object>(value: any, to: Fir
         return fault(strict, `Polymorphic reference must be fully qualified. Got the ID segment only.`);
       }
     }
+    
+
+    // TODO:
+    // Remove this string parsing behaviour before stable release
+    // DeepReference is no longer serialised to string
+    // this is for alpha support only
 
     // It must be an absolute deep reference path
     // Verify that the path actually refers to the target model

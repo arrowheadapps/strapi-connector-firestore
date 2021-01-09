@@ -4,6 +4,10 @@ import type { CollectionReference, DocumentReference, SetOptions } from '@google
 import { MorphReferenceShape, QueryableCollection } from './queryable-collection';
 
 
+/**
+ * Acts as a wrapper around a `DocumentReference` or a `DeepReference`
+ * with additional field/filter information for polymorphic references.
+ */
 export class MorphReference<T extends object> {
 
   constructor(readonly ref: DocumentReference<T> | DeepReference<T>, readonly filter: string | null) {
@@ -63,9 +67,15 @@ export class MorphReference<T extends object> {
    * Allow serialising to JSON.
    */
   toJSON() {
-    // TODO:
-    // How should a morph reference be serialised in API responses?
-    return this.ref.id;
+    // This Strapi behaviour isn't really documented
+    const model = strapi.db.getModelByCollectionName(this.ref.parent.path)!;
+    return {
+      ref: model.modelName,
+      kind: model.globalId,
+      source: model.plugin,
+      refId: this.id,
+      field: this.filter || undefined,
+    };
   }
 
   /**

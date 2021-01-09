@@ -203,6 +203,7 @@ export interface StrapiModel<T extends object = any> {
   collectionName: string
   kind: 'collectionType' | 'singleType'
   globalId: string
+  plugin?: string
   modelName: string
   modelType?: 'contentType' | 'component'
   internal?: boolean

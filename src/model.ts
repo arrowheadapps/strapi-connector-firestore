@@ -22,7 +22,13 @@ export const DEFAULT_UPDATE_TIME_KEY = 'updatedAt';
  */
 export function* eachModel(models: StrapiModelRecord): Generator<FirestoreConnectorModel<any>> {
   for (const key of Object.keys(models)) {
-    yield models[key];
+    const model: FirestoreConnectorModel<any> = models[key];
+
+    // The internal core_store and webhooks models don't
+    // have modelKey set, which breaks some of our code
+    model.modelName = model.modelName || key;
+
+    yield model;
   }
 }
 
@@ -35,7 +41,7 @@ export function* allModels(strapiInstance = strapi): Generator<FirestoreConnecto
   yield* eachModel(strapiInstance.components);
   yield* eachModel(strapiInstance.admin.models);
   for (const plugin of Object.keys(strapi.plugins)) {
-    yield* eachModel(strapiInstance.plugins[plugin]);
+    yield* eachModel(strapiInstance.plugins[plugin].models);
   }
 }
 
@@ -227,7 +233,7 @@ export function mountModel<T extends object>({ strapi, model: strapiModel, fires
     timestamps,
     converter,
     singleKey,
-    relations: [],
+    relations: (strapiModel as FirestoreConnectorModel<T>).relations,
     isComponent,
     
     privateAttributes,
@@ -340,7 +346,7 @@ function defaultSearchAttrOpts(model: StrapiModel<any>, options: ModelOptions) {
       'component',
     ];
     if (!type || notAllowed.includes(type)) {
-      throw new Error(`The search attribute "${searchAttr}" does not exist on the model ${model.modelName} or is of an unsupported type.`);
+      throw new Error(`The search attribute "${searchAttr}" does not exist on the model ${model.uid} or is of an unsupported type.`);
     }
   }
 

@@ -6,6 +6,7 @@ import type { Transaction } from './transaction';
 import { coerceToReference, coerceToReferenceShape } from './coerce';
 import { StatusError } from './status-error';
 import { MorphReference } from './morph-reference';
+import { updateComponentsMetadata } from './components';
 
 
 export interface AsyncSnapshot<R extends object> {
@@ -34,9 +35,18 @@ export interface RelationAttrInfo {
   /**
    * Indicates that this is a "virtual" attribute
    * which is metadata/index map for a repeatable component,
-   * and the acutal alias inside the component is this value.
+   * or a deep path to a non-repeatable component,
+   * and the actual alias inside the component is this value.
    */
-  actualAlias: string | undefined
+  actualAlias: { 
+    componentAlias: string
+    parentAlias: string
+  } | undefined
+  /**
+   * Indicates that this is a metadata/index map, not a path to 
+   * an actual attribute.
+   */
+  isMeta: boolean
 }
 
 export class RelationHandler<T extends object, R extends object = object> {
@@ -70,8 +80,7 @@ export class RelationHandler<T extends object, R extends object = object> {
   async findRelated(ref: Reference<T>, data: T, transaction: Transaction): Promise<AsyncSnapshot<R>[]> {
     const { attr } = this.thisEnd;
     if (attr) {
-      return this._getRefInfo(data, attr, transaction)
-        .map(r => asyncFromRef(r.attr, r.ref, transaction));
+      return this._getRefInfo(data, attr, transaction);
     } else {
       return await this._queryRelated(ref, transaction, false);
     }
@@ -96,12 +105,10 @@ export class RelationHandler<T extends object, R extends object = object> {
       // Set the value stored in the references documents appropriately
       const removed = _.differenceWith(prevValues, newValues, refInfoEquals);
       const added = _.differenceWith(newValues, prevValues, refInfoEquals);
-      added.forEach(r => {
-        this._setRelated(r, ref, true, transaction);
-      });
-      removed.forEach(r => {
-        this._setRelated(r, ref, false, transaction);
-      });
+      await Promise.all([
+        Promise.all(added.map(r => this._setRelated(r, ref, true, transaction))),
+        Promise.all(removed.map(r => this._setRelated(r, ref, false, transaction)))
+      ]);
 
     } else {
       // I.e. thisAttr == null (meaning this end isn't dominant)
@@ -110,9 +117,9 @@ export class RelationHandler<T extends object, R extends object = object> {
         // This end is being deleted and it is not dominant
         // so we need to search for the dangling references existing on other models
         const related = await this._queryRelated(ref, transaction, true);
-        related.forEach(r => {
-          this._setRelated(r, ref, false, transaction);
-        });
+        await Promise.all(
+          related.map(r => this._setRelated(r, ref, false, transaction))
+        );
 
       } else {
         // This end isn't dominant
@@ -131,8 +138,8 @@ export class RelationHandler<T extends object, R extends object = object> {
     const { attr } = this.thisEnd;
     if (attr) {
       const related = await this.findRelated(ref, data, transaction);
-      const values = related
-        .map(async snap => {
+      const values = await Promise.all(
+        related.map(async snap => {
           try {
             return await snap.data();
           } catch {
@@ -144,11 +151,11 @@ export class RelationHandler<T extends object, R extends object = object> {
             return null!;
           }
         })
-        .filter(d => d != null);
+      );
 
       // The values will be correctly coerced
       // into and array or single value by the method below
-      this._setThis(data, attr, await Promise.all(values));
+      this._setThis(data, attr, values.filter(v => v != null));
     }
   }
 
@@ -163,15 +170,18 @@ export class RelationHandler<T extends object, R extends object = object> {
    * at the other end, properly handling polymorphic references.
    * 
    * @param ref The reference to this
-   * @param attr Attribute info of the other end (which refers to this)
+   * @param otherAttr Attribute info of the other end (which refers to this)
    */
-  private _makeRefToThis(ref: Reference<T>, { isMorph }: RelationAttrInfo): ReferenceShape<T> {
-    if (isMorph && !(ref instanceof MorphReference)) {
-      throw new Error('TODO: Morph references not implemented yet');
-      // return new MorphReference(ref, 'TODO');
-    } else {
-      return coerceToReferenceShape(ref);
+  private _makeRefToThis(ref: Reference<T>, otherAttr: RelationAttrInfo): ReferenceShape<T> {
+    if (otherAttr.isMorph && !(ref instanceof MorphReference)) {
+      const { attr } = this.thisEnd;
+      if (!attr && otherAttr.filter) {
+        throw new Error('Polymorphic reference does not have the required information');
+      }
+      ref = new MorphReference(ref, attr ? attr.alias : null);
     }
+
+    return coerceToReferenceShape(ref);
   }
 
   /**
@@ -183,8 +193,9 @@ export class RelationHandler<T extends object, R extends object = object> {
   private _makeRefToOther(otherRef: Reference<R> | null | undefined, thisAttr: RelationAttrInfo): Reference<R> | null {
     if (otherRef) {
       if (thisAttr.isMorph && !(otherRef instanceof MorphReference)) {
-        throw new Error('TODO: Morph references not implemented yet');
-        // return new MorphReference(ref, 'TODO');
+        // The reference would have been coerced to an instance of MorphReference
+        // only if it was an object with the required info
+        throw new Error('Polymorphic reference does not have the required information');
       } else {
         return otherRef;
       }
@@ -204,36 +215,43 @@ export class RelationHandler<T extends object, R extends object = object> {
     }
   }
 
-  private async _setRelated({ ref, attr, data }: RefInfo<R>, thisRef: Reference<T>, set: boolean, transaction: Transaction) {
+  private async _setRelated({ ref, attr, data, model }: InternalAsyncSnapshot<T, R>, thisRef: Reference<T>, set: boolean, transaction: Transaction) {
     if (attr) {
       const refValue = this._makeRefToThis(thisRef, attr);
       
-      if (attr.actualAlias) {
+      if (attr.isMeta && attr.actualAlias) {
+        const { componentAlias, parentAlias } = attr.actualAlias;
         // The attribute is a metadata map for an array of components
         // This requires special handling
         // We need to atomically fetch and process the data then update
-        const d = await data(true);
-        const components: object[] = _.get(d, attr.alias);
-        if (Array.isArray(components)) {
-          for (const component of components) {
+        const prevData = await data(true);
+        const newData: any = {};
+        const components = _.get(prevData, parentAlias);
+        _.set(newData, parentAlias, components);
+        _.castArray(components).forEach(component => {
+          if (component) {
             if (attr.isArray) {
-              const rawValue = _.get(component, attr.actualAlias);
+              const rawValue = _.get(component, componentAlias);
               let arr = (Array.isArray(rawValue) ? rawValue : []);
               if (set) {
-                // Remove refValue from the array
-                arr = arr.filter(value => refShapeEquals(value, refValue));
-              } else {
                 // Add refValue to the array if it isn't in there
                 if (!arr.some(value => refShapeEquals(value, refValue))) {
                   arr.push(refValue);
                 }
+              } else {
+                // Remove refValue from the array
+                arr = arr.filter(value => !refShapeEquals(value, refValue));
               }
-              _.set(component, attr.actualAlias, arr);
+              _.set(component, componentAlias, arr);
             } else {
-              _.set(component, attr.actualAlias, set ? refValue : null);
+              _.set(component, componentAlias, set ? refValue : null);
             }
           }
-        }
+        });
+
+        // Update the metadata map
+        updateComponentsMetadata(model, prevData, newData);
+        transaction.update(ref, newData);
 
       } else {
         const reverseValue = set
@@ -246,8 +264,9 @@ export class RelationHandler<T extends object, R extends object = object> {
   }
 
   private async _queryRelated(ref: Reference<T>, transaction: Transaction, atomic: boolean, otherEnds = this.otherEnds): Promise<InternalAsyncSnapshot<T, R>[]> {
-    const snaps = otherEnds.map(async ({ model, attr, parentModels }) => {
-      if (parentModels) {
+    const snaps = otherEnds.map(async otherEnd => {
+      const { model, attr, parentModels } = otherEnd;
+      if (parentModels && parentModels.length) {
         // Find instances of the parent document containing
         // a component instance that references this
         return await this._queryRelated(ref, transaction, atomic, parentModels);
@@ -264,7 +283,7 @@ export class RelationHandler<T extends object, R extends object = object> {
         const snap = atomic
           ? await transaction.getAtomic(q)
           : await transaction.getNonAtomic(q);
-        return snap.docs.map(d => asyncFromSnap(attr, d, atomic, refShape, transaction));
+        return snap.docs.map(d => asyncFromSnap(otherEnd, d, atomic, refShape, transaction));
       } else {
         return [];
       }
@@ -272,13 +291,13 @@ export class RelationHandler<T extends object, R extends object = object> {
     return (await Promise.all(snaps)).flat();
   }
 
-  private _getRefInfo(data: T | undefined, thisAttr: RelationAttrInfo, transaction: Transaction): RefInfo<R>[] {
+  private _getRefInfo(data: T | undefined, thisAttr: RelationAttrInfo, transaction: Transaction): InternalAsyncSnapshot<T, R>[] {
     return _.castArray(_.get(data, thisAttr.alias) || [])
       .map(v => this._getSingleRefInfo(v, transaction)!)
       .filter(v => v != null);
   }
 
-  private _getSingleRefInfo(value: any, transaction: Transaction): RefInfo<R> | null {
+  private _getSingleRefInfo(value: any, transaction: Transaction): InternalAsyncSnapshot<T, R> | null {
     let other = this._singleOtherEnd;
     const ref = coerceToReference(value, other?.model, true);
 
@@ -289,13 +308,13 @@ export class RelationHandler<T extends object, R extends object = object> {
         if (!other) {
           throw new StatusError(
             `Reference "${ref.path}" does not refer to any of the available models: ` 
-            + this.otherEnds.map(e => `"${e.model.modelName}"`).join(', '),
+            + this.otherEnds.map(e => `"${e.model.uid}"`).join(', '),
             400,
           );
         }
       }
 
-      return asyncFromRef(other.attr, ref, transaction);
+      return asyncFromRef(other, ref, transaction);
     }
     return null;
   }
@@ -303,13 +322,9 @@ export class RelationHandler<T extends object, R extends object = object> {
 
 
 
-interface RefInfo<R extends object> {
-  ref: Reference<R>
-  attr: RelationAttrInfo | undefined
-  data(atomic?: boolean): Promise<R>
-}
-
 interface InternalAsyncSnapshot<T extends object, R extends object> extends AsyncSnapshot<R> {
+  model: FirestoreConnectorModel<R>
+
   /**
    * If the snapshot was found by querying, then this is the
    * `ReferenceShape` that was used in the query.
@@ -322,9 +337,9 @@ interface InternalAsyncSnapshot<T extends object, R extends object> extends Asyn
   attr: RelationAttrInfo | undefined
 }
 
-function asyncFromSnap<T extends object, R extends object>(attr: RelationAttrInfo, snap: Snapshot<R>, wasAtomic: boolean, refShape: ReferenceShape<T> | undefined, transaction: Transaction): InternalAsyncSnapshot<T, R> {
+function asyncFromSnap<T extends object, R extends object>(info: RelationInfo<R>, snap: Snapshot<R>, wasAtomic: boolean, refShape: ReferenceShape<T> | undefined, transaction: Transaction): InternalAsyncSnapshot<T, R> {
   return {
-    attr,
+    ...info,
     ref: snap.ref,
     refShape,
     data: async (atomic = false) => {
@@ -340,9 +355,9 @@ function asyncFromSnap<T extends object, R extends object>(attr: RelationAttrInf
   };
 }
 
-function asyncFromRef<T extends object, R extends object>(attr: RelationAttrInfo | undefined, ref: Reference<R>, transaction: Transaction): InternalAsyncSnapshot<T, R> {
+function asyncFromRef<T extends object, R extends object>(info: RelationInfo<R>, ref: Reference<R>, transaction: Transaction): InternalAsyncSnapshot<T, R> {
   return {
-    attr,
+    ...info,
     ref,
     refShape: undefined,
     data: async (atomic = false) => {
@@ -356,7 +371,7 @@ function asyncFromRef<T extends object, R extends object>(attr: RelationAttrInfo
   };
 }
 
-function refInfoEquals(a: RefInfo<any>, b: RefInfo<any>): boolean {
+function refInfoEquals(a: InternalAsyncSnapshot<any, any>, b: InternalAsyncSnapshot<any, any>): boolean {
   return refEquals(a.ref, b.ref);
 }
 

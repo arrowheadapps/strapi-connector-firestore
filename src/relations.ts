@@ -1,4 +1,5 @@
 import * as _ from 'lodash';
+import * as utils from 'strapi-utils';
 import { allModels, FirestoreConnectorModel } from './model';
 import type { StrapiModel, StrapiAttribute } from './types';
 import type { Reference } from './utils/queryable-collection';
@@ -34,14 +35,23 @@ export async function relationsCreate<T extends object>(model: FirestoreConnecto
 
 export function buildRelations<T extends object>(model: FirestoreConnectorModel<T>, strapiInstance = strapi) {
   
-  model.relations = [];
+  model.relations = model.relations || [];
 
   // Build the dominant relations (these exist as attributes on this model)
   // The non-dominant relations will be populated as a matter of course
   // when the other models are built
   Object.keys(model.attributes).forEach(alias => {
     const attr = model.attributes[alias];
-    const targetModelName = attr.model! || attr.collection!;
+
+    // Required for other parts of Strapi to work
+    utils.models.defineAssociations(model.uid.toLowerCase(), model, attr, alias);
+
+    const targetModelName = attr.model || attr.collection;
+    if (!targetModelName) {
+      // Not a relation attribute
+      return;
+    }
+
     const isMorph = targetModelName === '*';
     const attrInfo = makeAttrInfo(alias, attr);
     const thisEnd: RelationInfo<any> = {
@@ -61,10 +71,10 @@ export function buildRelations<T extends object>(model: FirestoreConnectorModel<
       if (!targetModel) {
         throw new Error(
           `Problem building relations. The model targetted by attribute "${alias}" ` +
-          `on model "${model.modelName}" does not exist.`
+          `on model "${model.uid}" does not exist.`
         );
       }
-      const attrInfo = findOtherAttr(alias, attr, targetModel);
+      const attrInfo = findOtherAttr(model, alias, attr, targetModel);
       otherEnds = [{
         model: targetModel,
         parentModels: findParentModels(model, attrInfo, strapiInstance),
@@ -96,7 +106,8 @@ function findModelsRelatingTo(info: { model: FirestoreConnectorModel<any>, attr:
       .forEach(alias => {
         const attr = model.attributes[alias];
         const otherModelName = attr.model || attr.collection;
-        if ((otherModelName === info.model.modelName)
+        if (otherModelName
+          && (otherModelName === info.model.modelName)
           && ((attr.via === info.alias) || (info.attr.via === alias))) {
           const attrInfo = makeAttrInfo(alias, attr);
           related.push({
@@ -110,14 +121,16 @@ function findModelsRelatingTo(info: { model: FirestoreConnectorModel<any>, attr:
   return related;
 }
 
-function findOtherAttr(key: string, attr: StrapiAttribute, otherModel: StrapiModel): RelationAttrInfo | undefined {
+function findOtherAttr(thisModel: StrapiModel, key: string, attr: StrapiAttribute, otherModel: StrapiModel): RelationAttrInfo | undefined {
   const alias = Object.keys(otherModel.attributes).find(alias => {
-    if (attr.via && (attr.via === alias)) {
-      return true;
-    }
     const otherAttr = otherModel.attributes[alias];
-    if (otherAttr.via && (otherAttr.via === key)) {
-      return true;
+    if ((otherAttr.model || otherAttr.collection) === thisModel.modelName) {
+      if (attr.via && (attr.via === alias)) {
+        return true;
+      }
+      if (otherAttr.via && (otherAttr.via === key)) {
+        return true;
+      }
     }
     return false;
   });
@@ -129,8 +142,8 @@ function findOtherAttr(key: string, attr: StrapiAttribute, otherModel: StrapiMod
   return undefined;
 }
 
-function findParentModels<T extends object>(componentModel: FirestoreConnectorModel<T>, componentAttr: RelationAttrInfo | undefined, strapiInstance = strapi): RelationInfo<T>[] {
-  const models: RelationInfo<T>[] = [];
+function findParentModels<T extends object>(componentModel: FirestoreConnectorModel<T>, componentAttr: RelationAttrInfo | undefined, strapiInstance = strapi): RelationInfo<T>[] | undefined {
+  const relations: RelationInfo<T>[] = [];
   if (componentModel.isComponent) {
     for (const otherModel of allModels(strapiInstance)) {
       if (componentModel.uid !== otherModel.uid) {
@@ -138,17 +151,19 @@ function findParentModels<T extends object>(componentModel: FirestoreConnectorMo
           const attr = otherModel.attributes[alias];
           if ((attr.component === componentModel.uid)
              || (attr.components && attr.components.includes(componentModel.uid))) {
-            const isRepeatable = !attr.components;
-            models.push({
+            const isRepeatable = attr.repeatable || !attr.component;
+            relations.push({
               model: otherModel,
               attr: componentAttr ? {
-                actualAlias: isRepeatable ? componentAttr.alias : undefined,
-                isArray: componentAttr.isArray,
+                ...componentAttr,
+                isMeta: isRepeatable,
+                actualAlias: {
+                  componentAlias: componentAttr.alias,
+                  parentAlias: alias,
+                },
                 alias: isRepeatable 
                   ? [componentMetaKey(otherModel, alias), componentAttr.alias].join('.')
                   : [alias, componentAttr.alias].join('.'),
-                isMorph: componentAttr.isMorph,
-                filter: componentAttr.filter,
               } : undefined,
               parentModels: undefined,
             });
@@ -157,7 +172,7 @@ function findParentModels<T extends object>(componentModel: FirestoreConnectorMo
       }
     }
   }
-  return models;
+  return relations.length ? relations : undefined;
 }
 
 function makeAttrInfo(alias: string, attr: StrapiAttribute): RelationAttrInfo {
@@ -167,5 +182,6 @@ function makeAttrInfo(alias: string, attr: StrapiAttribute): RelationAttrInfo {
     isMorph: (attr.model || attr.collection) === '*',
     filter: attr.filter,
     actualAlias: undefined,
+    isMeta: false,
   };
 }
