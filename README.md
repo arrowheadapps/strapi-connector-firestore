@@ -5,9 +5,9 @@ https://github.com/arrowheadapps/strapi-connector-firestore/issues
 
 The shape of the generated database output may break compatibility often while in "alpha" state.
 
-Known issues/not implemented
-- Higher complexity relations such as many-many, components, and polymorphism are untested
-- Deep filtering in API queries
+Known issues/not implemented:
+- Complex AND/OR queries
+- Deep filtering queries
 
 I welcome contributors to help get this package to a production ready state and maintain it.
 
