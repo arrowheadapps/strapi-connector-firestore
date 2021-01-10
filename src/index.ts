@@ -35,6 +35,8 @@ const defaultOptions: Required<ConnectorOptions> = {
   flattenModels: [],
   allowNonNativeQueries: false,
   ensureCompnentIds: false,
+  logTransactionStats: process.env.NODE_ENV === 'development',
+  logQueries: false,
 
   // Default to 200 because of query size used in admin permissions query
   // https://github.com/strapi/strapi/blob/be4d5556936cf923aa3e23d5da82a6c60a5a42bc/packages/strapi-admin/services/permission.js

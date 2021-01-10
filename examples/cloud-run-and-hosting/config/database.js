@@ -11,6 +11,7 @@ module.exports = ({ env }) => ({
       },
       options: {
         useEmulator: env('NODE_ENV') !== 'production',
+        logQueries: env('NODE_ENV') !== 'production',
       }
     }
   },

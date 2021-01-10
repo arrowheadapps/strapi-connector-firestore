@@ -97,15 +97,20 @@ export class TransactionImpl implements Transaction {
   private readonly ensureFlatCollections: Promise<void>[] = [];
 
 
-  constructor(firestore: Firestore, private readonly transaction: FirestoreTransaction) {
+  constructor(
+    firestore: Firestore,
+    private readonly transaction: FirestoreTransaction,
+    private readonly logStats: boolean,
+    private readonly attempt: number,
+  ) {
     
     this.atomicReads = new ReadRepository(null, {
-      getAll: (...refs) => this._requireTransaction().getAll(...refs),
+      getAll: (...refs) => this.transaction.getAll(...refs),
       getQuery: query => {
         if (query instanceof Query) {
-          return this._requireTransaction().get(query);
+          return this.transaction.get(query);
         } else {
-          return query.get(this._requireTransaction());
+          return query.get(this.transaction);
         }
       },
     });
@@ -114,14 +119,6 @@ export class TransactionImpl implements Transaction {
       getAll: (...refs) => firestore.getAll(...refs),
       getQuery: query => query.get(),
     });
-  }
-
-  private _requireTransaction(): FirestoreTransaction {
-    if (!this.transaction) {
-      // TODO:
-      // Start a transaction
-    }
-    return this.transaction!;
   }
 
   private async _get(refOrQuery: Reference<any> | Queryable<any>, repo: ReadRepository): Promise<Snapshot<any> | QuerySnapshot<any>> {
@@ -187,7 +184,9 @@ export class TransactionImpl implements Transaction {
    * @private
    */
   async commit() {
-    // strapi.log.debug(`Comitting Firestore transaction: ${this.writes.size} writes, ${this.atomicReads.size + this.nonAtomicReads.size} reads.`);
+    if (this.logStats) {
+      strapi.log.debug(`TRANSACTION (attempt #${this.attempt}): ${this.writes.size} writes, ${this.atomicReads.size + this.nonAtomicReads.size} reads (${this.atomicReads.size} atomic).`);
+    }
 
     // If we have fetched flat documents then we need to wait to
     // ensure that the document exists so that the update

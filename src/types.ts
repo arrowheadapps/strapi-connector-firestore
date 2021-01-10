@@ -19,6 +19,24 @@ export interface ConnectorOptions {
   useEmulator?: boolean
 
   /**
+   * Indicates whether or not to log the number of
+   * read and write operations for every transaction
+   * that is executed.
+   * 
+   * Defaults to `true` for development environments
+   * and `false` otherwise.
+   */
+  logTransactionStats?: boolean
+
+  /**
+   * Indicates whether or not to log the details of
+   * every query that is executed.
+   * 
+   * Defaults to `false`.
+   */
+  logQueries?: boolean
+
+  /**
    * Designates the document ID to use to store the data
    * for "singleType" models, or when flattening is enabled.
    * 
@@ -66,6 +84,13 @@ export interface ConnectorOptions {
 export interface ModelOptions {
   timestamps?: boolean | [string, string]
   singleId?: string
+
+  /**
+   * Override connector option per model.
+   * 
+   * Defaults to `undefined` (use connector setting).
+   */
+  logQueries?: boolean
 
   /**
    * Override connector flattening options per model.

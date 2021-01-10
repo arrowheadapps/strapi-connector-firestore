@@ -215,9 +215,9 @@ export class RelationHandler<T extends object, R extends object = object> {
     }
   }
 
-  private async _setRelated({ ref, attr, data, model }: InternalAsyncSnapshot<T, R>, thisRef: Reference<T>, set: boolean, transaction: Transaction) {
+  private async _setRelated({ ref, attr, data, model, refShape }: InternalAsyncSnapshot<T, R>, thisRef: Reference<T>, set: boolean, transaction: Transaction) {
     if (attr) {
-      const refValue = this._makeRefToThis(thisRef, attr);
+      const refValue = refShape || this._makeRefToThis(thisRef, attr);
       
       if (attr.isMeta && attr.actualAlias) {
         const { componentAlias, parentAlias } = attr.actualAlias;

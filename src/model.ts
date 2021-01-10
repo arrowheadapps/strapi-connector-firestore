@@ -110,6 +110,7 @@ export function mountModel<T extends object>({ strapi, model: strapiModel, fires
 
   const options: Required<ModelOptions> = {
     timestamps: rootOpts.timestamps || false,
+    logQueries: rootOpts.logQueries ?? connectorOptions.logQueries,
     singleId: rootOpts.singleId || connectorOptions.singleId,
     flatten: flattenedKey != null,
     searchAttribute: defaultSearchAttrOpts(strapiModel, rootOpts),
@@ -169,8 +170,9 @@ export function mountModel<T extends object>({ strapi, model: strapiModel, fires
   }
 
   const runTransaction = async (fn: (transaction: Transaction) => PromiseLike<any>) => {
+    let attempt = 0;
     return await firestore.runTransaction(async (trans) => {
-      const wrapper = new TransactionImpl(firestore, trans);
+      const wrapper = new TransactionImpl(firestore, trans, connectorOptions.logTransactionStats, ++attempt);
       const result = await fn(wrapper);
       await wrapper.commit();
       return result;

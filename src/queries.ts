@@ -10,7 +10,7 @@ import { StatusError } from './utils/status-error';
 import { updateComponentsMetadata, validateComponents } from './utils/components';
 import type { FirestoreConnectorModel } from './model';
 import type { StrapiQuery, StrapiAttributeType, StrapiFilter, AttributeKey, StrapiContext } from './types';
-import type { Queryable, Snapshot } from './utils/queryable-collection';
+import type { Queryable, Reference, Snapshot } from './utils/queryable-collection';
 import type { Transaction } from './utils/transaction';
 
 
@@ -22,9 +22,14 @@ export interface FirestoreConnectorQueries<T extends object> extends StrapiQuery
 }
 
 
-export function queries<T extends object>({ model }: StrapiContext<T>): FirestoreConnectorQueries<T> {
+export function queries<T extends object>({ model, strapi }: StrapiContext<T>): FirestoreConnectorQueries<T> {
+
+  const log = model.options.logQueries
+    ? (name: string, details: object) => { strapi.log.debug(`QUERY ${model.modelName}.${name}: ${JSON.stringify(details)}`) }
+    : () => {};
 
   const find = async (params: any, populate = model.defaultPopulate) => {
+    log('find', { params, populate });
     return await model.runTransaction(async trans => {
       let docs: Snapshot<T>[];
       if (model.hasPK(params)) {
@@ -49,12 +54,17 @@ export function queries<T extends object>({ model }: StrapiContext<T>): Firestor
   };
 
   const count = async (params: any) => {
-    // Don't populate any fields, we are just counting
-    const docs = await runFirestoreQuery(model, params, null, null);
-    return docs.length;
+    log('count', { params });
+
+    return await model.runTransaction(async trans => {
+      // Don't populate any fields, we are just counting
+      const docs = await runFirestoreQuery(model, params, null, trans);
+      return docs.length;
+    });
   };
 
   const create = async (values: any, populate = model.defaultPopulate) => {
+    log('create', { populate });
 
     // Validate components dynamiczone
     const components = validateComponents(model, values);
@@ -92,6 +102,7 @@ export function queries<T extends object>({ model }: StrapiContext<T>): Firestor
   };
 
   const update = async (params: any, values: any, populate = model.defaultPopulate) => {
+    log('update', { params, populate });
 
     // Validate components dynamiczone
     const components = validateComponents(model, values);
@@ -143,8 +154,9 @@ export function queries<T extends object>({ model }: StrapiContext<T>): Firestor
   };
 
   const deleteMany = async (params: any, populate = model.defaultPopulate) => {
+    log('delete', { params, populate });
+
     return await model.runTransaction(async trans => {
-      
       if (model.hasPK(params)) {
         const ref = model.db.doc(model.getPK(params));
         const result = await deleteOne(await trans.getNonAtomic(ref), populate, trans);
@@ -171,6 +183,8 @@ export function queries<T extends object>({ model }: StrapiContext<T>): Firestor
   };
 
   const search = async (params: any, populate = model.defaultPopulate) => {
+    log('search', { params, populate });
+
     return await model.runTransaction(async trans => {
       let docs: Snapshot<T>[];
       if (model.hasPK(params)) {
@@ -190,12 +204,17 @@ export function queries<T extends object>({ model }: StrapiContext<T>): Firestor
   };
 
   const countSearch = async (params: any) => {
-    // Don't populate any fields, we are just counting
-    const docs = await runFirestoreQuery(model, params, params._q, null);
-    return docs.length;
+    log('countSearch', { params });
+
+    return await model.runTransaction(async trans => {
+      // Don't populate any fields, we are just counting
+      const docs = await runFirestoreQuery(model, params, params._q, trans);
+      return docs.length;
+    });
   };
 
   const fetchRelationCounters = async (attribute: AttributeKey<T>, entitiesIds: string[] = []) => {
+    log('fetchRelationCounters', { attribute, entitiesIds });
 
     const relation = model.relations.find(a => a.alias === attribute);
     if (!relation) {
@@ -342,65 +361,82 @@ function buildSearchQuery<T extends object>(model: FirestoreConnectorModel<T>, v
   }
 };
 
-function buildFirestoreQuery<T extends object>(model: FirestoreConnectorModel<T>, params, searchQuery: string | null, query: Queryable<T>): Queryable<T> | null {
+function buildFirestoreQuery<T extends object>(model: FirestoreConnectorModel<T>, params, searchQuery: string | null, query: Queryable<T>): Queryable<T> | Reference<T>[] | null {
   // Remove any search query
   // because we extract and handle it separately
   // Otherwise `convertRestQueryParams` will also handle it
   delete params._q;
-  const filters: StrapiFilter = convertRestQueryParams(params);
+  const { where, limit, sort, start }: StrapiFilter = convertRestQueryParams(params);
 
   if (searchQuery) {
     query = buildSearchQuery(model, searchQuery, query);
   } else {
-    for (const where of (filters.where || [])) {
-      let { operator, value } = where;
-      let field: string | FieldPath = where.field;
-
-      if (operator === 'in') {
-        value = _.castArray(value);
-        if ((value as Array<any>).length === 0) {
-          // Special case: empty query
-          return null;
-        }
-      }
-      if (operator === 'nin') {
-        value = _.castArray(value);
-        if ((value as Array<any>).length === 0) {
-          // Special case: no effect
-          continue;
-        }
-      }
-
-      // Prevent querying passwords
-      if (model.attributes[field]?.type === 'password') {
-        throw new Error('Not allowed to query password fields');
-      }
-
-      // Coerce to the appropriate types
-      // Because values from querystring will always come in as strings
+    // Check for special case where the only filter is id_in
+    // In this case it is more effective to fetch the documents
+    // by id, because the "in" operator only supports ten arguments
+    if (where && (where.length === 1)
+      && (where[0].field === model.primaryKey)
+      && (where[0].operator === 'in')) {
       
-      if ((field === model.primaryKey) || (field === 'id')) {
-        // Detect and enable filtering on document ID
-        value = Array.isArray(value)
-          ? value.map(v => v?.toString())
-          : value?.toString();
-        field = FieldPath.documentId();
+      return _.castArray(where[0].value || [])
+        .slice(start || 0, (limit || -1) < 1 ? undefined : limit)
+        .map(value => {
+          if (!value || (typeof value !== 'string')) {
+            throw new StatusError(`Argument for "${model.primaryKey}_in" must be an array of strings`, 400);
+          }
+          return model.db.doc(value);
+        });
 
-      } else if (operator !== 'null') {
-        // Don't coerce the 'null' operatore because the value is true/false
-        // not the type of the field
-        value = coerceAttribute(model.attributes[field], value, toFirestore);
+    } else {
+      for (let filter of (where || [])) {
+        let { operator, value } = filter;
+        let field: string | FieldPath = filter.field;
+
+        if (operator === 'in') {
+          value = _.castArray(value);
+          if ((value as Array<any>).length === 0) {
+            // Special case: empty query
+            return null;
+          }
+        }
+        if (operator === 'nin') {
+          value = _.castArray(value);
+          if ((value as Array<any>).length === 0) {
+            // Special case: no effect
+            continue;
+          }
+        }
+
+        // Prevent querying passwords
+        if (model.attributes[field]?.type === 'password') {
+          throw new Error('Not allowed to query password fields');
+        }
+
+        // Coerce to the appropriate types
+        // Because values from querystring will always come in as strings
+        
+        if ((field === model.primaryKey) || (field === 'id')) {
+          // Detect and enable filtering on document ID
+          value = Array.isArray(value)
+            ? value.map(v => v?.toString())
+            : value?.toString();
+          field = FieldPath.documentId();
+
+        } else if (operator !== 'null') {
+          // Don't coerce the 'null' operatore because the value is true/false
+          // not the type of the field
+          value = coerceAttribute(model.attributes[field], value, toFirestore);
+        }
+
+        query = query.where(field, operator, value);
       }
-
-      query = query.where(field, operator, value);
     }
   }
 
-
-  (filters.sort || []).forEach(({ field, order }) => {
+  (sort || []).forEach(({ field, order }) => {
     if (field === model.primaryKey) {
       if (searchQuery || 
-        (filters.where || []).some(w => w.field !== model.primaryKey)) {
+        (where || []).some(w => w.field !== model.primaryKey)) {
         // Ignore sort by document ID when there are other filers
         // on fields other than the document ID
         // Document ID is the default sort for all queryies 
@@ -414,22 +450,26 @@ function buildFirestoreQuery<T extends object>(model: FirestoreConnectorModel<T>
     }
   });
 
-  if (filters.start && (filters.start > 0)) {
-    query = query.offset(filters.start);
+  if (start && (start > 0)) {
+    query = query.offset(start);
   }
 
-  const limit = Math.max(0, filters.limit || 0);
-  query = query.limit(limit);
+  if (limit && (limit > 1)) {
+    query = query.limit(limit);
+  }
 
   return query;
 }
 
-async function runFirestoreQuery<T extends object>(model: FirestoreConnectorModel<T>, params, searchQuery: string | null, transaction: Transaction | null) {
-  const query = buildFirestoreQuery(model, params, searchQuery, model.db);
-  if (!query) {
+async function runFirestoreQuery<T extends object>(model: FirestoreConnectorModel<T>, params, searchQuery: string | null, transaction: Transaction): Promise<Snapshot<T>[]> {
+  const queryOrIds = buildFirestoreQuery(model, params, searchQuery, model.db);
+  if (!queryOrIds) {
     return [];
   }
-
-  const result = await (transaction ? transaction.getNonAtomic(query) : query.get());
-  return result.docs;
+  if (Array.isArray(queryOrIds)) {
+    return await transaction.getNonAtomic(queryOrIds);
+  } else {
+    const result = await transaction.getNonAtomic(queryOrIds);
+    return result.docs
+  }
 }
