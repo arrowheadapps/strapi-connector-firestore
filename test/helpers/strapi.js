@@ -1,3 +1,5 @@
+'use-strict';
+
 const execa = require('execa');
 const waitOn = require('wait-on');
 const { log } = require('./log');

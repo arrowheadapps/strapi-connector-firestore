@@ -30,6 +30,7 @@ module.exports = ({ env }) => ({
       },
       options: {
         useEmulator: true,
+        maxQuerySize: 0,
 
         // TODO: Allow on all EXCEPT internal Strapi models
         allowNonNativeQueries: true,///^(?!strapi::).*/,
