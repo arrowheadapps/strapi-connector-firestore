@@ -142,6 +142,79 @@ If `searchAttribute` is defined, the primitive search behaviour is used regardle
 
 Flattened models support all of these filters including search, because the collection is fetched as a whole and filtere "manually" anyway.
 
+
+### Indexing fields in repeatable and dynamic-zone components
+
+Repeatable components and dynamiczone components are embedded as an array in the parent document. Firestore cannot query the document based on any field in the components (cannot query inside array).
+
+To support querying, the connector can be configured to maintain a metadata map (index) for any attribute inside these repeatable components. This configured by adding `"indexed": true` to any attribute in the component model JSON. This is ignored for non-repeatable components, because they can be queried directly.
+
+The connector automatically does this for all relation attributes.
+
+The metadata map is stored in the document in a field named by appending "$meta" to the name of the field storing the components.
+
+Take care when indexing attributes inside components, because the data will be duplicated inside the document, increasing document size and bandwidth costs.
+
+For example, consider a model JSON with the shape below:
+
+```JSON
+{
+  "attributes": {
+    "myRepeatableComponents": {
+      "component": "my-component",
+      "repeatable": true
+    }
+  }
+}
+```
+
+Where the "my-component" model JSON is like below:
+
+```JSON
+{
+  "attributes": {
+    "name": {
+      "type": "string",
+      "indexed": true
+    },
+    "related": {
+      "model": "otherModel"
+    }
+  }
+}
+```
+
+Such a model may have a document with the data below:
+
+```JSON
+{
+  "myRepeatableComponents": [
+    {
+      "name": "Component 1",
+      "related": "/otherModel/doc1", (DocumentReference)
+    },
+    {
+      "name": "Component 2",
+      "related": null,
+    }
+  ],
+  "myRepeatableComponents$meta": {
+    "name": [
+      "Component 1",
+      "Component 2"
+    ],
+    "related": [
+      "/collection/doc1", (DocumentReference)
+      null
+    ]
+  },
+}
+```
+
+Where the `myRepeatableComponents$meta` field is automatically maintained and overwritten by the connector.
+
+In this example, we can query documents based on a field inside a component using a query like `.where('myRepeatableComponents$meta.name', 'array-contains', 'Component 1')`.
+
 ### Minimal example
 
 This is the minimum possible configuration, which will only work for GCP platforms that support Application Default Credentials.
@@ -189,7 +262,7 @@ module.exports = ({ env }) => ({
         // not actaully an effective usage of flattening, 
         // because they are only queried one-at-a-time anyway
         // So this would only result in increased bandwidth usage
-        flattenCore: [
+        flattenModels: [
           {
             test: /^strapi::/,
             doc: ({ uid }) => uid.replace('::', '/')
@@ -271,7 +344,7 @@ module.exports = {
 
 ## Considerations
 
-### Strapi components (including dynamic zone, repeatable)
+### Strapi components (including dynamic-zone, repeatable)
 
 The official Strapi connectors behave in a way where componets are stored separately in their own collections/tables.
 
@@ -282,6 +355,7 @@ However, this connector behaves differently. It embeds all components directly i
 
 Be aware of the Firestore document size limit, so a single document can contain only a finite number of embedded components.
 
+The connector automatically maintains an index for every relation inside a repeatable component or a dynamic-zone component. This "index" is a map stored in the parent document alongside the embedded components (See [Indexing fields in repeatable and dynamic-zone components](#indexing-fields-in-repeatable-and-dynamic-zone-components)), and enables reverse-lookup of relations inside components.
 
 ### Indexes
 
