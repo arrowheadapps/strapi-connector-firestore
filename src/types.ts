@@ -48,9 +48,9 @@ export interface ConnectorOptions {
    * Indicate which models to flatten by RegEx. Matches against the
    * model's `uid` property.
    * 
-   * Defaults to `[]` so that no models are flattened.
+   * Defaults to `false` so that no models are flattened.
    */
-  flattenModels?: (string | RegExp | { test: string | RegExp, doc?: (model: StrapiModel) => string })[]
+  flattenModels?: boolean | string | RegExp | FlattenFn | (string | RegExp | FlattenFn)[]
 
   /**
    * Globally allow queries that are not Firestore native.
@@ -59,7 +59,7 @@ export interface ConnectorOptions {
    * 
    * Defaults to `false`.
    */
-  allowNonNativeQueries?: boolean | RegExp
+  allowNonNativeQueries?: boolean | string | RegExp | ModelTestFn | (string | RegExp | ModelTestFn)[]
 
   /**
    * If `true`, then IDs are automatically generated and assigned
@@ -279,6 +279,14 @@ export interface StrapiAttribute {
 
 export interface IndexerFn {
   (value: any, component: object): [string, any] | undefined
+}
+
+export interface FlattenFn<T extends object = any> {
+  (model: StrapiModel<T>): string | boolean | null | undefined
+}
+
+export interface ModelTestFn<T extends object = any> {
+  (model: StrapiModel<T>): boolean
 }
 
 export interface StrapiAssociation<K extends string = string> {

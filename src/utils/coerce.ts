@@ -17,15 +17,15 @@ export interface CoerceFn {
 /**
  * Coerces an entire document to Firestore based on the model schema.
  */
-export function coerceModelToFirestore<T extends object>(model: FirestoreConnectorModel<T>, values: DocumentData): Partial<T> {
-  return coerceModel(model, undefined, values, toFirestore) as Partial<T>;
+export function coerceModelToFirestore<T extends object>(model: FirestoreConnectorModel<T>, values: DocumentData, fieldPath?: string): Partial<T> {
+  return coerceModel(model, undefined, values, fieldPath, toFirestore) as Partial<T>;
 }
 
 /**
  * Coerces an entire document from Firestore based on the model schema.
  */
-export function coerceModelFromFirestore<T extends object>(model: FirestoreConnectorModel<T>, docId: string, values: DocumentData): T {
-  return coerceModel(model, docId, values, fromFirestore) as T;
+export function coerceModelFromFirestore<T extends object>(model: FirestoreConnectorModel<T>, docId: string, values: DocumentData, fieldPath?: string): T {
+  return coerceModel(model, docId, values, fieldPath, fromFirestore) as T;
 }
 
 
@@ -37,30 +37,39 @@ export function coerceModelFromFirestore<T extends object>(model: FirestoreConne
  * @param coerceFn The coerce function `toFirestore` or `fromFirestore` depending
  * on which direction the document should be coerced.
  */
-function coerceModel<T extends object>(model: FirestoreConnectorModel<T>, docId: string | undefined, values: DocumentData, coerceFn: CoerceFn): DocumentData {
-  if (!model || !values) {
+function coerceModel<T extends object>(model: FirestoreConnectorModel<T>, docId: string | undefined, values: DocumentData, fieldPath: string | undefined, coerceFn: CoerceFn): any {
+  if (!model) {
     return values;
   }
   
-  const root = coerceModelRecursive(model, values, null, coerceFn);
+  const root = coerceModelRecursive(model, values, fieldPath || null, coerceFn);
   if (docId) {
-    root[model.primaryKey] = docId;
+    // From Firestore we don't get partial updates
+    // with dot paths
+    if (!fieldPath) {
+      root[model.primaryKey] = docId;
+    }
   } else {
-    delete root[model.primaryKey];
+    // To Firestore we need to handle partial updates
+    // with dot paths
+    if (fieldPath === model.primaryKey) {
+      return undefined;
+    } else if (!fieldPath) {
+      delete root[model.primaryKey];
+    }
   }
   return root;
 }
 
 function coerceModelRecursive<T extends object>(model: FirestoreConnectorModel<T>, values: DocumentData, parentPath: string | null, coerceFn: CoerceFn) {
   return _.cloneDeepWith(values, (value, key) => {
-    if (key === undefined) {
+    const path = [parentPath, key].filter(Boolean).join('.');
+    if (!path) {
       // Root object, pass through
       return undefined;
     }
 
-    const path = parentPath ? parentPath + '.' + key : key as string;
     const attr = model.attributes[path];
-
     if (!attr && _.isPlainObject(value)) {
       return coerceModelRecursive(model, value, path, coerceFn);
     }
@@ -122,14 +131,14 @@ export function toFirestore(relation: Partial<StrapiAttribute> | undefined, valu
     const componentModel = getComponentModel(relation.component);
     if (Array.isArray(value)) {
       // Generate ID if setting dictates
-      return value.map(v => coerceModel(componentModel, getIdOrAuto(componentModel, v), v, toFirestore));
+      return value.map(v => coerceModel(componentModel, getIdOrAuto(componentModel, v), v, undefined, toFirestore));
     } else {
       if (value) {
         if (typeof value !== 'object') {
           throw new StatusError('Invalid value provided. Component must be an array or an object.', 400);
         }
         // Generate ID if setting dictates
-        return coerceModel(componentModel, getIdOrAuto(componentModel, value), value!, toFirestore);
+        return coerceModel(componentModel, getIdOrAuto(componentModel, value), value!, undefined, toFirestore);
       } else {
         return null;
       }
@@ -143,7 +152,7 @@ export function toFirestore(relation: Partial<StrapiAttribute> | undefined, valu
       return value.map(v => {
         // Generate ID if setting dictates
         const componentModel = getComponentModel(v.__component);
-        return coerceModel(componentModel, getIdOrAuto(componentModel, v), v, toFirestore);
+        return coerceModel(componentModel, getIdOrAuto(componentModel, v), v, undefined, toFirestore);
       });
     } else {
       if (value) {
@@ -152,7 +161,7 @@ export function toFirestore(relation: Partial<StrapiAttribute> | undefined, valu
         }
         // Generate ID if setting dictates
         const componentModel = getComponentModel((value as any).__component);
-        return coerceModel(componentModel, getIdOrAuto(componentModel, value), value!, toFirestore);
+        return coerceModel(componentModel, getIdOrAuto(componentModel, value), value!, undefined, toFirestore);
       } else {
         return null;
       }
@@ -283,12 +292,12 @@ export function fromFirestore(relation: Partial<StrapiAttribute> | undefined, va
     const componentModel = getComponentModel(relation.component);
     if (Array.isArray(value)) {
       // Keep primary key coming out of Firestore if it exists
-      return value.map(v => coerceModel(componentModel, v[componentModel.primaryKey], v, fromFirestore));
+      return value.map(v => coerceModel(componentModel, v[componentModel.primaryKey], v, undefined, fromFirestore));
     } else {
       if (value) {
         if (typeof value === 'object') {
           // Keep primary key coming out of Firestore if it exists
-          return coerceModel(componentModel, value![componentModel.primaryKey], value!, fromFirestore);
+          return coerceModel(componentModel, value![componentModel.primaryKey], value!, undefined, fromFirestore);
         } else {
           strapi.log.warn(`Invalid value in place of component "${relation.component}"`);
           return null;
@@ -306,14 +315,14 @@ export function fromFirestore(relation: Partial<StrapiAttribute> | undefined, va
       return value.map(v => {
         // Keep primary key coming out of Firestore if it exists
         const componentModel = getComponentModel(v.__component);
-        return coerceModel(componentModel, v[componentModel.primaryKey], v, fromFirestore);
+        return coerceModel(componentModel, v[componentModel.primaryKey], v, undefined, fromFirestore);
       });
     } else {
       if (value) {
         if (typeof value === 'object') {
           // Keep primary key coming out of Firestore if it exists
           const componentModel = getComponentModel((value as any).__component);
-          return coerceModel(componentModel, value![componentModel.primaryKey], value!, fromFirestore);
+          return coerceModel(componentModel, value![componentModel.primaryKey], value!, undefined, fromFirestore);
         } else {
           strapi.log.warn(`Invalid value in place of components ${JSON.stringify(relation.components)}`);
           return null;
@@ -354,7 +363,7 @@ export function coerceToReference<T extends object = object>(value: any, to: Fir
   if (value instanceof DocumentReference) {
     // When deserialised from Firestore it comes without any converters
     // We want to get the appropraite converters so we reinstantiate it
-    return reinstantiateReference(value, to, strict);
+    return reinstantiateReference(value, undefined, to, strict);
   }
 
   if ((value instanceof DeepReference) || (value instanceof MorphReference)) {
@@ -371,13 +380,21 @@ export function coerceToReference<T extends object = object>(value: any, to: Fir
     // i.e. the Firestore representation of DeepReference and MorphReference
 
     const obj: FlatReferenceShape<T> | MorphReferenceShape<T> = value;
-    const ref = reinstantiateReference(obj.ref, to, strict);
+    let id: string | undefined
+    if ('id' in obj) {
+      if (!obj.id || (typeof obj.id !== 'string')) {
+        return fault(strict, 'Malformed polymorphic reference: `id` must be a string');
+      }
+      id = obj.id;
+    }
+
+    const ref = reinstantiateReference(obj.ref, id, to, strict);
     if (!ref) {
       return ref;
     }
-
+    
     if ('filter' in obj) {
-      if (typeof obj.filter !== 'string') {
+      if ((obj.filter !== null) && (!obj.filter || (typeof obj.filter !== 'string'))) {
         return fault(strict, 'Malformed polymorphic reference: `filter` must be a string');
       }
       return new MorphReference(ref, obj.filter);
@@ -461,10 +478,10 @@ export function coerceToReferenceShape<T extends object>(ref: Reference<T>): Ref
  * Reinstantiates the reference via the target model so that it comes
  * loaded with the appropriate converter.
  */
-function reinstantiateReference<T extends object>(value: DocumentReference<T | { [id: string]: T }>, to: FirestoreConnectorModel<T> | undefined, strict: boolean): DocumentReference<T> | DeepReference<T> | null {
+function reinstantiateReference<T extends object>(value: DocumentReference<T | { [id: string]: T }>, id: string | undefined, to: FirestoreConnectorModel<T> | undefined, strict: boolean): DocumentReference<T> | DeepReference<T> | null {
   if (to) {
-    const newRef = to.db.doc(value.id);
-    if (newRef.path !== value.path) {
+    const newRef = to.db.doc(id || value.id);
+    if (newRef.parent.path !== value.parent.path) {
       return fault(strict, `Reference is pointing to the wrong model. Expected "${newRef.path}", got "${value.path}".`);
     }
     return newRef;

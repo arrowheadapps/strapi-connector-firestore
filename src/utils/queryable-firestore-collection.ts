@@ -10,7 +10,7 @@ import type { FirestoreConnectorModel } from '../model';
 export class QueryableFirestoreCollection<T extends object = DocumentData> implements QueryableCollection<T> {
 
   private readonly collection: CollectionReference<T>
-  private readonly conv: FirestoreDataConverter<T>;
+  readonly conv: FirestoreDataConverter<T>;
   
   private readonly allowNonNativeQueries: boolean
   private readonly maxQuerySize: number

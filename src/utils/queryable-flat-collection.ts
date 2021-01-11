@@ -37,8 +37,18 @@ export class QueryableFlatCollection<T extends object = DocumentData> implements
 
       const userConverter = modelOrOther.options.converter;
       this.conv = {
-        toFirestore: data => _.mapValues(data, d => userConverter.toFirestore(coerceModelToFirestore(modelOrOther, d))),
-        fromFirestore: data => _.mapValues(data.data(), (d, id) => coerceModelFromFirestore(modelOrOther, id, userConverter.fromFirestore(d))),
+        toFirestore: data => {
+          return _.mapValues(data, (d, path) => {
+            const [, ...rest] = path.split('.');
+            return userConverter.toFirestore(coerceModelToFirestore(modelOrOther, d, rest.join('.')));
+          });
+        },
+        fromFirestore: data => {
+          return _.mapValues(data.data(), (d, path) => {
+            const [id, ...rest] = path.split('.');
+            return coerceModelFromFirestore(modelOrOther, id, userConverter.fromFirestore(d), rest.join('.'));
+          });
+        },
       };
 
       const docPath = path.posix.join(modelOrOther.collectionName, modelOrOther.flattenedKey);

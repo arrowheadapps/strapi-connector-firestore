@@ -1,6 +1,6 @@
 const flattening = {
-  flatten_all: [/.*/],
-  flatten_none: [],
+  flatten_all: true,
+  flatten_none: false,
 
   // Flatten models that are referred to
   // by non-flattened models

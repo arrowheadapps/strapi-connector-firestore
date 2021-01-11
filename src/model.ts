@@ -3,7 +3,7 @@ import * as utils from 'strapi-utils';
 import { QueryableFirestoreCollection } from './utils/queryable-firestore-collection';
 import { QueryableFlatCollection } from './utils/queryable-flat-collection';
 import { QueryableComponentCollection } from './utils/queryable-component-collection';
-import type { AttributeKey, ConnectorOptions, ModelOptions, Strapi, StrapiAttributeType, StrapiModel, StrapiModelRecord } from './types';
+import type { AttributeKey, ConnectorOptions, FlattenFn, ModelOptions, ModelTestFn, Strapi, StrapiAttributeType, StrapiModel, StrapiModelRecord } from './types';
 import { populateDoc, populateDocs } from './populate';
 import { buildPrefixQuery } from './utils/prefix-query';
 import type{ QueryableCollection, Snapshot } from './utils/queryable-collection';
@@ -294,47 +294,60 @@ export function mountModel<T extends object>({ strapi, model: strapiModel, fires
 }
 
 
-function defaultAllowNonNativeQueries<T extends object>(model: StrapiModel<any>, options: ModelOptions<T>, rootOptions: Required<ConnectorOptions>) {
+function defaultAllowNonNativeQueries<T extends object>(model: StrapiModel<T>, options: ModelOptions<T>, connectorOptions: Required<ConnectorOptions>) {
   if (options.allowNonNativeQueries === undefined) {
-    const rootAllow = rootOptions.allowNonNativeQueries;
-    return (rootAllow instanceof RegExp)
-      ? rootAllow.test(model.uid) 
-      : rootAllow;
+    const rootAllow = connectorOptions.allowNonNativeQueries;
+    if (typeof rootAllow === 'boolean') {
+      return rootAllow;
+    }
+    const tests = _.castArray(rootAllow)
+      .map(test => {
+        if (typeof test === 'function') {
+          return test;
+        }
+        const regex = test instanceof RegExp ? test : new RegExp(test);
+        const tester: ModelTestFn = (model) => regex.test(model.uid);
+        return tester;
+      })
+      .map(tester => {
+        return tester(model);
+      });
+
+    return tests.some(t => t);
   } else {
     return options.allowNonNativeQueries;
   }
 }
 
-function defaultFlattenOpts<T extends object>(model: StrapiModel<any>, options: ModelOptions<T>, rootOptions: Required<ConnectorOptions>) {
+function defaultFlattenOpts<T extends object>(model: StrapiModel<T>, options: ModelOptions<T>, connectorOptions: Required<ConnectorOptions>) {
+  const singleId = options.singleId || connectorOptions.singleId;
+
   if (options.flatten === undefined) {
+    const { flattenModels } = connectorOptions;
+
+    if (typeof flattenModels === 'boolean') {
+      return flattenModels ? singleId : null;
+    }
     
-    const [flattenedId] = rootOptions.flattenModels
-      .map(testOrRegEx => {
-        if ((typeof testOrRegEx === 'string') || (testOrRegEx instanceof RegExp)) {
-          return {
-            test: testOrRegEx,
-            doc: undefined,
-          }
-        } else {
-          return testOrRegEx;
+    const tests = _.castArray(flattenModels)
+      .map(test => {
+        if (typeof test === 'function') {
+          return test;
         }
+        const regex = test instanceof RegExp ? test : new RegExp(test);
+        const tester: FlattenFn = (model) => regex.test(model.uid) ? singleId : null;
+        return tester;
       })
-      .filter(({ test }) => {
-        const regex = (typeof test === 'string')
-          ? new RegExp(test)
-          : test;
-        return regex.test(model.uid);
-      })
-      .map(({ doc }) => {
-        return doc?.(model) || options.singleId || rootOptions.singleId;
+      .map(tester => {
+        const flatten = tester(model);
+        return flatten
+          ? (typeof flatten === 'string' ?  flatten : singleId)
+          : null;
       });
 
-    return flattenedId || null;
-
+    return tests.find(test => test != null) || null;
   } else {
-    return options.flatten
-      ? options.singleId || rootOptions.singleId
-      : null;
+    return options.flatten ? singleId : null;
   }
 }
 

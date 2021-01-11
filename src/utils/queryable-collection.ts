@@ -1,5 +1,5 @@
 import * as _ from 'lodash';
-import { OrderByDirection, DocumentData, DocumentReference, FieldPath, WhereFilterOp, Transaction } from '@google-cloud/firestore';
+import { OrderByDirection, DocumentData, DocumentReference, FieldPath, WhereFilterOp, Transaction, FirestoreDataConverter } from '@google-cloud/firestore';
 import type { StrapiWhereOperator, } from '../types';
 import type { ManualFilter, WhereFilter } from './convert-where';
 import { DeepReference } from './deep-reference';
@@ -88,6 +88,7 @@ export interface Queryable<T extends object = DocumentData> {
 
 export interface QueryableCollection<T extends object = DocumentData> extends Queryable<T> {
   readonly path: string
+  readonly conv: FirestoreDataConverter<any>
   
   autoId(): string;
   doc(): DocumentReference<T> | DeepReference<T>;

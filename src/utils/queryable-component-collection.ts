@@ -17,6 +17,9 @@ export class QueryableComponentCollection<T extends object = never> implements Q
     );
   }
 
+  get conv() {
+    return this.throw();
+  }
 
   get path() {
     return this.throw();

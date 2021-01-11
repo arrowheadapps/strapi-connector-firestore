@@ -14,6 +14,8 @@ export type {
   Converter,
   StrapiQuery,
   IndexerFn,
+  FlattenFn,
+  ModelTestFn,
 } from './types';
 export type { 
   Queryable,

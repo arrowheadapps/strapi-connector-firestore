@@ -1,10 +1,9 @@
 import * as _ from 'lodash';
-import { DocumentReference, Transaction as FirestoreTransaction, DocumentData, Query, Firestore, SetOptions } from '@google-cloud/firestore';
+import { DocumentReference, Transaction as FirestoreTransaction, DocumentData, Query, Firestore, SetOptions, FirestoreDataConverter } from '@google-cloud/firestore';
 import { DeepReference } from './deep-reference';
 import { makeFlattenedSnap, mapToFlattenedDoc } from './flattened-doc';
 import { ReadRepository } from './read-repository';
 import { MorphReference } from './morph-reference';
-import type { Converter } from '../types';
 import type { FirestoreConnectorModel } from '../model';
 import type { Queryable, Snapshot, QuerySnapshot, Reference } from './queryable-collection';
 
@@ -12,7 +11,7 @@ interface WriteOp {
   ref: DocumentReference
   data: DocumentData | null
   create: boolean
-  conv: Converter<any>
+  conv: FirestoreDataConverter<any>
 }
 
 
@@ -140,9 +139,6 @@ export class TransactionImpl implements Transaction {
       const { ref, deepRef } = getDocRef(r);
       docs[i] = ref;
       deep[i] = deepRef;
-      if (deepRef) {
-        this.ensureFlatCollections.push(deepRef.parent.ensureDocument());
-      }
     });
 
     const results = await repo.getAll(docs);
@@ -228,17 +224,23 @@ export class TransactionImpl implements Transaction {
 
 
   private _mergeData(ref: Reference<any>, data: DocumentData | null, isCreating?: boolean) {
-    const { path } = ref;
-    const { deepRef } = getDocRef(ref);
+    const { deepRef, ref: rootRef } = getDocRef(ref);
+    const { path } = rootRef;
 
     if (!this.writes.has(path)) {
       const op: WriteOp = {
-        ref: getDocRef(ref).ref,
+        ref: rootRef,
         data: {},
         create: false,
-        conv: getModelByRef(ref).options.converter,
+        conv: getModelByRef(ref).db.conv,
       };
       this.writes.set(path, op);
+
+      // If the write is for a flattened collection
+      // then pre-emptively start ensuring that the document exists
+      if (deepRef) {
+        this.ensureFlatCollections.push(deepRef.parent.ensureDocument());
+      }
     }
 
     const op = this.writes.get(path)!;
