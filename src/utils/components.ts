@@ -1,7 +1,7 @@
 import { DocumentData } from '@google-cloud/firestore';
 import * as _ from 'lodash';
 import type { FirestoreConnectorModel } from "../model";
-import type { AttributeKey, StrapiAttribute, StrapiModel } from "../types";
+import type { AttributeKey, StrapiAttribute } from "../types";
 import { toFirestore } from './coerce';
 import { StatusError } from "./status-error";
 
@@ -25,20 +25,16 @@ export function getComponentModel<T extends object, R extends object = DocumentD
   return model;
 }
 
-export function componentMetaKey<T extends object>(model: StrapiModel<T>, key: AttributeKey<T>): string {
-  // TODO
-  // Allow customisation of the key for the metadata
-  return`${key}$meta`;
-}
-
 export function updateComponentsMetadata<T extends object>(model: FirestoreConnectorModel<T>, data: T, output: T = data) {
   for (const key of model.componentKeys) {
     const attr = model.attributes[key];
     if ((attr.type === 'dynamiczone')
       || (attr.type === 'component' && attr.repeatable)) {
+      const metaField = model.getMetadataField(key);
+
       // Array of components cannot be queryied in Firestore
       // So we need to maintain a map of metadata that we can query
-      const meta: any = {};
+      const meta: any = Object.assign({}, _.get(data, metaField))
       const components: any[] = _.castArray(_.get(data, key) || []);
 
       // Make an array containing the value of this attribute
@@ -47,14 +43,27 @@ export function updateComponentsMetadata<T extends object>(model: FirestoreConne
       components.forEach(component => {
         const componentModel = getComponentModel(model, key, component);
         componentModel.indexedAttributes.forEach(alias => {
-          meta[alias] = meta[alias] || [];
-          meta[alias].push(..._.castArray(_.get(component, alias, [])).map(v => {
-            return toFirestore(componentModel.attributes[alias], v);
-          }));
+          const componentAttr = componentModel.attributes[alias];
+          const metaKey = typeof componentAttr.indexed === 'string'
+            ? componentAttr.indexed
+            : alias;
+          const indexers = _.castArray((componentAttr.indexedBy || [(value) => [metaKey, value]]));
+          const values = _.castArray(_.get(component, alias, []));
+          values.forEach(v => {
+            v = toFirestore(componentAttr, v);
+            indexers.forEach(indexer => {
+              const result = indexer(v, component);
+              if (result) {
+                const [key, value] = result;
+                (meta[key] = meta[key] || []).push(value);
+              }
+            });
+          });
+          meta[alias].push(...values);
         });
       });
 
-      output[componentMetaKey(model, key)] = meta;
+      _.set(output, metaField, meta);
     }
   }
 }

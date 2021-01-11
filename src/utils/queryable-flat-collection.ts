@@ -35,7 +35,7 @@ export class QueryableFlatCollection<T extends object = DocumentData> implements
         throw new Error(`Model "${modelOrOther.globalId}" must have a value for "flattenedKey" to build a flat collection.`);
       }
 
-      const userConverter = modelOrOther.converter;
+      const userConverter = modelOrOther.options.converter;
       this.conv = {
         toFirestore: data => _.mapValues(data, d => userConverter.toFirestore(coerceModelToFirestore(modelOrOther, d))),
         fromFirestore: data => _.mapValues(data.data(), (d, id) => coerceModelFromFirestore(modelOrOther, id, userConverter.fromFirestore(d))),

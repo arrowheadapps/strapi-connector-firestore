@@ -79,9 +79,23 @@ export interface ConnectorOptions {
    * Defaults to `200`.
    */
   maxQuerySize?: number
+
+  /**
+   * The field used to build the field that will store the
+   * metadata map which holds the indexes for repeatable and
+   * dynamic-zone components.
+   * 
+   * If it is a string, then it will be combined with the component
+   * field as a postfix. If it is a function, then it will be called
+   * with the field of the attribute containing component, and the function
+   * must return the string to be used as the field.
+   * 
+   * Defaults to `"$meta"`.
+   */
+  metadataField?: string | ((attrKey: string) => string)
 }
 
-export interface ModelOptions {
+export interface ModelOptions<T extends object, R extends object = any> {
   timestamps?: boolean | [string, string]
   singleId?: string
 
@@ -122,18 +136,19 @@ export interface ModelOptions {
    */
   ensureCompnentIds?: boolean
 
-  
-
   /**
    * Override connector setting per model.
    * 
    * Defaults to `undefined` (use connector setting).
    */
   maxQuerySize?: number
-}
 
-
-export interface ModelConfig<T = any, R = any> {
+  /**
+   * Override connector setting per model.
+   * 
+   * Defaults to `undefined` (use connector setting).
+   */
+  metadataField?: string | ((attrKey: AttributeKey<T>) => string)
 
   /**
    * Converter that is run upon data immediately before it
@@ -237,7 +252,6 @@ export interface StrapiModel<T extends object = any> {
   options: {
     timestamps?: boolean | [string, string]
   }
-  config?: any;
   associations: StrapiAssociation<AttributeKey<T>>[]
 }
 
@@ -259,7 +273,12 @@ export interface StrapiAttribute {
   repeatable?: boolean
   min?: number
   max?: number
-  indexed?: boolean
+  indexed?: boolean | string
+  indexedBy?: IndexerFn | IndexerFn[]
+}
+
+export interface IndexerFn {
+  (value: any, component: object): [string, any] | undefined
 }
 
 export interface StrapiAssociation<K extends string = string> {

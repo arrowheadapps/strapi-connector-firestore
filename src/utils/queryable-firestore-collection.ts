@@ -33,7 +33,7 @@ export class QueryableFirestoreCollection<T extends object = DocumentData> imple
       this._offset = modelOrOther._offset;
     } else {
       
-      const userConverter = modelOrOther.converter;
+      const userConverter = modelOrOther.options.converter;
       this.conv = {
         toFirestore: data => userConverter.toFirestore(coerceModelToFirestore(modelOrOther, data)),
         fromFirestore: snap => coerceModelFromFirestore(modelOrOther, snap.id, userConverter.fromFirestore(snap.data())),

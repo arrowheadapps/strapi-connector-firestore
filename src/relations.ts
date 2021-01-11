@@ -5,7 +5,6 @@ import type { StrapiModel, StrapiAttribute } from './types';
 import type { Reference } from './utils/queryable-collection';
 import type { Transaction } from './utils/transaction';
 import { RelationAttrInfo, RelationHandler, RelationInfo } from './utils/relation-handler';
-import { componentMetaKey } from './utils/components';
 
 
 /**
@@ -162,7 +161,7 @@ function findParentModels<T extends object>(componentModel: FirestoreConnectorMo
                   parentAlias: alias,
                 },
                 alias: isRepeatable 
-                  ? [componentMetaKey(otherModel, alias), componentAttr.alias].join('.')
+                  ? [otherModel.getMetadataField(alias), componentAttr.alias].join('.')
                   : [alias, componentAttr.alias].join('.'),
               } : undefined,
               parentModels: undefined,

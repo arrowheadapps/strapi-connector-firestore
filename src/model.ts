@@ -3,7 +3,7 @@ import * as utils from 'strapi-utils';
 import { QueryableFirestoreCollection } from './utils/queryable-firestore-collection';
 import { QueryableFlatCollection } from './utils/queryable-flat-collection';
 import { QueryableComponentCollection } from './utils/queryable-component-collection';
-import type { AttributeKey, ConnectorOptions, Converter, ModelConfig, ModelOptions, Strapi, StrapiAttributeType, StrapiModel, StrapiModelRecord } from './types';
+import type { AttributeKey, ConnectorOptions, ModelOptions, Strapi, StrapiAttributeType, StrapiModel, StrapiModelRecord } from './types';
 import { populateDoc, populateDocs } from './populate';
 import { buildPrefixQuery } from './utils/prefix-query';
 import type{ QueryableCollection, Snapshot } from './utils/queryable-collection';
@@ -11,7 +11,6 @@ import type { Firestore } from '@google-cloud/firestore';
 import { Transaction, TransactionImpl } from './utils/transaction';
 import type { RelationHandler } from './utils/relation-handler';
 import { buildRelations } from './relations';
-import { componentMetaKey } from './utils/components';
 
 export const DEFAULT_CREATE_TIME_KEY = 'createdAt';
 export const DEFAULT_UPDATE_TIME_KEY = 'updatedAt';
@@ -50,8 +49,7 @@ export function* allModels(strapiInstance = strapi): Generator<FirestoreConnecto
  * Firestore connector implementation of the Strapi model interface.
  */
 export interface FirestoreConnectorModel<T extends object = object> extends StrapiModel<T> {
-  options: Required<ModelOptions>;
-  config: ModelConfig;
+  options: Required<ModelOptions<T>>;
   defaultPopulate: AttributeKey<T>[];
 
   assocKeys: AttributeKey<T>[];
@@ -66,11 +64,11 @@ export interface FirestoreConnectorModel<T extends object = object> extends Stra
    * when embedded as an array (dynamiczone or repeatable).
    */
   indexedAttributes: AttributeKey<T>[];
+  getMetadataField: (attrKey: AttributeKey<T>) => string
 
   firestore: Firestore;
   db: QueryableCollection<T>;
   flattenedKey: string | null;
-  converter: Converter<T>;
   timestamps: [string, string] | null;
   singleKey: string | null;
 
@@ -105,10 +103,10 @@ export function mountModel<T extends object>({ strapi, model: strapiModel, fires
   strapiModel.attributes = strapiModel.attributes || {};
 
   const isComponent = strapiModel.modelType === 'component';
-  const rootOpts: ModelOptions = strapiModel.options || {};
+  const rootOpts: ModelOptions<T> = strapiModel.options || {};
   const flattenedKey = defaultFlattenOpts(strapiModel, rootOpts, connectorOptions);
 
-  const options: Required<ModelOptions> = {
+  const options: Required<ModelOptions<T>> = {
     timestamps: rootOpts.timestamps || false,
     logQueries: rootOpts.logQueries ?? connectorOptions.logQueries,
     singleId: rootOpts.singleId || connectorOptions.singleId,
@@ -117,6 +115,11 @@ export function mountModel<T extends object>({ strapi, model: strapiModel, fires
     maxQuerySize: rootOpts.maxQuerySize ?? connectorOptions.maxQuerySize,
     ensureCompnentIds: rootOpts.ensureCompnentIds ?? connectorOptions.ensureCompnentIds,
     allowNonNativeQueries: defaultAllowNonNativeQueries(strapiModel, rootOpts, connectorOptions),
+    metadataField: rootOpts.metadataField || connectorOptions.metadataField,
+    converter: rootOpts.converter || { 
+      toFirestore: data => data,
+      fromFirestore: data => data as T,
+    },
   };
 
   const timestamps: [string, string] | null = (typeof options.timestamps === 'boolean')
@@ -126,19 +129,16 @@ export function mountModel<T extends object>({ strapi, model: strapiModel, fires
 
   const singleKey = strapiModel.kind === 'singleType' ? options.singleId : null;
 
-  const config: ModelConfig = strapiModel.config || {};
-  const converter = config.converter || { 
-    toFirestore: data => data,
-    fromFirestore: data => data as T,
-  };
-
   const componentKeys = (Object.keys(strapiModel.attributes) as AttributeKey<T>[])
     .filter(key => {
       const { type } = strapiModel.attributes[key];
       return type && ['component', 'dynamiczone'].includes(type);
     });
 
-  const componentMapKeys = componentKeys.map(key => componentMetaKey(strapiModel, key));
+  const getMetadataField = typeof options.metadataField === 'string'
+    ? (attrKey: AttributeKey<T>) => attrKey + options.metadataField
+    : options.metadataField;
+  const componentMapKeys = componentKeys.map(key => getMetadataField(key));
   const privateAttributes: AttributeKey<T>[] = _.uniq(
     utils.contentTypes.getPrivateAttributes(strapiModel).concat(componentMapKeys)
   );
@@ -149,10 +149,14 @@ export function mountModel<T extends object>({ strapi, model: strapiModel, fires
     });
   
   const indexedKeys = (Object.keys(strapiModel.attributes) as AttributeKey<T>[])
-    .filter(key => strapiModel.attributes[key].indexed);
+    .filter(key => {
+      const { indexed, indexedBy } = strapiModel.attributes[key];
+      return indexed || indexedBy;
+    });
   const indexedAttributes = isComponent
     ? _.uniq(assocKeys.concat(indexedKeys))
     : [];
+
 
   const defaultPopulate = assocKeys
     .filter(alias => {
@@ -230,10 +234,8 @@ export function mountModel<T extends object>({ strapi, model: strapiModel, fires
   const model = Object.assign(strapiModel, {
     firestore,
     options,
-    config,
     flattenedKey,
     timestamps,
-    converter,
     singleKey,
     relations: (strapiModel as FirestoreConnectorModel<T>).relations,
     isComponent,
@@ -243,6 +245,7 @@ export function mountModel<T extends object>({ strapi, model: strapiModel, fires
     componentKeys,
     defaultPopulate,
     indexedAttributes,
+    getMetadataField,
 
     // We assign this next
     db: db!,
@@ -291,7 +294,7 @@ export function mountModel<T extends object>({ strapi, model: strapiModel, fires
 }
 
 
-function defaultAllowNonNativeQueries(model: StrapiModel<any>, options: ModelOptions, rootOptions: Required<ConnectorOptions>) {
+function defaultAllowNonNativeQueries<T extends object>(model: StrapiModel<any>, options: ModelOptions<T>, rootOptions: Required<ConnectorOptions>) {
   if (options.allowNonNativeQueries === undefined) {
     const rootAllow = rootOptions.allowNonNativeQueries;
     return (rootAllow instanceof RegExp)
@@ -302,7 +305,7 @@ function defaultAllowNonNativeQueries(model: StrapiModel<any>, options: ModelOpt
   }
 }
 
-function defaultFlattenOpts(model: StrapiModel<any>, options: ModelOptions, rootOptions: Required<ConnectorOptions>) {
+function defaultFlattenOpts<T extends object>(model: StrapiModel<any>, options: ModelOptions<T>, rootOptions: Required<ConnectorOptions>) {
   if (options.flatten === undefined) {
     
     const [flattenedId] = rootOptions.flattenModels
@@ -335,7 +338,7 @@ function defaultFlattenOpts(model: StrapiModel<any>, options: ModelOptions, root
   }
 }
 
-function defaultSearchAttrOpts(model: StrapiModel<any>, options: ModelOptions) {
+function defaultSearchAttrOpts<T extends object>(model: StrapiModel<any>, options: ModelOptions<T>) {
   const searchAttr = options.searchAttribute || '';
 
   if (searchAttr) {

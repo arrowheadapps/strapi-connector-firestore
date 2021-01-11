@@ -93,6 +93,7 @@ These are the available options to be specified in the Strapi database configura
 | `options.allowNonNativeQueries` | `boolean \| RexExp \| undefined` | `false` | Indicates wheter to allow the connector to manually perform search and other query types than are not natively supported by Firestore (see [Search and non-native queries](#search-and-non-native-queries)). These can have poor performance and higher usage costs, and can cause some queries to fail. If disabled, then search will not function. If a `RegExp` is provided, then this will be tested against each model's `uid` (but this will still be overridden by the model's own setting).  |
 | `options.ensureCompnentIds` | `boolean \| undefined` | `false` | If `true`, then ID's are automatically generated and assigned for embedded components (including dynamic zone) if they don't already exist. ID's are assigned immediately before being sent to Firestore, so they aren't be assigned yet during lifecycle hooks. |
 | `options.maxQuerySize` | `number \| undefined` | `200` | If defined, enforces a maximum limit on the size of all queries. You can use this to limit out-of-control quota usage. Does not apply to flattened collections which use only a single read operation anyway. Set to `0` to remove the limit. <br/><br/>**WARNING:** It is highly recommend to set a maximum limit, and to set it as low as applicable for your application, to limit unexpected quota usage. |
+| `options.metadataField` | `string \| ((attrKey: string) => string) \| undefined` | `"$meta"` | The field used to build the field that will store the metadata map which holds the indexes for repeatable and dynamic-zone components. If it is a string, then it will be combined with the component  field as a postfix. If it is a function, then it will be called with the field of the attribute containing component, and the function must return the string to be used as the field. See [Indexing fields in repeatable and dynamic-zone components](#indexing-fields-in-repeatable-and-dynamic-zone-components). |
 
 ### Model options
 
@@ -107,7 +108,9 @@ In addition to the normal model options, you can provide the following to custom
 | `options.ensureCompnentIds` | `boolean \| undefined` | `undefined` | If defined, overrides the connector's global `ensureCompnentIds` setting (see above) for this model. |
 | `options.maxQuerySize` | `number \| undefined` | `undefined` | If defined, overrides the connector's global `maxQuerySize` setting (see above) for this model. Set to `0` to disable the limit. |
 | `options.logQueries`   | `boolean \| undefined` | `undefined` | If defined, overrides the connector's global `logQueries` setting (see above) for this model. |
-| `config.converter` | `{ toFirestore: (data: Object) => Object, fromFirestore: (data: Object) => Object }` | `undefined` | An object with functions used to convert objects going in and out of Firestore. The `toFirestore` function will be called to convert an object immediately before writing to Firestore. The `fromFirestore` function will be called to convert an object immediately after it is read from Firestore. You can config this parameter in a Javascript file called `./api/{model-name}/models/{model-name}.config.js`, which must export an object with the `converter` property. |
+| `options.converter` | `{ toFirestore: (data: Object) => Object, fromFirestore: (data: Object) => Object }` | `undefined` | An object with functions used to convert objects going in and out of Firestore. The `toFirestore` function will be called to convert an object immediately before writing to Firestore. The `fromFirestore` function will be called to convert an object immediately after it is read from Firestore. You can config this parameter in a Javascript file called `./api/{model-name}/models/{model-name}.config.js`, which must export an object with the `converter` property. |
+| `options.metadataField` | `string \| ((attrKey: string) => string) \| undefined` | `undefined` | If defined, overrides the connector's global `metadataField` setting (see above) for this model. |
+
 
 ### Collection flattening
 
@@ -149,7 +152,7 @@ Repeatable components and dynamiczone components are embedded as an array in the
 
 To support querying, the connector can be configured to maintain a metadata map (index) for any attribute inside these repeatable components. This configured by adding `"indexed": true` to any attribute in the component model JSON. This is ignored for non-repeatable components, because they can be queried directly.
 
-The connector automatically does this for all relation attributes.
+The connector automatically does this for all relation attributes. This can be disabled by setting `"indexed": false` on a relation attribute. Be aware that this will break relation behaviour and result in dangling references when the referred-to documents are deleted.
 
 The metadata map is stored in the document in a field named by appending "$meta" to the name of the field storing the components.
 
@@ -173,6 +176,10 @@ Where the "my-component" model JSON is like below:
 ```JSON
 {
   "attributes": {
+    "name": {
+      "type": "string",
+      "indexed": true
+    },
     "name": {
       "type": "string",
       "indexed": true
@@ -214,6 +221,36 @@ Such a model may have a document with the data below:
 Where the `myRepeatableComponents$meta` field is automatically maintained and overwritten by the connector.
 
 In this example, we can query documents based on a field inside a component using a query like `.where('myRepeatableComponents$meta.name', 'array-contains', 'Component 1')`.
+
+The `"indexed"` field on the attribute can be:
+- `boolean`, if `true` then the attribute key will be used as the key in the metadata map;
+- `string`, which enables indexing, and the string will be used as the key in the metadata map;
+
+An `"indexedBy"` field can be provided on the attribute which takes precedence over the `"indexed"` field. It must be defined in JavaScript, not JSON. It is a function or array of functions which take the value of the attribute, and the parent component object and returns a tuple with of the key and the value to be added to the index for that key. If it returns undefined, the value will be omitted from the index.
+
+This allows advanced indexing such as below:
+
+```JavaScript
+module.exports = {
+  attributes: {
+    active: {
+      type: 'boolean',
+    },
+    name: {
+      type: 'string',
+      indexedBy: [
+        // Create an index of all names
+        (value) => ['names', value]
+        // Create an index of all names that are active
+        (value, obj) => obj.active ? ['namesActive', value] : undefined,
+        // Create an index of all names that are inactive
+        (value, obj) => !obj.active ? ['namesInactive', value] : undefined,
+      ],
+    },
+  },
+};
+```
+
 
 ### Minimal example
 
