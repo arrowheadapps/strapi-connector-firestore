@@ -226,25 +226,30 @@ The `"indexed"` field on the attribute can be:
 - `boolean`, if `true` then the attribute key will be used as the key in the metadata map;
 - `string`, which enables indexing, and the string will be used as the key in the metadata map;
 
-An `"indexedBy"` field can be provided on the attribute which takes precedence over the `"indexed"` field. It must be defined in JavaScript, not JSON. It is a function or array of functions which take the value of the attribute, and the parent component object and returns a tuple with of the key and the value to be added to the index for that key. If it returns undefined, the value will be omitted from the index.
+An `"indexedBy"` field can be provided on the attribute which takes precedence (except for relation attributes, where a default indexer based on `"indexed"` is always applied in addition to any indexers defined in `"indexedBy"`) over the `"indexed"` field. It must be defined in JavaScript, not JSON. It is a function or array of functions which take the value of the attribute, and the parent component object and returns a tuple with of the key and the value to be added to the index for that key. If it returns undefined, the value will be omitted from the index.
 
 This allows advanced indexing such as below:
 
 ```JavaScript
 module.exports = {
   attributes: {
+    name: {
+      type: 'string',
+    }
     active: {
       type: 'boolean',
     },
-    name: {
-      type: 'string',
+    related: {
+      collection: 'other-model',
+      // Because it is a relation the connector will always apply a
+      // default indexer in attition to those defined in indexedBy
+      // but we can override the key
+      indexed: 'relations',
       indexedBy: [
-        // Create an index of all names
-        (value) => ['names', value]
         // Create an index of all names that are active
-        (value, obj) => obj.active ? ['namesActive', value] : undefined,
+        (value, obj) => obj.active ? ['relationsActive', value] : undefined,
         // Create an index of all names that are inactive
-        (value, obj) => !obj.active ? ['namesInactive', value] : undefined,
+        (value, obj) => !obj.active ? ['relationsInactive', value] : undefined,
       ],
     },
   },

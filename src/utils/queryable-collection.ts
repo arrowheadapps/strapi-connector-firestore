@@ -21,6 +21,10 @@ export function refEquals(a: Reference<any> | null | undefined, b: Reference<any
   return false;
 }
 
+export function isEqualHandlingRef(a: any, b: any): boolean {
+  return refShapeEquals(a, b);
+}
+
 export function refShapeEquals(a: ReferenceShape<any> | null | undefined, b: ReferenceShape<any> | null | undefined): boolean {
   return _.isEqualWith(a, b, (aValue, bValue) => {
     if ((aValue instanceof DocumentReference)

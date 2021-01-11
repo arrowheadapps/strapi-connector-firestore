@@ -1,8 +1,9 @@
 import { DocumentData } from '@google-cloud/firestore';
 import * as _ from 'lodash';
 import type { FirestoreConnectorModel } from "../model";
-import type { AttributeKey, StrapiAttribute } from "../types";
+import type { AttributeKey, IndexerFn, StrapiAttribute } from "../types";
 import { toFirestore } from './coerce';
+import { isEqualHandlingRef } from './queryable-collection';
 import { StatusError } from "./status-error";
 
 export interface Component<T extends object> {
@@ -44,27 +45,56 @@ export function updateComponentsMetadata<T extends object>(model: FirestoreConne
         const componentModel = getComponentModel(model, key, component);
         componentModel.indexedAttributes.forEach(alias => {
           const componentAttr = componentModel.attributes[alias];
-          const metaKey = typeof componentAttr.indexed === 'string'
-            ? componentAttr.indexed
-            : alias;
-          const indexers = _.castArray((componentAttr.indexedBy || [(value) => [metaKey, value]]));
           const values = _.castArray(_.get(component, alias, []));
+          const { indexers } = makeIndexerInfo(alias, componentAttr);
           values.forEach(v => {
             v = toFirestore(componentAttr, v);
             indexers.forEach(indexer => {
               const result = indexer(v, component);
               if (result) {
+                if (!Array.isArray(result) || (result.length !== 2)) {
+                  throw new Error(`Function in "indexedBy" for attribute ${alias} must return a tuple.`);
+                }
                 const [key, value] = result;
-                (meta[key] = meta[key] || []).push(value);
+                const arr: any[] = meta[key] = meta[key] || [];
+                // Only add if the element doesnt already exist
+                if (!arr.some(v => isEqualHandlingRef(v, value))) {
+                  arr.push(value);
+                }
               }
             });
           });
-          meta[alias].push(...values);
         });
       });
 
       _.set(output, metaField, meta);
     }
+  }
+}
+
+function makeIndexerInfo(alias: string, attr: StrapiAttribute): { metaKey: string, indexers: IndexerFn[] } {
+  const metaKey = typeof attr.indexed === 'string' ? attr.indexed : alias;
+  const defaultIndexer: IndexerFn = (value) => [metaKey, value];
+  if (attr.indexedBy) {
+    if (attr.model || attr.collection) {
+      // Force a default indexer on relations because we rely on
+      // it for reverse lookup of relations
+      return {
+        metaKey,
+        indexers: [defaultIndexer, ..._.castArray(attr.indexedBy)],
+      };
+    } else {
+      // For normal attributes `indexedBy` overrides `indexed`
+      return {
+        metaKey,
+        indexers: _.castArray(attr.indexedBy),
+      };
+    }
+  } else {
+    return {
+      metaKey,
+      indexers: [defaultIndexer],
+    };
   }
 }
 

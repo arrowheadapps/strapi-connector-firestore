@@ -236,7 +236,7 @@ export class TransactionImpl implements Transaction {
         ref: getDocRef(ref).ref,
         data: {},
         create: false,
-        conv: getModelByRef(ref).converter,
+        conv: getModelByRef(ref).options.converter,
       };
       this.writes.set(path, op);
     }
