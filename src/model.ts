@@ -112,7 +112,7 @@ export function mountModel<T extends object>({ strapi, model: strapiModel, fires
     singleId: rootOpts.singleId || connectorOptions.singleId,
     flatten: flattenedKey != null,
     searchAttribute: defaultSearchAttrOpts(strapiModel, rootOpts),
-    maxQuerySize: rootOpts.maxQuerySize ?? connectorOptions.maxQuerySize,
+    maxQuerySize: flattenedKey ? 0 : rootOpts.maxQuerySize ?? connectorOptions.maxQuerySize,
     ensureCompnentIds: rootOpts.ensureCompnentIds ?? connectorOptions.ensureCompnentIds,
     allowNonNativeQueries: defaultAllowNonNativeQueries(strapiModel, rootOpts, connectorOptions),
     metadataField: rootOpts.metadataField || connectorOptions.metadataField,
