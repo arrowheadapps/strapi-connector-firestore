@@ -8,6 +8,7 @@ import { FlatReferenceShape, MorphReferenceShape, Reference, ReferenceShape } fr
 import { DeepReference } from './deep-reference';
 import { MorphReference } from './morph-reference';
 import { StatusError } from './status-error';
+import { FieldOperation } from './field-operation';
 
 export interface CoerceFn {
   (relation: Partial<StrapiAttribute> | undefined, value: unknown): unknown
@@ -115,6 +116,11 @@ export function toFirestore(relation: Partial<StrapiAttribute> | undefined, valu
   }
 
   if ((value instanceof DeepReference) || (value instanceof MorphReference)) {
+    return value.toFirestoreValue();
+  }
+
+  if (value instanceof FieldOperation) {
+    // Convert FieldOperation to its native counterpart
     return value.toFirestoreValue();
   }
 

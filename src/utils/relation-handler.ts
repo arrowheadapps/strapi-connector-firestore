@@ -172,7 +172,7 @@ export class RelationHandler<T extends object, R extends object = object> {
    * @param ref The reference to this
    * @param otherAttr Attribute info of the other end (which refers to this)
    */
-  private _makeRefToThis(ref: Reference<T>, otherAttr: RelationAttrInfo): ReferenceShape<T> {
+  private _makeRefToThis(ref: Reference<T>, otherAttr: RelationAttrInfo): Reference<T> {
     if (otherAttr.isMorph && !(ref instanceof MorphReference)) {
       const { attr } = this.thisEnd;
       if (!attr && otherAttr.filter) {
@@ -181,7 +181,7 @@ export class RelationHandler<T extends object, R extends object = object> {
       ref = new MorphReference(ref, attr ? attr.alias : null);
     }
 
-    return coerceToReferenceShape(ref);
+    return ref;
   }
 
   /**
@@ -230,22 +230,7 @@ export class RelationHandler<T extends object, R extends object = object> {
         _.set(newData, parentAlias, components);
         _.castArray(components).forEach(component => {
           if (component) {
-            if (attr.isArray) {
-              const rawValue = _.get(component, componentAlias);
-              let arr = (Array.isArray(rawValue) ? rawValue : []);
-              if (set) {
-                // Add refValue to the array if it isn't in there
-                if (!arr.some(value => refShapeEquals(value, refValue))) {
-                  arr.push(refValue);
-                }
-              } else {
-                // Remove refValue from the array
-                arr = arr.filter(value => !refShapeEquals(value, refValue));
-              }
-              _.set(component, componentAlias, arr);
-            } else {
-              _.set(component, componentAlias, set ? refValue : null);
-            }
+            
           }
         });
 
