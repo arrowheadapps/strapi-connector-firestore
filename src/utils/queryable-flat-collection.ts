@@ -152,10 +152,10 @@ export class QueryableFlatCollection<T extends object = DocumentData> implements
 
   whereAny(filters: (StrapiWhereFilter | WhereFilter)[]): QueryableFlatCollection<T> {
     const other = new QueryableFlatCollection(this);
-    other._filters.push(data => filters.some(({ field, operator, value }) => {
-      const filter = convertWhere(this.model, field, operator, value, 'manualOnly');
-      return filter(data);
-    }));
+    const filterFns = filters.map(({ field, operator, value }) => {
+      return convertWhere(this.model, field, operator, value, 'manualOnly');
+    });
+    other._filters.push(data => filterFns.some(f => f(data)));
     return other;
   }
 

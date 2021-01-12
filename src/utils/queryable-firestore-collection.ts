@@ -128,10 +128,10 @@ export class QueryableFirestoreCollection<T extends object = DocumentData> imple
       throw new Error('OR filters and search are not natively supported by Firestore. Use the `allowNonNativeQueries` option to enable manual search, or `searchAttribute` to enable primitive search.');
     }
     const other = new QueryableFirestoreCollection(this);
-    other.manualFilters.push(data => filters.some(({ field, operator, value }) => {
-      const filter = convertWhere(this.model, field, operator, value, 'manualOnly');
-      return filter(data);
-    }));
+    const filterFns = filters.map(({ field, operator, value }) => {
+      return convertWhere(this.model, field, operator, value, 'manualOnly');
+    });
+    other.manualFilters.push(data => filterFns.some(f => f(data)));
     return other;
   }
 
