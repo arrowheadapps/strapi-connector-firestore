@@ -71,7 +71,12 @@ function coerceModelRecursive<T extends object>(model: FirestoreConnectorModel<T
 
     const attr = model.attributes[path];
     if (!attr && _.isPlainObject(value)) {
-      return coerceModelRecursive(model, value, path, coerceFn);
+      if (key) {
+        return coerceModelRecursive(model, value, path, coerceFn);
+      } else {
+        // Stop infinite recursion
+        return undefined;
+      }
     }
 
     return coerceAttribute(attr, value, coerceFn);

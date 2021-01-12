@@ -2,13 +2,14 @@ import * as _ from 'lodash';
 import { ManualFilter, convertWhere, WhereFilter } from './convert-where';
 import { Query, Transaction, QueryDocumentSnapshot, FieldPath, WhereFilterOp, DocumentData, CollectionReference, FirestoreDataConverter, DocumentReference } from '@google-cloud/firestore';
 import type { QueryableCollection, QuerySnapshot, Snapshot } from './queryable-collection';
-import type { StrapiWhereOperator } from '../types';
+import type { StrapiWhereFilter, StrapiWhereOperator } from '../types';
 import { coerceModelFromFirestore, coerceModelToFirestore } from './coerce';
 import type { FirestoreConnectorModel } from '../model';
 
 
 export class QueryableFirestoreCollection<T extends object = DocumentData> implements QueryableCollection<T> {
 
+  private readonly model: FirestoreConnectorModel<T>
   private readonly collection: CollectionReference<T>
   readonly conv: FirestoreDataConverter<T>;
   
@@ -23,6 +24,7 @@ export class QueryableFirestoreCollection<T extends object = DocumentData> imple
   constructor(model: FirestoreConnectorModel<T>)
   constructor(modelOrOther: FirestoreConnectorModel<T> | QueryableFirestoreCollection<T>) {
     if (modelOrOther instanceof QueryableFirestoreCollection) {
+      this.model = modelOrOther.model;
       this.collection = modelOrOther.collection;
       this.conv = modelOrOther.conv;
       this.allowNonNativeQueries = modelOrOther.allowNonNativeQueries;
@@ -33,6 +35,7 @@ export class QueryableFirestoreCollection<T extends object = DocumentData> imple
       this._offset = modelOrOther._offset;
     } else {
       
+      this.model = modelOrOther;
       const userConverter = modelOrOther.options.converter;
       this.conv = {
         toFirestore: data => userConverter.toFirestore(coerceModelToFirestore(modelOrOther, data)),
@@ -103,11 +106,11 @@ export class QueryableFirestoreCollection<T extends object = DocumentData> imple
     }
   }
 
-  where(filter: WhereFilter): QueryableFirestoreCollection<T>
-  where(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator | RegExp, value: any): QueryableFirestoreCollection<T>
-  where(fieldOrFilter: string | FieldPath | WhereFilter, operator?: WhereFilterOp | StrapiWhereOperator | RegExp, value?: any): QueryableFirestoreCollection<T> {
+  where(filter: StrapiWhereFilter | WhereFilter): QueryableFirestoreCollection<T>
+  where(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator, value: any): QueryableFirestoreCollection<T>
+  where(fieldOrFilter: string | FieldPath | StrapiWhereFilter | WhereFilter, operator?: WhereFilterOp | StrapiWhereOperator, value?: any): QueryableFirestoreCollection<T> {
     if ((typeof fieldOrFilter === 'string') || (fieldOrFilter instanceof FieldPath)) {
-      const filter = convertWhere(fieldOrFilter, operator!, value, this.allowNonNativeQueries ? 'preferNative' : 'nativeOnly');
+      const filter = convertWhere(this.model, fieldOrFilter, operator!, value, this.allowNonNativeQueries ? 'preferNative' : 'nativeOnly');
       const other = new QueryableFirestoreCollection(this);
       if (typeof filter === 'function') {
         other.manualFilters.push(filter);
@@ -120,12 +123,15 @@ export class QueryableFirestoreCollection<T extends object = DocumentData> imple
     }
   }
 
-  whereAny(filters: ManualFilter[]): QueryableFirestoreCollection<T> {
+  whereAny(filters: (StrapiWhereFilter | WhereFilter)[]): QueryableFirestoreCollection<T> {
     if (!this.allowNonNativeQueries) {
-      throw new Error('Search is not natively supported by Firestore. Use the `allowNonNativeQueries` option to enable manual search, or `searchAttribute` to enable primitive search.');
+      throw new Error('OR filters and search are not natively supported by Firestore. Use the `allowNonNativeQueries` option to enable manual search, or `searchAttribute` to enable primitive search.');
     }
     const other = new QueryableFirestoreCollection(this);
-    other.manualFilters.push(data => filters.some(f => f(data)));
+    other.manualFilters.push(data => filters.some(({ field, operator, value }) => {
+      const filter = convertWhere(this.model, field, operator, value, 'manualOnly');
+      return filter(data);
+    }));
     return other;
   }
 

@@ -1,7 +1,7 @@
 import * as _ from 'lodash';
 import { OrderByDirection, DocumentData, DocumentReference, FieldPath, WhereFilterOp, Transaction, FirestoreDataConverter } from '@google-cloud/firestore';
-import type { StrapiWhereOperator, } from '../types';
-import type { ManualFilter, WhereFilter } from './convert-where';
+import type { StrapiWhereFilter, StrapiWhereOperator, } from '../types';
+import type { WhereFilter } from './convert-where';
 import { DeepReference } from './deep-reference';
 import { MorphReference } from './morph-reference';
 
@@ -78,9 +78,9 @@ export interface QuerySnapshot<T extends object = DocumentData> {
 export interface Queryable<T extends object = DocumentData> {
   get(trans?: Transaction): Promise<QuerySnapshot<T>>;
   
-  where(field: string | FieldPath, opStr: WhereFilterOp | StrapiWhereOperator | RegExp, value: any): Queryable<T>;
-  where(filter: WhereFilter): Queryable<T>;
-  whereAny(filters: ManualFilter[]): Queryable<T>;
+  where(field: string | FieldPath, opStr: WhereFilterOp | StrapiWhereOperator, value: any): Queryable<T>;
+  where(filter: StrapiWhereFilter | WhereFilter): Queryable<T>;
+  whereAny(filters: (StrapiWhereFilter | WhereFilter)[]): Queryable<T>;
   orderBy(field: string | FieldPath, directionStr?: OrderByDirection): Queryable<T>;
   limit(limit: number): Queryable<T>;
   offset(offset: number): Queryable<T>;

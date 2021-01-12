@@ -3,13 +3,11 @@ import { convertRestQueryParams } from 'strapi-utils';
 import { FieldPath } from '@google-cloud/firestore';
 import { populateDoc, populateDocs } from './populate';
 import { relationsDelete, relationsUpdate } from './relations';
-import { coerceAttribute, toFirestore } from './utils/coerce';
-import { convertWhere, ManualFilter } from './utils/convert-where';
 import { buildPrefixQuery } from './utils/prefix-query';
 import { StatusError } from './utils/status-error';
 import { updateComponentsMetadata, validateComponents } from './utils/components';
 import type { FirestoreConnectorModel } from './model';
-import type { StrapiQuery, StrapiAttributeType, StrapiFilter, AttributeKey, StrapiContext } from './types';
+import type { StrapiQuery, StrapiAttributeType, StrapiFilter, AttributeKey, StrapiContext, StrapiWhereFilter } from './types';
 import type { Queryable, Reference, Snapshot } from './utils/queryable-collection';
 import type { Transaction } from './utils/transaction';
 
@@ -278,8 +276,7 @@ function buildSearchQuery<T extends object>(model: FirestoreConnectorModel<T>, v
       case 'json':
       case 'boolean':
         // Use equality operator 
-        value = coerceAttribute(model.attributes[field], value, toFirestore);
-        return query.where(convertWhere(field, 'eq', value, 'nativeOnly'));
+        return query.where(field, 'eq', value);
 
       case 'string':
       case 'text':
@@ -288,11 +285,10 @@ function buildSearchQuery<T extends object>(model: FirestoreConnectorModel<T>, v
       case 'enumeration':
       case 'uid':
         // Use prefix operator
-        value = coerceAttribute(model.attributes[field], value, toFirestore);
         const { gte, lt } = buildPrefixQuery(value);
         return query
-          .where(convertWhere(field, 'gte', gte, 'nativeOnly'))
-          .where(convertWhere(field, 'lt', lt, 'nativeOnly'));
+          .where(field, 'gte', gte)
+          .where(field, 'lt', lt);
 
       case 'password':
         // Explicitly don't search in password fields
@@ -305,10 +301,10 @@ function buildSearchQuery<T extends object>(model: FirestoreConnectorModel<T>, v
   } else {
 
     // Build a manual implementation of fully-featured search
-    const filters: ManualFilter[] = [];
+    const filters: StrapiWhereFilter[] = [];
 
     if (value != null) {
-      filters.push(convertWhere(FieldPath.documentId(), 'contains', value.toString(), 'manualOnly'));
+      filters.push({ field: model.primaryKey, operator: 'containss', value });
     }
 
     Object.keys(model.attributes).forEach((field) => {
@@ -320,7 +316,7 @@ function buildSearchQuery<T extends object>(model: FirestoreConnectorModel<T>, v
         case 'biginteger':
           try {
             // Use equality operator for numbers
-            filters.push(convertWhere(field, 'eq', coerceAttribute(attr, value, toFirestore), 'manualOnly'));
+            filters.push({ field, operator: 'eq', value });
           } catch {
             // Ignore if the query can't be coerced to this type
           }
@@ -334,7 +330,7 @@ function buildSearchQuery<T extends object>(model: FirestoreConnectorModel<T>, v
         case 'uid':
           try {
             // User contains operator for strings
-            filters.push(convertWhere(field, 'contains', coerceAttribute(attr, value, toFirestore), 'manualOnly'));
+            filters.push({ field, operator: 'contains', value });
           } catch {
             // Ignore if the query can't be coerced to this type
           }
@@ -388,44 +384,25 @@ function buildFirestoreQuery<T extends object>(model: FirestoreConnectorModel<T>
         });
 
     } else {
-      for (let filter of (where || [])) {
-        let { operator, value } = filter;
-        let field: string | FieldPath = filter.field;
-
+      for (let { field, operator, value } of (where || [])) {
         if (operator === 'in') {
-          value = _.castArray(value);
-          if ((value as Array<any>).length === 0) {
+          if (Array.isArray(value) && (value.length === 0)) {
             // Special case: empty query
             return null;
           }
+          value = _.castArray(value);
         }
         if (operator === 'nin') {
-          value = _.castArray(value);
-          if ((value as Array<any>).length === 0) {
+          if (Array.isArray(value) && (value.length === 0)) {
             // Special case: no effect
             continue;
           }
+          value = _.castArray(value);
         }
 
         // Prevent querying passwords
         if (model.attributes[field]?.type === 'password') {
           throw new Error('Not allowed to query password fields');
-        }
-
-        // Coerce to the appropriate types
-        // Because values from querystring will always come in as strings
-        
-        if ((field === model.primaryKey) || (field === 'id')) {
-          // Detect and enable filtering on document ID
-          value = Array.isArray(value)
-            ? value.map(v => v?.toString())
-            : value?.toString();
-          field = FieldPath.documentId();
-
-        } else if (operator !== 'null') {
-          // Don't coerce the 'null' operatore because the value is true/false
-          // not the type of the field
-          value = coerceAttribute(model.attributes[field], value, toFirestore);
         }
 
         query = query.where(field, operator, value);

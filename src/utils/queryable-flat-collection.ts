@@ -1,9 +1,9 @@
 import * as _ from 'lodash';
 import * as path from 'path';
-import { getFieldPath, convertWhere, ManualFilter, WhereFilter } from './convert-where';
+import { convertWhere, ManualFilter, WhereFilter, getAtFieldPath } from './convert-where';
 import { DocumentReference, OrderByDirection, Transaction, FieldPath, WhereFilterOp, DocumentData, FirestoreDataConverter } from '@google-cloud/firestore';
 import type { QueryableCollection, QuerySnapshot, Snapshot } from './queryable-collection';
-import type { StrapiWhereOperator } from '../types';
+import type { StrapiWhereFilter, StrapiWhereOperator } from '../types';
 import { DeepReference } from './deep-reference';
 import { coerceModelFromFirestore, coerceModelToFirestore } from './coerce';
 import type { FirestoreConnectorModel } from '../model';
@@ -19,11 +19,14 @@ export class QueryableFlatCollection<T extends object = DocumentData> implements
   private _limit?: number
   private _offset?: number
 
+  private readonly model: FirestoreConnectorModel<T>
+
   constructor(model: FirestoreConnectorModel<T>)
   constructor(other: QueryableFlatCollection<T>)
   constructor(modelOrOther: FirestoreConnectorModel<T> | QueryableFlatCollection<T>) {
     if (modelOrOther instanceof QueryableFlatCollection) {
       // Copy the values
+      this.model = modelOrOther.model;
       this.flatDoc = modelOrOther.flatDoc;
       this.conv = modelOrOther.conv;
       this._filters = modelOrOther._filters.slice();
@@ -31,6 +34,7 @@ export class QueryableFlatCollection<T extends object = DocumentData> implements
       this._limit = modelOrOther._limit;
       this._offset = modelOrOther._offset;
     } else {
+      this.model = modelOrOther;
       if (!modelOrOther.flattenedKey) {
         throw new Error(`Model "${modelOrOther.globalId}" must have a value for "flattenedKey" to build a flat collection.`);
       }
@@ -114,7 +118,7 @@ export class QueryableFlatCollection<T extends object = DocumentData> implements
 
     if (this._orderBy.length) {
       this._orderBy.forEach(({ field, directionStr }) => {
-        docs = _.sortBy(docs, d => getFieldPath(field, d));
+        docs = _.sortBy(docs, d => getAtFieldPath(this.model, field, d));
         if (directionStr === 'desc') {
           docs = _.reverse(docs);
         }
@@ -133,13 +137,12 @@ export class QueryableFlatCollection<T extends object = DocumentData> implements
     };
   }
 
-  where(filter: WhereFilter): QueryableFlatCollection<T>
-  where(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator | RegExp, value: any): QueryableFlatCollection<T>
-  where(fieldOrFilter: string | FieldPath | WhereFilter, operator?: WhereFilterOp | StrapiWhereOperator | RegExp, value?: any): QueryableFlatCollection<T> {
+  where(filter: StrapiWhereFilter | WhereFilter): QueryableFlatCollection<T>
+  where(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator, value: any): QueryableFlatCollection<T>
+  where(fieldOrFilter: string | FieldPath | StrapiWhereFilter | WhereFilter, operator?: WhereFilterOp | StrapiWhereOperator, value?: any): QueryableFlatCollection<T> {
     if ((typeof fieldOrFilter === 'string') || (fieldOrFilter instanceof FieldPath)) {
       const other = new QueryableFlatCollection(this);
-  
-      const filter = convertWhere(fieldOrFilter, operator!, value, 'manualOnly');
+      const filter = convertWhere(this.model, fieldOrFilter, operator!, value, 'manualOnly');
       other._filters.push(filter);
       return other;
     } else {
@@ -147,9 +150,12 @@ export class QueryableFlatCollection<T extends object = DocumentData> implements
     }
   }
 
-  whereAny(filters: ManualFilter[]): QueryableFlatCollection<T> {
+  whereAny(filters: (StrapiWhereFilter | WhereFilter)[]): QueryableFlatCollection<T> {
     const other = new QueryableFlatCollection(this);
-    other._filters.push(data => filters.some(f => f(data)));
+    other._filters.push(data => filters.some(({ field, operator, value }) => {
+      const filter = convertWhere(this.model, field, operator, value, 'manualOnly');
+      return filter(data);
+    }));
     return other;
   }
 

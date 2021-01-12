@@ -1,4 +1,3 @@
-import { DocumentData } from '@google-cloud/firestore';
 import * as _ from 'lodash';
 import type { FirestoreConnectorModel } from "../model";
 import type { AttributeKey, IndexerFn, StrapiAttribute } from "../types";
@@ -13,8 +12,8 @@ export interface Component<T extends object> {
 }
 
 export function getComponentModel<R extends object>(componentName: string): FirestoreConnectorModel<R>
-export function getComponentModel<T extends object, R extends object = DocumentData>(hostModel: FirestoreConnectorModel<T>, key: AttributeKey<T>, value: T[AttributeKey<T>]): FirestoreConnectorModel<R>
-export function getComponentModel<T extends object, R extends object = DocumentData>(hostModelOrName: FirestoreConnectorModel<T> | string, key?: AttributeKey<T>, value?: any): FirestoreConnectorModel<R> {
+export function getComponentModel<T extends object, R extends object = any>(hostModel: FirestoreConnectorModel<T>, key: AttributeKey<T>, value: T[AttributeKey<T>]): FirestoreConnectorModel<R>
+export function getComponentModel<T extends object, R extends object = any>(hostModelOrName: FirestoreConnectorModel<T> | string, key?: AttributeKey<T>, value?: any): FirestoreConnectorModel<R> {
   const modelName = typeof hostModelOrName === 'string'
     ? hostModelOrName
     : value!.__component || hostModelOrName.attributes[key!].component;
