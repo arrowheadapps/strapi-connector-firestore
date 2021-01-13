@@ -227,7 +227,7 @@ export class RelationHandler<T extends object, R extends object = object> {
         // The attribute is a metadata map for an array of components
         // This requires special handling
         // We need to atomically fetch and process the data then update
-        // Exctract a new object with only the fields that are being updated
+        // Extract a new object with only the fields that are being updated
         const prevData = await data(true);
         const newData: any = {};
         const components = _.get(prevData, parentAlias);

@@ -127,7 +127,7 @@ export function toFirestore(relation: Partial<StrapiAttribute> | undefined, valu
       .toFirestoreValue();
   }
 
-  // Allow unknown field without coersion
+  // Allow unknown field without coercion
   // Rely on controllers and lifecycles to enforce
   // any policies on sanitisation
   if (!relation) {
@@ -382,7 +382,7 @@ export function coerceToReference<T extends object = object>(value: any, to: Fir
 
   if (value instanceof DocumentReference) {
     // When deserialised from Firestore it comes without any converters
-    // We want to get the appropraite converters so we reinstantiate it
+    // We want to get the appropriate converters so we reinstantiate it
     return reinstantiateReference(value, undefined, to, strict);
   }
 
@@ -515,8 +515,8 @@ function reinstantiateReference<T extends object>(value: DocumentReference<T | {
 }
 
 function getIdOrAuto(model: FirestoreConnectorModel, value: any): string | undefined {
-  if (model.options.ensureCompnentIds) {
-    // Ensure there is a gauranteed ID
+  if (model.options.ensureComponentIds) {
+    // Ensure there is a guaranteed ID
     return value[model.primaryKey] || model.db.autoId();
   } else {
     // Don't delete it if it already exists

@@ -7,7 +7,7 @@ import type { AttributeKey, ConnectorOptions, FlattenFn, ModelOptions, ModelTest
 import { populateDoc, populateDocs } from './populate';
 import { buildPrefixQuery } from './utils/prefix-query';
 import type{ QueryableCollection, Snapshot } from './utils/queryable-collection';
-import type { Firestore } from '@google-cloud/firestore';
+import { DocumentReference, Firestore } from '@google-cloud/firestore';
 import { Transaction, TransactionImpl } from './utils/transaction';
 import type { RelationHandler } from './utils/relation-handler';
 import { buildRelations } from './relations';
@@ -61,16 +61,14 @@ export interface FirestoreConnectorModel<T extends object = object> extends Stra
   /**
    * If this model is a component, then this is a
    * list of attributes for which to maintain an index
-   * when embedded as an array (dynamiczone or repeatable).
+   * when embedded as an array (dynamic-zone or repeatable).
    */
   indexedAttributes: AttributeKey<T>[];
   getMetadataField: (attrKey: AttributeKey<T>) => string
 
   firestore: Firestore;
   db: QueryableCollection<T>;
-  flattenedKey: string | null;
   timestamps: [string, string] | null;
-  singleKey: string | null;
 
   hasPK(obj: any): boolean;
   getPK(obj: any): string;
@@ -99,24 +97,27 @@ export function mountModel<T extends object>({ strapi, model: strapiModel, fires
   strapiModel.orm = 'firestore';
   strapiModel.primaryKey = strapiModel.primaryKey || 'id';
   strapiModel.primaryKeyType = strapiModel.primaryKeyType || 'string';
-  strapiModel.collectionName = strapiModel.collectionName || strapiModel.globalId;
   strapiModel.attributes = strapiModel.attributes || {};
 
+  const isSingle = strapiModel.kind === 'singleType';
   const isComponent = strapiModel.modelType === 'component';
-  const rootOpts: ModelOptions<T> = strapiModel.options || {};
-  const flattenedKey = defaultFlattenOpts(strapiModel, rootOpts, connectorOptions);
+  const opts: ModelOptions<T> = strapiModel.options || {};
+  const flattening = defaultFlattenOpts(strapiModel, opts, connectorOptions);
+
+  strapiModel.collectionName = flattening?.collectionName || strapiModel.collectionName || strapiModel.globalId;
+
 
   const options: Required<ModelOptions<T>> = {
-    timestamps: rootOpts.timestamps || false,
-    logQueries: rootOpts.logQueries ?? connectorOptions.logQueries,
-    singleId: rootOpts.singleId || connectorOptions.singleId,
-    flatten: flattenedKey != null,
-    searchAttribute: defaultSearchAttrOpts(strapiModel, rootOpts),
-    maxQuerySize: flattenedKey ? 0 : rootOpts.maxQuerySize ?? connectorOptions.maxQuerySize,
-    ensureCompnentIds: rootOpts.ensureCompnentIds ?? connectorOptions.ensureCompnentIds,
-    allowNonNativeQueries: defaultAllowNonNativeQueries(strapiModel, rootOpts, connectorOptions),
-    metadataField: rootOpts.metadataField || connectorOptions.metadataField,
-    converter: rootOpts.converter || { 
+    timestamps: opts.timestamps || false,
+    logQueries: opts.logQueries ?? connectorOptions.logQueries,
+    singleId: flattening?.singleId || opts.singleId || connectorOptions.singleId,
+    flatten: flattening != null,
+    searchAttribute: defaultSearchAttrOpts(strapiModel, opts),
+    maxQuerySize: flattening ? 0 : opts.maxQuerySize ?? connectorOptions.maxQuerySize,
+    ensureComponentIds: opts.ensureComponentIds ?? connectorOptions.ensureComponentIds,
+    allowNonNativeQueries: defaultAllowNonNativeQueries(strapiModel, opts, connectorOptions),
+    metadataField: opts.metadataField || connectorOptions.metadataField,
+    converter: opts.converter || { 
       toFirestore: data => data,
       fromFirestore: data => data as T,
     },
@@ -126,8 +127,6 @@ export function mountModel<T extends object>({ strapi, model: strapiModel, fires
       ? (options.timestamps ? [DEFAULT_CREATE_TIME_KEY, DEFAULT_UPDATE_TIME_KEY] : null)
       : options.timestamps;
   options.timestamps = timestamps || false;
-
-  const singleKey = strapiModel.kind === 'singleType' ? options.singleId : null;
 
   const componentKeys = (Object.keys(strapiModel.attributes) as AttributeKey<T>[])
     .filter(key => {
@@ -166,20 +165,20 @@ export function mountModel<T extends object>({ strapi, model: strapiModel, fires
 
 
   const hasPK = (obj: any) => {
-    return _.has(obj, model.primaryKey) || _.has(obj, 'id') || (model.singleKey != null);
+    return _.has(obj, model.primaryKey) || _.has(obj, 'id') || (options.singleId != null);
   }
 
   const getPK = (obj: any) => {
-    return model.singleKey || ((_.has(obj, model.primaryKey) ? obj[model.primaryKey] : obj.id));
+    return isSingle || ((_.has(obj, model.primaryKey) ? obj[model.primaryKey] : obj.id));
   }
 
   const runTransaction = async (fn: (transaction: Transaction) => PromiseLike<any>) => {
     let attempt = 0;
     return await firestore.runTransaction(async (trans) => {
       const wrapper = new TransactionImpl(firestore, trans, connectorOptions.logTransactionStats, ++attempt);
-      const result = await fn(wrapper);
+      const path = await fn(wrapper);
       await wrapper.commit();
-      return result;
+      return path;
     });
   };
 
@@ -234,9 +233,7 @@ export function mountModel<T extends object>({ strapi, model: strapiModel, fires
   const model = Object.assign(strapiModel, {
     firestore,
     options,
-    flattenedKey,
     timestamps,
-    singleKey,
     relations: (strapiModel as FirestoreConnectorModel<T>).relations,
     isComponent,
     
@@ -281,7 +278,7 @@ export function mountModel<T extends object>({ strapi, model: strapiModel, fires
   if (isComponent) {
     model.db = new QueryableComponentCollection<T>(model);
   } else {
-    if (flattenedKey) {
+    if (flattening) {
       model.db = new QueryableFlatCollection<T>(model);
     } else {
       model.db = new QueryableFirestoreCollection<T>(model);
@@ -319,14 +316,23 @@ function defaultAllowNonNativeQueries<T extends object>(model: StrapiModel<T>, o
   }
 }
 
-function defaultFlattenOpts<T extends object>(model: StrapiModel<T>, options: ModelOptions<T>, connectorOptions: Required<ConnectorOptions>) {
+interface FlattenResult {
+  collectionName: string | null
+  singleId: string
+}
+
+function defaultFlattenOpts<T extends object>(model: StrapiModel<T>, options: ModelOptions<T>, connectorOptions: Required<ConnectorOptions>): FlattenResult | null {
   const singleId = options.singleId || connectorOptions.singleId;
+  const result: FlattenResult = {
+    collectionName: null,
+    singleId,
+  };
 
   if (options.flatten === undefined) {
     const { flattenModels } = connectorOptions;
 
     if (typeof flattenModels === 'boolean') {
-      return flattenModels ? singleId : null;
+      return flattenModels ? result : null;
     }
     
     const tests = _.castArray(flattenModels)
@@ -340,14 +346,26 @@ function defaultFlattenOpts<T extends object>(model: StrapiModel<T>, options: Mo
       })
       .map(tester => {
         const flatten = tester(model);
-        return flatten
-          ? (typeof flatten === 'string' ?  flatten : singleId)
-          : null;
+        if (!flatten) {
+          return null;
+        }
+        if (flatten instanceof DocumentReference) {
+          return flatten.path;
+        }
+        return (typeof flatten === 'string') ?  flatten : singleId;
       });
-
-    return tests.find(test => test != null) || null;
+    
+    const path = tests.find(test => test != null);
+    if (path) {
+      const i = path.lastIndexOf('/');
+      return {
+        collectionName: (i === -1) ? null : path.slice(0, i),
+        singleId: (i === -1) ? path : path.slice(i + 1),
+      };
+    }
+    return null;
   } else {
-    return options.flatten ? singleId : null;
+    return options.flatten ? result : null;
   }
 }
 

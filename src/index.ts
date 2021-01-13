@@ -36,7 +36,7 @@ const defaultOptions: Required<ConnectorOptions> = {
   singleId: 'default',
   flattenModels: [],
   allowNonNativeQueries: false,
-  ensureCompnentIds: false,
+  ensureComponentIds: false,
   logTransactionStats: process.env.NODE_ENV === 'development',
   logQueries: false,
   metadataField: '$meta',

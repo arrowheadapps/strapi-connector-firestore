@@ -1,4 +1,4 @@
-import type { DocumentData, Settings } from '@google-cloud/firestore';
+import type { DocumentData, DocumentReference, Settings } from '@google-cloud/firestore';
 import type { Logger } from 'pino';
 import type { FirestoreConnectorModel } from './model';
 
@@ -65,9 +65,9 @@ export interface ConnectorOptions {
    * If `true`, then IDs are automatically generated and assigned
    * to embedded components (incl. dynamic zone).
    * 
-   * Defults to `true`.
+   * Defaults to `true`.
    */
-  ensureCompnentIds?: boolean
+  ensureComponentIds?: boolean
 
   /**
    * If defined, enforces a maximum limit on the size of all queries.
@@ -109,7 +109,7 @@ export interface ModelOptions<T extends object, R extends object = any> {
   /**
    * Override connector flattening options per model.
    * `false` to disable.
-   * `true` to enable and use connector's `singleId` for the doucment ID.
+   * `true` to enable and use connector's `singleId` for the document ID.
    * 
    * Defaults to `undefined` (use connector setting).
    */
@@ -134,7 +134,7 @@ export interface ModelOptions<T extends object, R extends object = any> {
    * 
    * Defaults to `undefined` (use connector setting).
    */
-  ensureCompnentIds?: boolean
+  ensureComponentIds?: boolean
 
   /**
    * Override connector setting per model.
@@ -282,7 +282,7 @@ export interface IndexerFn {
 }
 
 export interface FlattenFn<T extends object = any> {
-  (model: StrapiModel<T>): string | boolean | null | undefined
+  (model: StrapiModel<T>): string | boolean | DocumentReference | null | undefined
 }
 
 export interface ModelTestFn<T extends object = any> {

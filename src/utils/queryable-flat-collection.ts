@@ -35,10 +35,6 @@ export class QueryableFlatCollection<T extends object = DocumentData> implements
       this._offset = modelOrOther._offset;
     } else {
       this.model = modelOrOther;
-      if (!modelOrOther.flattenedKey) {
-        throw new Error(`Model "${modelOrOther.globalId}" must have a value for "flattenedKey" to build a flat collection.`);
-      }
-
       const userConverter = modelOrOther.options.converter;
       this.conv = {
         toFirestore: data => {
@@ -55,7 +51,7 @@ export class QueryableFlatCollection<T extends object = DocumentData> implements
         },
       };
 
-      const docPath = path.posix.join(modelOrOther.collectionName, modelOrOther.flattenedKey);
+      const docPath = path.posix.join(modelOrOther.collectionName, modelOrOther.options.singleId);
       this.flatDoc = modelOrOther.firestore
         .doc(docPath)
         .withConverter(this.conv);

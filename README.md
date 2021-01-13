@@ -89,9 +89,9 @@ These are the available options to be specified in the Strapi database configura
 | `options.logTransactionStats`   | `boolean \| undefined` | `process.env.NODE_ENV === 'development'` | Indicates whether or not to log the number of read and write operations for every transaction that is executed. Defaults to `true` for development environments and `false` otherwise. |
 | `options.logQueries`   | `boolean \| undefined` | `false` | Indicates whether or not to log the details of every query that is executed. Defaults to `false`. |
 | `options.singleId`      | `string \| undefined`    | `"default"` | The document ID to used for `singleType` models and flattened models. |
-| `options.flattenModels` | `boolean \| string \| RegExp \| FlattenFn \| (string \| RegExp \| FlattenFn)[]`   | `false` | A boolean to enable or disable flattening on all models, or a regex or (or array of those) that are matched against the `uid` property of each model, or a function (or array of those) used to test each model to determine if it should be flattened (see [collection flattening](#collection-flattening)). If a function is provided it must return a string which acts as the `singleId` or `true` (in which case the `singleId` option is used) or "falsey".<br><br>This is useful for flattening models built-in models or plugin models where you don't have access to the model configuration JSON. |
-| `options.allowNonNativeQueries` | `boolean \| string \| RegExp \| TestFn \| (string \| RegExp \| TestFn)` | `false` | Indicates wheter to allow the connector to manually perform search and other query types than are not natively supported by Firestore (see [Search and non-native queries](#search-and-non-native-queries)). These can have poor performance and higher usage costs, and can cause some queries to fail. If disabled, then search will not function. If a `string` or `RegExp` is provided, then this will be tested against each model's `uid` (but this may still be overridden by the model's own setting).  |
-| `options.ensureCompnentIds` | `boolean \| undefined` | `false` | If `true`, then ID's are automatically generated and assigned for embedded components (including dynamic zone) if they don't already exist. ID's are assigned immediately before being sent to Firestore, so they aren't be assigned yet during lifecycle hooks. |
+| `options.flattenModels` | `boolean \| string \| RegExp \| FlattenFn \| (string \| RegExp \| FlattenFn)[]`   | `false` | A boolean to enable or disable flattening on all models, or a regex or (or array of those) that are matched against the `uid` property of each model, or a function (or array of those) used to test each model to determine if it should be flattened (see [collection flattening](#collection-flattening)). If a function is provided it must return a string which acts as the `singleId` or `true` (in which case the `singleId` option is used) or "falsey". If the returned string contains `"/"` characters then it is parsed as a document path (overrides the models `collectionName` option). It can also return a `DocumentReference` which is used as the document to store the flattened collection (create using `model.firestore.doc(...)`).<br><br>This is useful for flattening models built-in models or plugin models where you don't have access to the model configuration JSON. |
+| `options.allowNonNativeQueries` | `boolean \| string \| RegExp \| TestFn \| (string \| RegExp \| TestFn)` | `false` | Indicates whether to allow the connector to manually perform search and other query types than are not natively supported by Firestore (see [Search and non-native queries](#search-and-non-native-queries)). These can have poor performance and higher usage costs, and can cause some queries to fail. If disabled, then search will not function. If a `string` or `RegExp` is provided, then this will be tested against each model's `uid` (but this may still be overridden by the model's own setting).  |
+| `options.ensureComponentIds` | `boolean \| undefined` | `false` | If `true`, then ID's are automatically generated and assigned for embedded components (including dynamic zone) if they don't already exist. ID's are assigned immediately before being sent to Firestore, so they aren't be assigned yet during lifecycle hooks. |
 | `options.maxQuerySize` | `number \| undefined` | `200` | If defined, enforces a maximum limit on the size of all queries. You can use this to limit out-of-control quota usage. Does not apply to flattened collections which use only a single read operation anyway. Set to `0` to remove the limit. <br/><br/>**WARNING:** It is highly recommend to set a maximum limit, and to set it as low as applicable for your application, to limit unexpected quota usage. |
 | `options.metadataField` | `string \| ((attrKey: string) => string) \| undefined` | `"$meta"` | The field used to build the field that will store the metadata map which holds the indexes for repeatable and dynamic-zone components. If it is a string, then it will be combined with the component  field as a postfix. If it is a function, then it will be called with the field of the attribute containing component, and the function must return the string to be used as the field. See [Indexing fields in repeatable and dynamic-zone components](#indexing-fields-in-repeatable-and-dynamic-zone-components). |
 
@@ -101,11 +101,11 @@ In addition to the normal model options, you can provide the following to custom
 
 | Name                    | Type        | Default     | Description                     |
 |-------------------------|-------------|-------------|---------------------------------|
-| `options.singleId`      | `string \| undefined` | `undefined` | If defined, overrides the connector's global `singleId` setting (see above) for this model. |
+| `options.singleId`      | `string \| undefined` | `undefined` | If defined, overrides the connector's global `singleId` setting (see above) for this model. Note: this is overridden by the result of the connector's `flattenModels` option if a function is provided there. |
 | `options.flatten`       | `boolean \| undefined` | `undefined` | If defined, overrides the connector's global `flattenModels` setting (see above) for this model. |
 | `options.allowNonNativeQueries` | `boolean \| undefined` | `undefined` | If defined, overrides the connector's global `allowNonNativeQueries` setting (see above) for this model. If this model is flattened, this setting is ignored and non-native queries including search are supported. |
 | `options.searchAttribute` | `string \| undefined` | `undefined` | If defined, nominates a single attribute to be queried natively, instead of performing a manual search. This can be used to enable primitive search when fully-featured search is disabled because of the `allowNonNativeQueries` setting, or to improve the performance or cost of search queries when full search is not required. See [Search and non-native queries](#search-and-non-native-queries). |
-| `options.ensureCompnentIds` | `boolean \| undefined` | `undefined` | If defined, overrides the connector's global `ensureCompnentIds` setting (see above) for this model. |
+| `options.ensureComponentIds` | `boolean \| undefined` | `undefined` | If defined, overrides the connector's global `ensureComponentIds` setting (see above) for this model. |
 | `options.maxQuerySize` | `number \| undefined` | `undefined` | If defined, overrides the connector's global `maxQuerySize` setting (see above) for this model. Set to `0` to disable the limit. |
 | `options.logQueries`   | `boolean \| undefined` | `undefined` | If defined, overrides the connector's global `logQueries` setting (see above) for this model. |
 | `options.converter` | `{ toFirestore: (data: Object) => Object, fromFirestore: (data: Object) => Object }` | `undefined` | An object with functions used to convert objects going in and out of Firestore. The `toFirestore` function will be called to convert an object immediately before writing to Firestore. The `fromFirestore` function will be called to convert an object immediately after it is read from Firestore. You can config this parameter in a Javascript file called `./api/{model-name}/models/{model-name}.config.js`, which must export an object with the `converter` property. |
@@ -124,7 +124,7 @@ Before choosing to flatten a collection, consider the following:
 
 - The collection should be bounded (i.e. you can guarantee that there will only be a finite number of entries). For example, a collection of users would be unbounded, but Strapi configurations and permissions/roles would be bounded.
 - The number of entries and size of the entries must fit within a single Firestore document. The size limit for a Firestore document is 1MiB ([see limits](https://firebase.google.com/docs/firestore/quotas#limits)).
-- The benefits of flattening will be diminished if the collection is most commonly queried one document at a time (flattening would increase bandwith usage with same amount of read operations). 
+- The benefits of flattening will be diminished if the collection is most commonly queried one document at a time (flattening would increase bandwidth usage with same amount of read operations). 
 
 ### Search and non-native queries
 
@@ -139,16 +139,16 @@ This connector manually implements search and these other filters by reading the
 
 You can enable manual search and manual implementations of unsupported queries by using the `allowNonNativeQueries` option, but you should consider cost exposure. It is therefore recommended that you only enable this on models that specifically require it.
 
-You can enable a primitve kind of search withouth enabling `allowNonNativeQueries` by using the `searchAttribute` setting. This nominates a single attribute to query against when a search query is performed. If the attribute is a string, a search query will result in a case-sensitive query for strings starting with the given query term (case-sensitive string prefix). If the attribute of any other type, a search query will result in an equality query on this attribute.
+You can enable a primitive kind of search without enabling `allowNonNativeQueries` by using the `searchAttribute` setting. This nominates a single attribute to query against when a search query is performed. If the attribute is a string, a search query will result in a case-sensitive query for strings starting with the given query term (case-sensitive string prefix). If the attribute of any other type, a search query will result in an equality query on this attribute.
 
 If `searchAttribute` is defined, the primitive search behaviour is used regardless of whether or not fully-featured search is available.
 
-Flattened models support all of these filters including search, because the collection is fetched as a whole and filtere "manually" anyway.
+Flattened models support all of these filters including search, because the collection is fetched as a whole and filtered "manually" anyway.
 
 
 ### Indexing fields in repeatable and dynamic-zone components
 
-Repeatable components and dynamiczone components are embedded as an array in the parent document. Firestore cannot query the document based on any field in the components (cannot query inside array).
+Repeatable components and dynamic-zone components are embedded as an array in the parent document. Firestore cannot query the document based on any field in the components (cannot query inside array).
 
 To support querying, the connector can be configured to maintain a metadata map (index) for any attribute inside these repeatable components. This configured by adding `"indexed": true` to any attribute in the component model JSON. This is ignored for non-repeatable components, because they can be queried directly.
 
@@ -242,7 +242,7 @@ module.exports = {
     related: {
       collection: 'other-model',
       // Because it is a relation the connector will always apply a
-      // default indexer in attition to those defined in indexedBy
+      // default indexer in addition to those defined in indexedBy
       // but we can override the key
       indexed: 'relations',
       indexedBy: [
@@ -301,7 +301,7 @@ module.exports = ({ env }) => ({
 
         // Flatten internal Strapi models (as an example)
         // However, flattening the internal Strapi models is
-        // not actaully an effective usage of flattening, 
+        // not actually an effective usage of flattening, 
         // because they are only queried one-at-a-time anyway
         // So this would only result in increased bandwidth usage
         flattenModels: (model) => model.uid.startsWith('strapi::') ? `strapi/${model.modelName}` : null;
@@ -319,36 +319,36 @@ module.exports = ({ env }) => ({
 
 You can override some configuration options in each models JSON file `./api/{model-name}/models/{model-name}.settings.json`. 
 
-In this example, the collection will be flattened and the connector's `singleId` option will be used as the document name, with the collection name being `collectionName` or `glabalId` (in this example, `"myCollection/default"`):
+In this example, the collection will be flattened and the connector's `singleId` option will be used as the document name, with the collection name being `collectionName` or `globalId` (in this example, `"myCollection/default"`):
 
 ```json
 {
   "kind": "collectionType",
-  "collectioName": "myCollection",
+  "collectionName": "myCollection",
   "options": {
     "flatten": true
   }
 }
 ```
 
-The document name can also be specified explicity (in this example `"myCollection/myDoc"`):
+The document name can also be specified explicitly (in this example `"myCollection/myDoc"`):
 
 ```json
 {
   "kind": "collectionType",
-  "collectioName": "myCollection",
+  "collectionName": "myCollection",
   "options": {
     "flatten": "myDoc"
   }
 }
 ```
 
-You can also overrive the connector's `allowNonNativeQueries` option:
+You can also override the connector's `allowNonNativeQueries` option:
 
 ```json
 {
   "kind": "collectionType",
-  "collectioName": "myCollection",
+  "collectionName": "myCollection",
   "options": {
     "allowNonNativeQueries": true
   }
@@ -383,10 +383,10 @@ module.exports = {
 
 ### Strapi components (including dynamic-zone, repeatable)
 
-The official Strapi connectors behave in a way where componets are stored separately in their own collections/tables.
+The official Strapi connectors behave in a way where components are stored separately in their own collections/tables.
 
 However, this connector behaves differently. It embeds all components directly into the parent document, and there are no collections for components. Here are the motivations behind this behaviour:
-- Firestore charges for the number of operations performed, so we typically wish to minimise the number of read operations acrued. Embedding the components means no additional reads are required.
+- Firestore charges for the number of operations performed, so we typically wish to minimise the number of read operations accrued. Embedding the components means no additional reads are required.
 - Firestore doesn't natively support populating relational data, so embedding components reduces the latency that would be incurred by several round trips of read operations.
 - Typical usage via the Strapi admin front-end doesn't allow reuse of components, meaning all components are unique per parent document anyway, so there is not reason not to embed.
 
@@ -409,7 +409,7 @@ While Firestore has a free tier, be very careful to consider the potential usage
 
 Be aware that the Strapi Admin console can very quickly consume several thousand read and write operations in just a few minutes of usage.
 
-Particularly, when viewing a collection in the Strapi Admin console, the console will count the collection size, which will incur a read operation for every single document in the collection. This would be disasterous for quota usage for large collections. This is why it is highly recommended to apply the `maxQuerySize` setting, and to set it as low as possible.
+Particularly, when viewing a collection in the Strapi Admin console, the console will count the collection size, which will incur a read operation for every single document in the collection. This would be disastrous for quota usage for large collections. This is why it is highly recommended to apply the `maxQuerySize` setting, and to set it as low as possible.
 
 For more info on pricing, see the [pricing calculator](https://firebase.google.com/pricing#blaze-calculator).
 
