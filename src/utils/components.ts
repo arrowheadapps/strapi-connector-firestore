@@ -25,6 +25,10 @@ export function getComponentModel<T extends object, R extends object = any>(host
   return model;
 }
 
+export function componentRequiresMetadata(attr: StrapiAttribute): boolean {
+  return attr.repeatable || Boolean(attr.components);
+}
+
 export function updateComponentsMetadata<T extends object>(model: FirestoreConnectorModel<T>, data: T, output: T = data) {
   for (const key of model.componentKeys) {
     const attr = model.attributes[key];

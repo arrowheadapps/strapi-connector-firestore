@@ -5,6 +5,7 @@ import type { StrapiModel, StrapiAttribute } from './types';
 import type { Reference } from './utils/queryable-collection';
 import type { Transaction } from './utils/transaction';
 import { RelationAttrInfo, RelationHandler, RelationInfo } from './utils/relation-handler';
+import { componentRequiresMetadata } from './utils/components';
 
 
 /**
@@ -150,7 +151,7 @@ function findParentModels<T extends object>(componentModel: FirestoreConnectorMo
           const attr = otherModel.attributes[alias];
           if ((attr.component === componentModel.uid)
              || (attr.components && attr.components.includes(componentModel.uid))) {
-            const isRepeatable = attr.repeatable || !attr.component;
+            const isRepeatable = componentRequiresMetadata(attr);
             relations.push({
               model: otherModel,
               attr: componentAttr ? {

@@ -62,12 +62,26 @@ function coerceModel<T extends object>(model: FirestoreConnectorModel<T>, docId:
   return root;
 }
 
+function fallbackCoerceOrCopy(value: any, coerceFn: CoerceFn): any {
+  const result = coerceFn(undefined, value);
+  if (result === value) {
+    // If coercion returned the same object then we return undefined
+    // to that cloneDeepWith handles the copying
+    // We need this in order to copy root object etc
+    return undefined;
+  }
+  return result;
+}
+
 function coerceModelRecursive<T extends object>(model: FirestoreConnectorModel<T>, values: DocumentData, parentPath: string | null, coerceFn: CoerceFn) {
   return _.cloneDeepWith(values, (value, key) => {
     const path = [parentPath, key].filter(Boolean).join('.');
     if (!path) {
       // Root object, pass through
-      return undefined;
+      // Perform basic coercion
+      // E.g. this handles document-level FieldOperation.delete()
+      // for flattened collections
+      return fallbackCoerceOrCopy(value, coerceFn);
     }
 
     const attr = model.attributes[path];
@@ -76,7 +90,8 @@ function coerceModelRecursive<T extends object>(model: FirestoreConnectorModel<T
         return coerceModelRecursive(model, value, path, coerceFn);
       } else {
         // Stop infinite recursion
-        return undefined;
+        // Perform basic coercion of necessary types
+        return fallbackCoerceOrCopy(value, coerceFn);
       }
     }
 

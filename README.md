@@ -124,7 +124,8 @@ Before choosing to flatten a collection, consider the following:
 
 - The collection should be bounded (i.e. you can guarantee that there will only be a finite number of entries). For example, a collection of users would be unbounded, but Strapi configurations and permissions/roles would be bounded.
 - The number of entries and size of the entries must fit within a single Firestore document. The size limit for a Firestore document is 1MiB ([see limits](https://firebase.google.com/docs/firestore/quotas#limits)).
-- The benefits of flattening will be diminished if the collection is most commonly queried one document at a time (flattening would increase bandwidth usage with same amount of read operations). 
+- The benefits of flattening will be diminished if the collection is most commonly queried one document at a time (flattening would increase bandwidth usage with same amount of read operations).
+- If entries in the collection are written to at a high frequency, then flattening would cause contention, because all of those writes would be targetting the same document.
 
 ### Search and non-native queries
 
@@ -299,16 +300,16 @@ module.exports = ({ env }) => ({
         // when running in development mode
         useEmulator: env('NODE_ENV') == 'development',
 
-        // Flatten internal Strapi models (as an example)
-        // However, flattening the internal Strapi models is
-        // not actually an effective usage of flattening, 
-        // because they are only queried one-at-a-time anyway
-        // So this would only result in increased bandwidth usage
-        flattenModels: (model) => model.uid.startsWith('strapi::') ? `strapi/${model.modelName}` : null;
+        // Flatten all internal Strapi models into a collection called "strapi"
+        // WARNING: this is an example only, flattening the internal Strapi models is
+        // not actually an effective usage of flattening, because they are only 
+        // queried one-at-a-time anyway so this would only result in increased bandwidth usage
+        flattenModels: ({ uid, collectionName }) => 
+          ['strapi::', 'plugins::users-permissions'].some(str => uid.includes(str)) ? `strapi/${collectionName}` : false,
 
         // Enable search and non-native queries on all except
         // internal Strapi models (beginning with "strapi::")
-        allowNonNativeQueries: /^(?!strapi::).*/
+        allowNonNativeQueries: /^(?!strapi::).*/,
       }
     }
   },

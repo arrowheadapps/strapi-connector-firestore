@@ -261,6 +261,11 @@ export class RelationHandler<T extends object, R extends object = object> {
         // The refValue will be coerced appropriately
         // by the model that is performing the query
         const refValue = this._makeRefToThis(ref, attr);
+
+        // FIXME: For metadata fields the attribute type is not known
+        // so will not be coerced properly
+        // This means normal collections (coerced to Firestore) will match Firestore
+        // But flat collection (coerced from Firestore) will not match
         let q = attr.isArray
           ? model.db.where(attr.alias, 'array-contains', refValue)
           : model.db.where(attr.alias, '==', refValue);

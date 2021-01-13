@@ -11,6 +11,7 @@ import { DocumentReference, Firestore } from '@google-cloud/firestore';
 import { Transaction, TransactionImpl } from './utils/transaction';
 import type { RelationHandler } from './utils/relation-handler';
 import { buildRelations } from './relations';
+import { componentRequiresMetadata } from './utils/components';
 
 export const DEFAULT_CREATE_TIME_KEY = 'createdAt';
 export const DEFAULT_UPDATE_TIME_KEY = 'updatedAt';
@@ -98,14 +99,13 @@ export function mountModel<T extends object>({ strapi, model: strapiModel, fires
   strapiModel.primaryKey = strapiModel.primaryKey || 'id';
   strapiModel.primaryKeyType = strapiModel.primaryKeyType || 'string';
   strapiModel.attributes = strapiModel.attributes || {};
+  strapiModel.collectionName = strapiModel.collectionName || strapiModel.globalId;
 
-  const isSingle = strapiModel.kind === 'singleType';
   const isComponent = strapiModel.modelType === 'component';
   const opts: ModelOptions<T> = strapiModel.options || {};
+
   const flattening = defaultFlattenOpts(strapiModel, opts, connectorOptions);
-
-  strapiModel.collectionName = flattening?.collectionName || strapiModel.collectionName || strapiModel.globalId;
-
+  strapiModel.collectionName = flattening?.collectionName || strapiModel.collectionName;
 
   const options: Required<ModelOptions<T>> = {
     timestamps: opts.timestamps || false,
@@ -137,7 +137,10 @@ export function mountModel<T extends object>({ strapi, model: strapiModel, fires
   const getMetadataField = typeof options.metadataField === 'string'
     ? (attrKey: AttributeKey<T>) => attrKey + options.metadataField
     : options.metadataField;
-  const componentMapKeys = componentKeys.map(key => getMetadataField(key));
+  const componentMapKeys = componentKeys
+    .filter(alias => componentRequiresMetadata(strapiModel.attributes[alias]))
+    .map(key => getMetadataField(key));
+    
   const privateAttributes: AttributeKey<T>[] = _.uniq(
     utils.contentTypes.getPrivateAttributes(strapiModel).concat(componentMapKeys)
   );
@@ -165,16 +168,26 @@ export function mountModel<T extends object>({ strapi, model: strapiModel, fires
 
 
   const hasPK = (obj: any) => {
-    return _.has(obj, model.primaryKey) || _.has(obj, 'id') || (options.singleId != null);
+    return _.has(obj, model.primaryKey) || _.has(obj, 'id');
   }
 
   const getPK = (obj: any) => {
-    return isSingle || ((_.has(obj, model.primaryKey) ? obj[model.primaryKey] : obj.id));
+    return ((_.has(obj, model.primaryKey) ? obj[model.primaryKey] : obj.id));
   }
 
   const runTransaction = async (fn: (transaction: Transaction) => PromiseLike<any>) => {
     let attempt = 0;
     return await firestore.runTransaction(async (trans) => {
+      if ((attempt > 0) && connectorOptions.useEmulator) {
+        // Random backoff for contested transactions only when running on the emulator
+        // The production server has deadlock avoidance but the emulator currently doesn't
+        // See https://github.com/firebase/firebase-tools/issues/1629#issuecomment-525464351
+        // See https://github.com/firebase/firebase-tools/issues/2452
+        const ms = Math.random() * 1000 * attempt;
+        strapi.log.warn(`There is contention on a document and the Firestore emulator is getting deadlocked. Waiting ${ms.toFixed(0)}ms.`);
+        await new Promise(resolve => setTimeout(resolve, ms));
+      }
+
       const wrapper = new TransactionImpl(firestore, trans, connectorOptions.logTransactionStats, ++attempt);
       const path = await fn(wrapper);
       await wrapper.commit();
