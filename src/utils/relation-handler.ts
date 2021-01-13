@@ -1,12 +1,12 @@
 import * as _ from 'lodash';
-import { FieldValue } from '@google-cloud/firestore';
-import { Reference, ReferenceShape, Snapshot, refEquals, refShapeEquals } from './queryable-collection';
+import { Reference, Snapshot, refEquals } from './queryable-collection';
 import type { FirestoreConnectorModel } from '../model';
 import type { Transaction } from './transaction';
-import { coerceToReference, coerceToReferenceShape } from './coerce';
+import { coerceToReference } from './coerce';
 import { StatusError } from './status-error';
 import { MorphReference } from './morph-reference';
 import { updateComponentsMetadata } from './components';
+import { FieldOperation } from './field-operation';
 
 
 export interface AsyncSnapshot<R extends object> {
@@ -215,22 +215,26 @@ export class RelationHandler<T extends object, R extends object = object> {
     }
   }
 
-  private async _setRelated({ ref, attr, data, model, refShape }: InternalAsyncSnapshot<T, R>, thisRef: Reference<T>, set: boolean, transaction: Transaction) {
+  private async _setRelated({ ref, attr, data, model, refValue }: InternalAsyncSnapshot<T, R>, thisRef: Reference<T>, set: boolean, transaction: Transaction) {
     if (attr) {
-      const refValue = refShape || this._makeRefToThis(thisRef, attr);
+      refValue = refValue || this._makeRefToThis(thisRef, attr);
+      const value = set
+        ? (attr.isArray ? FieldOperation.arrayUnion(refValue) : refValue)
+        : (attr.isArray ? FieldOperation.arrayRemove(refValue) : null);
       
       if (attr.isMeta && attr.actualAlias) {
         const { componentAlias, parentAlias } = attr.actualAlias;
         // The attribute is a metadata map for an array of components
         // This requires special handling
         // We need to atomically fetch and process the data then update
+        // Exctract a new object with only the fields that are being updated
         const prevData = await data(true);
         const newData: any = {};
         const components = _.get(prevData, parentAlias);
         _.set(newData, parentAlias, components);
         _.castArray(components).forEach(component => {
           if (component) {
-            
+            FieldOperation.apply(component, componentAlias, value);
           }
         });
 
@@ -239,11 +243,7 @@ export class RelationHandler<T extends object, R extends object = object> {
         transaction.update(ref, newData);
 
       } else {
-        const reverseValue = set
-          ? (attr.isArray ? FieldValue.arrayUnion(refValue) : refValue)
-          : (attr.isArray ? FieldValue.arrayRemove(refValue) : null);
-    
-        transaction.update(ref, { [attr.alias]: reverseValue } as object);
+        transaction.update(ref, { [attr.alias]: value } as object);
       }
     }
   }
@@ -258,17 +258,19 @@ export class RelationHandler<T extends object, R extends object = object> {
       }
 
       if (attr) {
-        const refShape = this._makeRefToThis(ref, attr);
+        // The refValue will be coerced appropriately
+        // by the model that is performing the query
+        const refValue = this._makeRefToThis(ref, attr);
         let q = attr.isArray
-          ? model.db.where(attr.alias, 'array-contains', refShape)
-          : model.db.where(attr.alias, '==', refShape);
+          ? model.db.where(attr.alias, 'array-contains', refValue)
+          : model.db.where(attr.alias, '==', refValue);
         if (model.options.maxQuerySize) {
           q = q.limit(model.options.maxQuerySize);
         }
         const snap = atomic
           ? await transaction.getAtomic(q)
           : await transaction.getNonAtomic(q);
-        return snap.docs.map(d => asyncFromSnap(otherEnd, d, atomic, refShape, transaction));
+        return snap.docs.map(d => asyncFromSnap(otherEnd, d, atomic, refValue, transaction));
       } else {
         return [];
       }
@@ -312,9 +314,9 @@ interface InternalAsyncSnapshot<T extends object, R extends object> extends Asyn
 
   /**
    * If the snapshot was found by querying, then this is the
-   * `ReferenceShape` that was used in the query.
+   * reference value that was used in the query.
    */
-  refShape: ReferenceShape<T> | undefined
+  refValue: Reference<T> | undefined
 
   /**
    * The attribute info of the other end (referred to by `ref`).
@@ -322,11 +324,11 @@ interface InternalAsyncSnapshot<T extends object, R extends object> extends Asyn
   attr: RelationAttrInfo | undefined
 }
 
-function asyncFromSnap<T extends object, R extends object>(info: RelationInfo<R>, snap: Snapshot<R>, wasAtomic: boolean, refShape: ReferenceShape<T> | undefined, transaction: Transaction): InternalAsyncSnapshot<T, R> {
+function asyncFromSnap<T extends object, R extends object>(info: RelationInfo<R>, snap: Snapshot<R>, wasAtomic: boolean, refValue: Reference<T> | undefined, transaction: Transaction): InternalAsyncSnapshot<T, R> {
   return {
     ...info,
     ref: snap.ref,
-    refShape,
+    refValue,
     data: async (atomic = false) => {
       const s = (atomic && !wasAtomic)
         ? await transaction.getAtomic(snap.ref)
@@ -344,7 +346,7 @@ function asyncFromRef<T extends object, R extends object>(info: RelationInfo<R>,
   return {
     ...info,
     ref,
-    refShape: undefined,
+    refValue: undefined,
     data: async (atomic = false) => {
       const snap = await (atomic ? transaction.getAtomic(ref) : transaction.getNonAtomic(ref));
       const data = snap.data();

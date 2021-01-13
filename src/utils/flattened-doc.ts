@@ -1,8 +1,9 @@
 import * as _ from 'lodash';
-import { FieldValue, Transaction } from '@google-cloud/firestore';
+import type { Transaction } from '@google-cloud/firestore';
 import type { DeepReference } from './deep-reference';
 import type { Snapshot } from './queryable-collection';
 import type { ReadRepository } from './read-repository';
+import { FieldOperation } from './field-operation';
 
 export function makeFlattenedSnap<T extends object>(ref: DeepReference<T>, snap: Snapshot<{[id: string]: T}>): Snapshot<T> {
   const data = snap.data()?.[ref.id];
@@ -27,7 +28,7 @@ export function mapToFlattenedDoc<T extends object>({ id }: DeepReference<T>, da
   
   if (!data) {
     return {
-      [id]: FieldValue.delete(),
+      [id]: FieldOperation.delete(),
     };
   } else {
     if (merge) {

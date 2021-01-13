@@ -119,9 +119,12 @@ export function toFirestore(relation: Partial<StrapiAttribute> | undefined, valu
     return value.toFirestoreValue();
   }
 
+  // Coerce values within FieldOperation
+  // and convert to its native counterpart
   if (value instanceof FieldOperation) {
-    // Convert FieldOperation to its native counterpart
-    return value.toFirestoreValue();
+    return value
+      .coerceWith(v => toFirestore(relation, v))
+      .toFirestoreValue();
   }
 
   // Allow unknown field without coersion
@@ -280,6 +283,12 @@ export function fromFirestore(relation: Partial<StrapiAttribute> | undefined, va
   // BigInt fields will come out as native BigInt but will be serialised to JSON as a string
   if ((typeof value === 'bigint') && (relation?.type !== 'biginteger')) {
     return Number(value);
+  }
+
+
+  // Coerce values within FieldOperation
+  if (value instanceof FieldOperation) {
+    return value.coerceWith(v => fromFirestore(relation, v));
   }
 
   

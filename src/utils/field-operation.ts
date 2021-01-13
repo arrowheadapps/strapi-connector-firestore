@@ -8,6 +8,10 @@ import { isEqualHandlingRef } from './queryable-collection';
  */
 export abstract class FieldOperation {
 
+  static delete(): FieldOperation {
+    return new DeleteFieldOperation();
+  }
+
   static arrayRemove(...items: any[]): FieldOperation {
     return new ArrayRemoveFieldOperation(items);
   }
@@ -16,15 +20,67 @@ export abstract class FieldOperation {
     return new ArrayUnionFieldOperation(items);
   }
 
+  /**
+   * Sets the given value and the given path or applies the 
+   * transform if the value is a transform.
+   */
+  static apply(data: any, fieldPath: string, valueOrOperation: any): void {
+    const value = _.get(data, fieldPath);
+    const result = valueOrOperation instanceof FieldOperation
+      ? valueOrOperation.transform(value)
+      : value;
+    if (result === undefined) {
+      _.unset(data, fieldPath);
+    } else {
+      _.set(data, fieldPath, result);
+    }
+  }
 
+  /**
+   * Converts the operation to its Firestore-native
+   * `FieldValue` equivalent.
+   */
   abstract toFirestoreValue(): FieldValue;
-  abstract operate(data: any, fieldPath: string): void;
+
+  /**
+   * Performs the operation on the given data.
+   */
+  abstract transform(value: any): any;
+
+
+  /**
+   * Returns another instance of this operation which
+   * has any values coerced using the given function.
+   * @param coerceFn The function that coerces each value
+   */
+  abstract coerceWith(coerceFn: (value: any) => any): FieldOperation;
+
 
   /**
    * @deprecated Unsupported operation
    */
   toJSON(): never {
     throw new Error('Instance of FieldOperation class cannot be serialised to JSON')
+  }
+}
+
+
+class DeleteFieldOperation extends FieldOperation {
+
+  constructor() {
+    super()
+  }
+
+  toFirestoreValue(): FieldValue {
+    return FieldValue.delete();
+  }
+
+  transform(): undefined {
+    return undefined;
+  }
+
+  coerceWith() {
+    return this;
   }
 }
 
@@ -38,21 +94,19 @@ class ArrayUnionFieldOperation extends FieldOperation {
     return FieldValue.arrayUnion(...this.elements);
   }
 
-  operate(data: any, fieldPath: string) {
+  transform(value: any): any[] {
     // Add any instances that aren't already existing 
     // If the value was not an array then it is overwritten with
     // an empty array
-    const fieldValue = _.get(data, fieldPath);
-    const result = (Array.isArray(fieldValue) ? fieldValue : []);
-    this.elements.forEach(e => {
-      if (!result.some(value => isEqualHandlingRef(value, e))) {
-        result.push(e);
-      }
-    });
-
-    _.set(data, fieldPath, result);
+    const arr = (Array.isArray(value) ? value : []);
+    const toAdd = this.elements
+      .filter(e => !arr.some(value => isEqualHandlingRef(value, e)));
+    return arr.concat(toAdd);
   }
 
+  coerceWith(coerceFn: (value: any) => any) {
+    return new ArrayUnionFieldOperation(this.elements.map(coerceFn));
+  }
 }
 
 
@@ -66,15 +120,15 @@ class ArrayRemoveFieldOperation extends FieldOperation {
     return FieldValue.arrayRemove(...this.elements);
   }
 
-  operate(data: any, fieldPath: string) {
+  transform(value: any): any[] {
     // Remove all instances from the array 
     // If the value was not an array then it is overwritten with
     // an empty array
-    const fieldValue = _.get(data, fieldPath);
-    const result = (Array.isArray(fieldValue) ? fieldValue : [])
+    return (Array.isArray(value) ? value : [])
       .filter(value => !this.elements.some(e => isEqualHandlingRef(value, e)));
-
-    _.set(data, fieldPath, result);
   }
 
+  coerceWith(coerceFn: (value: any) => any) {
+    return new ArrayRemoveFieldOperation(this.elements.map(coerceFn));
+  }
 }
