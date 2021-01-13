@@ -355,27 +355,34 @@ You can also override the connector's `allowNonNativeQueries` option:
 }
 ```
 
-You can specify data converters for a model in `./api/{model-name}/models/{model-name}.config.js`, like the example below:
+You can specify data converters for a model in `./api/{model-name}/models/{model-name}.settings.js`, like the example below:
 
 ```javascript
 module.exports = {
-  converter: {
-    toFirestore: (data) => {
-      // Convert the data in some way immediately before
-      // writing to Firestore
-      return {
-        ...data,
-      };
-    },
+  kind: 'collectionType',
+  collectionName: 'myCollection',
+  options: {
+    converter: {
+      toFirestore: (data) => {
+        // Convert the data in some way immediately before
+        // writing to Firestore
+        return {
+          ...data,
+        };
+      },
 
-    fromFirestore: (data) => {
-      // Convert the data in some way immediately after
-      // reading from Firestore
-      return {
-        ...data,
-      };
+      fromFirestore: (data) => {
+        // Convert the data in some way immediately after
+        // reading from Firestore
+        return {
+          ...data,
+        };
+      },
     },
-  }
+  },
+  attributes: {
+
+  },
 };
 ```
 
