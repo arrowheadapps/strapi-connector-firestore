@@ -151,13 +151,13 @@ Flattened models support all of these filters including search, because the coll
 
 Repeatable components and dynamic-zone components are embedded as an array in the parent document. Firestore cannot query the document based on any field in the components (cannot query inside array).
 
-To support querying, the connector can be configured to maintain a metadata map (index) for any attribute inside these repeatable components. This configured by adding `"indexed": true` to any attribute in the component model JSON. This is ignored for non-repeatable components, because they can be queried directly.
+To support querying, the connector can be configured to maintain a metadata map (index) for any attribute inside these repeatable components. This configured by adding `"index": true` to any attribute in the component model JSON. This is ignored for non-repeatable components, because they can be queried directly.
 
-The connector automatically does this for all relation attributes. This can be disabled by setting `"indexed": false` on a relation attribute. Be aware that this will break relation behaviour and result in dangling references when the referred-to documents are deleted.
+The connector automatically does this for all relation attributes. This can be disabled by setting `"index": false` on a relation attribute. Be aware that this will break relation behaviour and result in dangling references when the referred-to documents are deleted.
 
-The metadata map is stored in the document in a field named by appending "$meta" to the name of the field storing the components.
+The metadata map is stored in the document in a field named by appending "$meta" to the name of the field storing the components. The map contains a field for every indexed attribute, and each field is an array of all the unique values of that attribute on all the components, or `null` if there are no values. If the attribute itself is an array (e.g. many-way relations), then the array is flattened.
 
-Take care when indexing attributes inside components, because the data will be duplicated inside the document, increasing document size and bandwidth costs.
+Note: when indexing attributes inside components, the data will be duplicated inside the document, increasing document size and bandwidth costs.
 
 For example, consider a model JSON with the shape below:
 
@@ -179,11 +179,11 @@ Where the "my-component" model JSON is like below:
   "attributes": {
     "name": {
       "type": "string",
-      "indexed": true
+      "index": true
     },
     "name": {
       "type": "string",
-      "indexed": true
+      "index": true
     },
     "related": {
       "model": "otherModel"
@@ -192,7 +192,7 @@ Where the "my-component" model JSON is like below:
 }
 ```
 
-Such a model may have a document with the data below:
+Such a model may have a document with the database output below:
 
 ```JSON
 {
@@ -221,40 +221,95 @@ Such a model may have a document with the data below:
 
 Where the `myRepeatableComponents$meta` field is automatically maintained and overwritten by the connector.
 
-In this example, we can query documents based on a field inside a component using a query like `.where('myRepeatableComponents$meta.name', 'array-contains', 'Component 1')`.
+In this example, we can query documents based on a field inside a component using a query like `.where('myRepeatableComponents$meta.name', 'array-contains', 'Component 1')`. We can also query a document that contains *any* value with `.where('myRepeatableComponents$meta.name', '!=', null)`, or a document that contains no values with `.where('myRepeatableComponents$meta.name', '==', null)`.
 
-The `"indexed"` field on the attribute can be:
-- `boolean`, if `true` then the attribute key will be used as the key in the metadata map;
+The `"index"` field on the attribute can be:
+- `true`, which enables indexing, and the attribute key will be used as the key in the metadata map;
 - `string`, which enables indexing, and the string will be used as the key in the metadata map;
+- `{ [key: string]: true | ((value: any, component: object) => any) }` which enables indexing, and each entry in the object is a key in the metadata map. If a function is provided then that function is called for each value in the index to perform mapping and filtering. The function is called with the value to index and the parent component object, and must return the value to store in the index or `undefined` (which causes the value to be omitted).
 
-An `"indexedBy"` field can be provided on the attribute which takes precedence (except for relation attributes, where a default indexer based on `"indexed"` is always applied in addition to any indexers defined in `"indexedBy"`) over the `"indexed"` field. It must be defined in JavaScript, not JSON. It is a function or array of functions which take the value of the attribute, and the parent component object and returns a tuple with of the key and the value to be added to the index for that key. If it returns undefined, the value will be omitted from the index.
+If an object is provided and the attribute is a relation, then the connector will always ensure there is a default indexer, which is required for reverse-lookup of relations to function.
 
-This allows advanced indexing such as below:
+To define a function, this configuration must be defined in JavaScript, not JSON.
+
+This allows advanced indexing such as below (in the component model):
 
 ```JavaScript
 module.exports = {
+  options: {
+    // Rename the metadata map with prefix rather than postfix
+    metadataField: field => `index$${field}`,
+  },
   attributes: {
     name: {
       type: 'string',
+      // Index and rename the metadata key instead of default "name"
+      // Non-relation attributes are not indexed by default
+      index: 'names',
     }
     active: {
       type: 'boolean',
+      // Index with default name "active"
+      index: true,
     },
     related: {
       collection: 'other-model',
       // Because it is a relation the connector will always apply a
       // default indexer in addition to those defined in indexedBy
       // but we can override the key
-      indexed: 'relations',
-      indexedBy: [
-        // Create an index of all names that are active
-        (value, obj) => obj.active ? ['relationsActive', value] : undefined,
-        // Create an index of all names that are inactive
-        (value, obj) => !obj.active ? ['relationsInactive', value] : undefined,
-      ],
+      index: {
+        // Rename default indexer
+        // If this is omitted then a default indexer with the
+        // attribute name "related" will be ensured because
+        // this is a relation attribute
+        relations: true,
+        // Create an index of all relations that are active
+        relationsActive: (value, obj) => obj.active ? value : undefined,
+        // Create an index of all relations that are inactive
+        relationsInactive: (value, obj) => obj.active ? undefined : value,
+      },
     },
   },
 };
+```
+
+Which would result in a database output like below:
+
+```JSON
+{
+  "myRepeatableComponents": [
+    {
+      "name": "Component 1",
+      "active": true,
+      "related": "/otherModel/doc1" (DocumentReference)
+    },
+    {
+      "name": "Component 2",
+      "active": false,
+      "related": null
+    }
+  ],
+  "index$myRepeatableComponents": {
+    "names": [
+      "Component 1",
+      "Component 2"
+    ],
+    "active": [
+      true,
+      false
+    ],
+    "relations": [
+      "/collection/doc1", (DocumentReference)
+      null
+    ],
+    "relationsActive": [
+      "/collection/doc1" (DocumentReference)
+    ],
+    "relationsInactive": [
+      null
+    ]
+  }
+}
 ```
 
 

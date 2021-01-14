@@ -34,7 +34,7 @@ export function updateComponentsMetadata<T extends object>(model: FirestoreConne
     const attr = model.attributes[key];
     if ((attr.type === 'dynamiczone')
       || (attr.type === 'component' && attr.repeatable)) {
-      const metaField = model.getMetadataField(key);
+      const metaField = model.getMetadataMapKey(key);
 
       // Array of components cannot be queryied in Firestore
       // So we need to maintain a map of metadata that we can query
@@ -46,7 +46,7 @@ export function updateComponentsMetadata<T extends object>(model: FirestoreConne
       // If the value itself is an array then is is concatenated/flattened
       components.forEach(component => {
         const componentModel = getComponentModel(model, key, component);
-        componentModel.indexedAttributes.forEach(alias => {
+        componentModel.indexedKeys.forEach(alias => {
           const componentAttr = componentModel.attributes[alias];
           const values = _.castArray(_.get(component, alias, []));
           const { indexers } = makeIndexerInfo(alias, componentAttr);
@@ -59,11 +59,13 @@ export function updateComponentsMetadata<T extends object>(model: FirestoreConne
                   throw new Error(`Function in "indexedBy" for attribute ${alias} must return a tuple.`);
                 }
                 const [key, value] = result;
-                const arr: any[] = meta[key] = meta[key] || [];
-                // Only add if the element doesnt already exist
+                const arr: any[] = meta[key] || [];
+                // Only add if the element doesn't already exist
                 if (!arr.some(v => isEqualHandlingRef(v, value))) {
                   arr.push(value);
                 }
+
+                meta[key] = arr.length ? arr : null;
               }
             });
           });

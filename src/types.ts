@@ -159,8 +159,8 @@ export interface ModelOptions<T extends object, R extends object = any> {
 }
 
 export interface Converter<T, R = DocumentData> {
-  toFirestore: (data: Partial<T>) => R
-  fromFirestore: (data: R) => T
+  toFirestore?: (data: Partial<T>) => R
+  fromFirestore?: (data: R) => T
 }
 
 declare global {
@@ -233,7 +233,7 @@ export interface RelationCounter {
   count: number
 }
 
-export interface StrapiModel<T extends object = any> {
+export interface StrapiModel<T extends object = object> {
   connector: string
   connection: string
   primaryKey: string
@@ -273,12 +273,13 @@ export interface StrapiAttribute {
   repeatable?: boolean
   min?: number
   max?: number
-  indexed?: boolean | string
-  indexedBy?: IndexerFn | IndexerFn[]
+
+  index?: true | string | { [key: string]: true | IndexerFn }
+  isMeta?: boolean
 }
 
 export interface IndexerFn {
-  (value: any, component: object): [string, any] | undefined
+  (value: any, component: object): any
 }
 
 export interface FlattenFn<T extends object = any> {

@@ -162,7 +162,7 @@ function findParentModels<T extends object>(componentModel: FirestoreConnectorMo
                   parentAlias: alias,
                 },
                 alias: isRepeatable 
-                  ? [otherModel.getMetadataField(alias), componentAttr.alias].join('.')
+                  ? [otherModel.getMetadataMapKey(alias), componentAttr.alias].join('.')
                   : [alias, componentAttr.alias].join('.'),
               } : undefined,
               parentModels: undefined,
