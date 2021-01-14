@@ -189,7 +189,7 @@ export class TransactionImpl implements Transaction {
     // operate will succeed
     await Promise.all(this.ensureFlatCollections);
 
-    this.writes.forEach(op => {
+    for (const op of this.writes.values()) {
       if (op.data === null) {
         this.transaction.delete(op.ref)
       } else {
@@ -202,7 +202,7 @@ export class TransactionImpl implements Transaction {
           this.transaction.update(op.ref, op.data);
         }
       }
-    });
+    }
   }
 
 
@@ -232,7 +232,7 @@ export class TransactionImpl implements Transaction {
         ref: rootRef,
         data: {},
         create: false,
-        conv: getModelByRef(ref).db.conv,
+        conv: getModelByRef(ref).db.converter,
       };
       this.writes.set(path, op);
 

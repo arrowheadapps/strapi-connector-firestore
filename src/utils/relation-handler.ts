@@ -5,8 +5,8 @@ import type { Transaction } from './transaction';
 import { coerceToReference } from './coerce';
 import { StatusError } from './status-error';
 import { MorphReference } from './morph-reference';
-import { updateComponentsMetadata } from './components';
 import { FieldOperation } from './field-operation';
+import { updateComponentsMetadata } from './components-indexing';
 
 
 export interface AsyncSnapshot<R extends object> {
@@ -232,11 +232,11 @@ export class RelationHandler<T extends object, R extends object = object> {
         const newData: any = {};
         const components = _.get(prevData, parentAlias);
         _.set(newData, parentAlias, components);
-        _.castArray(components).forEach(component => {
+        for (const component of _.castArray(components)) {
           if (component) {
             FieldOperation.apply(component, componentAlias, value);
           }
-        });
+        }
 
         // Update the metadata map
         updateComponentsMetadata(model, prevData, newData);

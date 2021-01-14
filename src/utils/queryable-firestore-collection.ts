@@ -11,7 +11,7 @@ export class QueryableFirestoreCollection<T extends object = DocumentData> imple
 
   private readonly model: FirestoreConnectorModel<T>
   private readonly collection: CollectionReference<T>
-  readonly conv: FirestoreDataConverter<T>;
+  readonly converter: FirestoreDataConverter<T>;
   
   private readonly allowNonNativeQueries: boolean
   private readonly maxQuerySize: number
@@ -26,7 +26,7 @@ export class QueryableFirestoreCollection<T extends object = DocumentData> imple
     if (modelOrOther instanceof QueryableFirestoreCollection) {
       this.model = modelOrOther.model;
       this.collection = modelOrOther.collection;
-      this.conv = modelOrOther.conv;
+      this.converter = modelOrOther.converter;
       this.allowNonNativeQueries = modelOrOther.allowNonNativeQueries;
       this.maxQuerySize = modelOrOther.maxQuerySize;
       this.query = modelOrOther.query;
@@ -36,15 +36,18 @@ export class QueryableFirestoreCollection<T extends object = DocumentData> imple
     } else {
       
       this.model = modelOrOther;
-      const userConverter = modelOrOther.options.converter;
-      this.conv = {
-        toFirestore: data => userConverter.toFirestore(coerceModelToFirestore(modelOrOther, data)),
-        fromFirestore: snap => coerceModelFromFirestore(modelOrOther, snap.id, userConverter.fromFirestore(snap.data())),
+      const {
+        toFirestore = (value) => value,
+        fromFirestore = (value) => value,
+      } = modelOrOther.options.converter;
+      this.converter = {
+        toFirestore: data => toFirestore(coerceModelToFirestore(modelOrOther, data)),
+        fromFirestore: snap => coerceModelFromFirestore(modelOrOther, snap.id, fromFirestore(snap.data())),
       };
 
       this.collection = modelOrOther.firestore
         .collection(modelOrOther.collectionName)
-        .withConverter(this.conv);
+        .withConverter(this.converter);
 
       this.query = this.collection;
       this.allowNonNativeQueries = modelOrOther.options.allowNonNativeQueries;

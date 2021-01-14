@@ -17,7 +17,7 @@ export class QueryableComponentCollection<T extends object = never> implements Q
     );
   }
 
-  get conv() {
+  get converter() {
     return this.throw();
   }
 

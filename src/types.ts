@@ -273,6 +273,9 @@ export interface StrapiAttribute {
   repeatable?: boolean
   min?: number
   max?: number
+  private?: boolean
+  configurable?: boolean
+  writable?: boolean
 
   index?: true | string | { [key: string]: true | IndexerFn }
   isMeta?: boolean

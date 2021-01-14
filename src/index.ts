@@ -2,9 +2,10 @@ import * as path from 'path';
 import * as fs from 'fs-extra';
 import * as _ from 'lodash';
 import { Firestore, Settings, DocumentReference, Timestamp } from '@google-cloud/firestore';
-import { allModels, DEFAULT_CREATE_TIME_KEY, DEFAULT_UPDATE_TIME_KEY, mountModel } from './model';
+import { allModels, DEFAULT_CREATE_TIME_KEY, DEFAULT_UPDATE_TIME_KEY, mountModels } from './model';
 import { queries } from './queries';
-import type { Strapi, ConnectorOptions } from './types';
+import type { Strapi, ConnectorOptions, StrapiModel } from './types';
+import { QueryableFlatCollection } from './utils/queryable-flat-collection';
 
 export type { 
   Strapi,
@@ -58,6 +59,33 @@ module.exports = (strapi: Strapi) => {
   (Timestamp.prototype as any).toJSON = function() { return this.toDate().toJSON(); };
 
 
+  // HACK: Patch content manager plugin to hide metadata attributes
+  // Current Strapi versions do not support hidden or virtual attributes
+  // A side-effect of hiding these attributes from the admin
+  // is that they are not visible for sorting or filtering
+  // Future versions may add virtual attributes but this patch will still be 
+  // required for old Strapi versions
+  // See: https://github.com/strapi/rfcs/pull/17
+
+  const dataMapperService: any = _.get(strapi.plugins, 'content-manager.services.data-mapper');
+  if (!dataMapperService) {
+    throw new Error(
+      'An update to Strapi has broken the patch applied to strapi-plugin-content-manager. ' +
+      'Please revert to the previous version.'
+    );
+  }
+  const { toContentManagerModel: _toContentManagerModel } = dataMapperService;
+  dataMapperService.toContentManagerModel = (...params) => {
+    const model: StrapiModel<any> = _toContentManagerModel(...params);
+    for (const key of Object.keys(model.attributes)) {
+      if (model.attributes[key].isMeta) {
+        delete model.attributes[key];
+      }
+    }
+    return model;
+  }
+  
+
   const initialize = async () => {
     const { connections } = strapi.config;
     await Promise.all(
@@ -106,14 +134,26 @@ module.exports = (strapi: Strapi) => {
           require(initFunctionPath)(firestore, connection);
         }
 
-        for (const model of allModels(strapi)) {
-          mountModel({
-            strapi,
-            firestore,
-            model,
-            connectorOptions: options,
-          });
+        // Mount all models
+        mountModels({
+          strapi,
+          firestore,
+          connectorOptions: options,
+        });
+
+        // Initialise all flat collections
+        // We do it here rather than lazily, otherwise the write which
+        // ensures the existence will contend with the transaction that
+        // operates on the document
+        // In the Firestore production server this resolves and retries
+        // but in the emulator it results in deadlock
+        const tasks: Promise<void>[] = [];
+        for (const { db } of allModels()) {
+          if (db instanceof QueryableFlatCollection) {
+            tasks.push(db.ensureDocument());
+          }
         }
+        await Promise.all(tasks);
       })
     );
   }

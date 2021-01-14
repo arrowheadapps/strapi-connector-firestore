@@ -67,12 +67,12 @@ export class ReadRepository {
 
   async getQuery(query: Queryable<any>): Promise<QuerySnapshot<any>> {
     const result = await this.handler.getQuery(query);
-    result.docs.forEach(d => {
+    for (const d of result.docs) {
       const { path } = d.ref;
       if (!this.cache.has(path)) {
         this.cache.set(path, Promise.resolve(d));
       }
-    });
+    }
     return result;
   }
 }

@@ -3,7 +3,7 @@ import * as utils from 'strapi-utils';
 import { QueryableFirestoreCollection } from './utils/queryable-firestore-collection';
 import { QueryableFlatCollection } from './utils/queryable-flat-collection';
 import { QueryableComponentCollection } from './utils/queryable-component-collection';
-import type { AttributeKey, ConnectorOptions, FlattenFn, IndexerFn, ModelOptions, ModelTestFn, Strapi, StrapiAttribute, StrapiAttributeType, StrapiModel, StrapiModelRecord } from './types';
+import type { AttributeKey, ConnectorOptions, FlattenFn, ModelOptions, ModelTestFn, Strapi, StrapiAttribute, StrapiAttributeType, StrapiModel, StrapiModelRecord } from './types';
 import { populateDoc, populateDocs } from './populate';
 import { buildPrefixQuery } from './utils/prefix-query';
 import type{ QueryableCollection, Snapshot } from './utils/queryable-collection';
@@ -11,7 +11,8 @@ import { DocumentReference, Firestore } from '@google-cloud/firestore';
 import { Transaction, TransactionImpl } from './utils/transaction';
 import type { RelationHandler } from './utils/relation-handler';
 import { buildRelations } from './relations';
-import { componentRequiresMetadata, getComponentModel } from './utils/components';
+import { getComponentModel } from './utils/components';
+import { AttributeIndexInfo, buildIndexers, doesComponentRequireMetadata } from './utils/components-indexing';
 
 export const DEFAULT_CREATE_TIME_KEY = 'createdAt';
 export const DEFAULT_UPDATE_TIME_KEY = 'updatedAt';
@@ -20,7 +21,7 @@ export const DEFAULT_UPDATE_TIME_KEY = 'updatedAt';
 /**
  * Iterates each model in a the given of models.
  */
-export function* eachModel<M extends StrapiModel = FirestoreConnectorModel>(models: StrapiModelRecord): Generator<M> {
+export function* eachModel<M extends StrapiModel<any> = FirestoreConnectorModel<any>>(models: StrapiModelRecord): Generator<M> {
   for (const key of Object.keys(models)) {
     const model: M = models[key];
 
@@ -36,9 +37,12 @@ export function* eachModel<M extends StrapiModel = FirestoreConnectorModel>(mode
  * Iterates all models in the Strapi instance.
  * @param strapiInstance Defaults to global Strapi
  */
-export function* allModels<M extends StrapiModel = FirestoreConnectorModel>(strapiInstance = strapi): Generator<M> {
-  yield* eachModel(strapiInstance.models);
+export function* allModels<M extends StrapiModel<any> = FirestoreConnectorModel<any>>(strapiInstance = strapi): Generator<M> {
+  // Iterate components first because subsequent models 
+  // need to access the indexers
   yield* eachModel(strapiInstance.components);
+
+  yield* eachModel(strapiInstance.models);
   yield* eachModel(strapiInstance.admin.models);
   for (const plugin of Object.keys(strapi.plugins)) {
     yield* eachModel(strapiInstance.plugins[plugin].models);
@@ -57,11 +61,10 @@ export interface FirestoreConnectorModel<T extends object = object> extends Stra
   componentKeys: AttributeKey<T>[];
   
   /**
-   * If this model is a component, then this is a
-   * list of attributes for which to maintain an index
-   * when embedded as an array (dynamic-zone or repeatable).
+   * If this model is a component, then this is a list of indexer
+   * information for all of the indexed fields.
    */
-  indexers: { key: string, fns: IndexerFn[] }[];
+  indexers: AttributeIndexInfo[] | undefined;
   
   isComponent: boolean;
   relations: RelationHandler<T, any>[];
@@ -111,7 +114,7 @@ export function mountModels(args: FirestoreConnectorModelArgs) {
 }
 
 
-function mountModel<T extends object>(mdl: StrapiModel<T>, { strapi, firestore, connectorOptions }: FirestoreConnectorModelArgs<T>): FirestoreConnectorModel<T> {
+function mountModel<T extends object>(mdl: StrapiModel<T>, { strapi, firestore, connectorOptions }: FirestoreConnectorModelArgs): FirestoreConnectorModel<T> {
 
   mdl.orm = 'firestore';
   mdl.primaryKey = mdl.primaryKey || 'id';
@@ -150,62 +153,32 @@ function mountModel<T extends object>(mdl: StrapiModel<T>, { strapi, firestore, 
     });
 
 
-  // TODO:
-  // Add all component's metadata keys as attributes on this model
+  // Build indexers if this is a component model
+  const indexers = buildIndexers(mdl);
 
+  // Add all component's metadata keys as attributes on this model
   const getMetadataMapKey = typeof options.metadataField === 'string'
     ? (attrKey: AttributeKey<T>) => attrKey + options.metadataField
     : options.metadataField;
-
-  const attrsRequiringMetadata = componentKeys
-    .map(alias => ({ alias, attr: mdl.attributes[alias]}))
-    .filter(({ attr }) => componentRequiresMetadata(attr));
-
-  for (const {} of attrsRequiringMetadata) {
-    Object.assign(mdl.attributes, getIndexedAttributes())
-  }
-
-  const componentMapKeys = attrsRequiringMetadata
-    .map(({ alias, attr }) => {
-      const models = attr.component
-        ? [getComponentModel(attr.component)]
-        : (attr.components || []).map(getComponentModel);
-      
-      models.forEach(componentModel => {
-        
-      });
-      
-      getMetadataMapKey(key)
-    })
-    
-  const metadataKeys = componentKeys
-    .map(alias)
-    
-  const privateAttributes: AttributeKey<T>[] = _.uniq(
-    utils.contentTypes.getPrivateAttributes(mdl).concat(componentMapKeys)
+  Object.assign(
+    mdl.attributes, 
+    buildMetadataAttributes(mdl, { componentKeys, getMetadataMapKey }),
   );
+
+  // Metadata attributes are configured as private and will
+  // automatically be populated in the private attributes list
+  const privateAttributes: AttributeKey<T>[] = utils.contentTypes.getPrivateAttributes(mdl);
   const assocKeys: AttributeKey<T>[] = (Object.keys(mdl.attributes) as AttributeKey<T>[])
     .filter(alias => {
       const { model, collection } = mdl.attributes[alias];
       return model || collection;
     });
-  
-  const indexedKeys = (Object.keys(mdl.attributes) as AttributeKey<T>[])
-    .filter(key => {
-      const { indexed, indexedBy } = mdl.attributes[key];
-      return indexed || indexedBy;
-    });
-  const indexedAttributes = isComponent
-    ? _.uniq(assocKeys.concat(indexedKeys))
-    : [];
-
 
   const defaultPopulate = assocKeys
     .filter(alias => {
       const attr = mdl.attributes[alias];
       return attr.autoPopulate ?? true;
     });
-
 
   const hasPK = (obj: any) => {
     return _.has(obj, mdl.primaryKey) || _.has(obj, 'id');
@@ -223,7 +196,7 @@ function mountModel<T extends object>(mdl: StrapiModel<T>, { strapi, firestore, 
         // The production server has deadlock avoidance but the emulator currently doesn't
         // See https://github.com/firebase/firebase-tools/issues/1629#issuecomment-525464351
         // See https://github.com/firebase/firebase-tools/issues/2452
-        const ms = Math.random() * 1000 * attempt;
+        const ms = Math.random() * 5000;
         strapi.log.warn(`There is contention on a document and the Firestore emulator is getting deadlocked. Waiting ${ms.toFixed(0)}ms.`);
         await new Promise(resolve => setTimeout(resolve, ms));
       }
@@ -293,7 +266,7 @@ function mountModel<T extends object>(mdl: StrapiModel<T>, { strapi, firestore, 
     assocKeys,
     componentKeys,
     defaultPopulate,
-    indexedKeys,
+    indexers,
     getMetadataMapKey,
 
     // We assign this next
@@ -328,15 +301,12 @@ function mountModel<T extends object>(mdl: StrapiModel<T>, { strapi, firestore, 
     query,
   });
 
-  if (isComponent) {
-    model.db = new QueryableComponentCollection<T>(model);
-  } else {
-    if (flattening) {
-      model.db = new QueryableFlatCollection<T>(model);
-    } else {
-      model.db = new QueryableFirestoreCollection<T>(model);
-    }
-  }
+  model.db = isComponent
+    ? new QueryableComponentCollection<T>(model)
+    : (flattening 
+        ? new QueryableFlatCollection<T>(model) 
+        : new QueryableFirestoreCollection<T>(model)
+      )
 
   return model;
 }
@@ -388,12 +358,14 @@ function defaultFlattenOpts<T extends object>(model: StrapiModel<T>, options: Mo
     
     const tests = _.castArray(flattenModels)
       .map(test => {
+        let testFn: FlattenFn
         if (typeof test === 'function') {
-          return test;
+          testFn = test;
+        } else {
+          const regex = test instanceof RegExp ? test : new RegExp(test);
+          testFn = (model) => regex.test(model.uid) ? singleId : null;
         }
-        const regex = test instanceof RegExp ? test : new RegExp(test);
-        const tester: FlattenFn = (model) => regex.test(model.uid) ? singleId : null;
-        const flatten = tester(model);
+        const flatten = testFn(model);
         if (!flatten) {
           return null;
         }
@@ -437,82 +409,58 @@ function defaultSearchAttrOpts<T extends object>(model: StrapiModel<any>, option
   return searchAttr;
 }
 
-interface AttributeIndexInfo {
-  alias: string
-  attr: StrapiAttribute
-  defaultIndexer?: string
-  indexers: {
-    [key: string]: IndexerFn
-  }
-}
 
 /**
  * Build the me
  */
-function getMetaAttributes<T extends object>(model: FirestoreConnectorModel<T>): { [key: string]: StrapiAttribute } {
+function buildMetadataAttributes<T extends object>(model: StrapiModel<T>, { componentKeys, getMetadataMapKey }: Pick<FirestoreConnectorModel<T>, 'componentKeys'> & Pick<FirestoreConnectorModel<T>, 'getMetadataMapKey'>): { [key: string]: StrapiAttribute } {
   const attributes: { [key: string]: StrapiAttribute } = {};
   if (model.modelType !== 'component') {
-    
-    
-  }
-
-  return attributes;
-}
-
-/**
- * Build indexers for all the indexed attributes
- * in a component model.
- */
-function getIndexedAttributes<T extends object>(model: FirestoreConnectorModel<T>): AttributeIndexInfo[] {
-
-  const infos: AttributeIndexInfo[] = [];
-
-  for (const alias of Object.keys(model.attributes)) {
-    const attr = model.attributes[alias];
-    const isRelation = attr.model || attr.collection;
-    
-    if (isRelation || attr.index) {
-      let defaultIndexer: string | undefined;
-      let indexers: { [key: string]: IndexerFn };
-
-      if (typeof attr.index === 'object') {
-        indexers = {};
-        for (const key of Object.keys(attr.index)) {
-          const indexer = attr.index[key];
-          if (indexer) {
-            if (typeof indexer === 'function') {
-              indexers[key] = indexer;
-            } else {
-              indexers[key] = value => value;
-              if (!defaultIndexer) {
-                defaultIndexer = key;
-              }
-            }
-          }
-        }
-
-        // Ensure there is a default indexer for relation types
-        if (isRelation && !defaultIndexer) {
-          defaultIndexer = alias;
-          indexers[alias] = value => value;
-        }
-
-      } else {
-        const key = (typeof attr.index === 'string') ? attr.index : alias;
-        defaultIndexer = key;
-        indexers = {
-          [key]: value => value,
-        };
+    for (const alias of componentKeys) {
+      const attr = model.attributes[alias];
+      if (!doesComponentRequireMetadata(attr)) {
+        continue;
       }
 
-      infos.push({
-        alias,
-        attr,
-        defaultIndexer,
-        indexers,
-      });
+      const mapKey = getMetadataMapKey(alias);
+      if (mapKey in model.attributes) {
+        throw new Error(`The metadata field "${mapKey}" in model "${model.uid}" conflicts with an existing attribute.`);
+      }
+
+      const models = attr.component ? [attr.component] : (attr.components || []);
+      for (const modelName of models) {
+        // We rely on component models being mounted first
+        const { indexers } = getComponentModel(modelName);
+
+        for (const info of indexers!) {
+          for (const key of Object.keys(info.indexers)) {
+            const attrPath = `${mapKey}.${key}`;
+            const attrValue: StrapiAttribute = {
+              collection: info.attr.model || info.attr.collection,
+              via: info.attr.via,
+              type: info.attr.type,
+              isMeta: true,
+              private: true,
+              configurable: false,
+              writable: false,
+            };
+
+            if (attributes[attrPath] && !_.isEqual(attributes[attrPath], attrValue)) {
+              // Make sure all overlapping indexed attribute in dynamic-zone components are compatible
+              // Required so that we know how to coerce the metadata map back and forth from Firestore
+              throw new Error(
+                `The indexed attribute "${info.alias}" of component "${modelName}" is not compatible with an indexed attribute of another component. ` +
+                `The parent attribute is "${alias}" in model "${model.uid}"`
+              );
+            }
+
+            attributes[attrPath] = attrValue;
+          }
+        }
+      }
+
     }
   }
 
-  return infos;
+  return attributes;
 }

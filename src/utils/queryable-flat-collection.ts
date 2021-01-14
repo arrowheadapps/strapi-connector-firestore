@@ -12,12 +12,14 @@ import type { FirestoreConnectorModel } from '../model';
 export class QueryableFlatCollection<T extends object = DocumentData> implements QueryableCollection<T> {
 
   readonly flatDoc: DocumentReference<{ [id: string]: T }>;
-  readonly conv: FirestoreDataConverter<{ [id: string]: T }>;
+  readonly converter: FirestoreDataConverter<{ [id: string]: T }>;
 
   private _filters: ManualFilter[] = [];
   private _orderBy: { field: string | FieldPath, directionStr: OrderByDirection }[] = [];
   private _limit?: number
   private _offset?: number
+
+  private _ensureDocument: Promise<any> | null;
 
   private readonly model: FirestoreConnectorModel<T>
 
@@ -28,25 +30,30 @@ export class QueryableFlatCollection<T extends object = DocumentData> implements
       // Copy the values
       this.model = modelOrOther.model;
       this.flatDoc = modelOrOther.flatDoc;
-      this.conv = modelOrOther.conv;
+      this.converter = modelOrOther.converter;
+      this._ensureDocument = modelOrOther._ensureDocument;
       this._filters = modelOrOther._filters.slice();
       this._orderBy = modelOrOther._orderBy.slice();
       this._limit = modelOrOther._limit;
       this._offset = modelOrOther._offset;
     } else {
       this.model = modelOrOther;
-      const userConverter = modelOrOther.options.converter;
-      this.conv = {
+      this._ensureDocument = null;
+      const {
+        toFirestore = (value) => value,
+        fromFirestore = (value) => value,
+      } = modelOrOther.options.converter;
+      this.converter = {
         toFirestore: data => {
           return _.mapValues(data, (d, path) => {
             const [, ...rest] = path.split('.');
-            return userConverter.toFirestore(coerceModelToFirestore(modelOrOther, d, rest.join('.')));
+            return toFirestore(coerceModelToFirestore(modelOrOther, d, rest.join('.')));
           });
         },
         fromFirestore: data => {
           return _.mapValues(data.data(), (d, path) => {
             const [id, ...rest] = path.split('.');
-            return coerceModelFromFirestore(modelOrOther, id, userConverter.fromFirestore(d), rest.join('.'));
+            return coerceModelFromFirestore(modelOrOther, id, fromFirestore(d), rest.join('.'));
           });
         },
       };
@@ -54,7 +61,7 @@ export class QueryableFlatCollection<T extends object = DocumentData> implements
       const docPath = path.posix.join(modelOrOther.collectionName, modelOrOther.options.singleId);
       this.flatDoc = modelOrOther.firestore
         .doc(docPath)
-        .withConverter(this.conv);
+        .withConverter(this.converter);
     }
   }
 
@@ -72,8 +79,6 @@ export class QueryableFlatCollection<T extends object = DocumentData> implements
     return new DeepReference(id?.toString() || this.autoId(), this);
   };
 
-
-  private _ensureDocument: Promise<any> | null = null;
 
   /**
    * Ensures that the document containing this flat collection exists.
@@ -110,16 +115,15 @@ export class QueryableFlatCollection<T extends object = DocumentData> implements
       if (this._filters.every(f => f(snap))) {
         docs.push(snap);
       }
-    };
+    }
 
     if (this._orderBy.length) {
-      this._orderBy.forEach(({ field, directionStr }) => {
+      for (const { field, directionStr } of this._orderBy) {
         docs = _.sortBy(docs, d => getAtFieldPath(this.model, field, d));
         if (directionStr === 'desc') {
           docs = _.reverse(docs);
         }
-      });
-      
+      }
     }
     
     // Offset and limit after sorting

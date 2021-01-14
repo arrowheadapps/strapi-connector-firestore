@@ -62,7 +62,7 @@ export class DeepReference<T extends object = DocumentData> {
     // It seems that Firestore does not call the converter
     // for update operations?
     // FIXME: For plain DocumentReference instances the converter will not be called
-    const out = this.parent.conv.toFirestore(mapToFlattenedDoc(this, data, merge));
+    const out = this.parent.converter.toFirestore(mapToFlattenedDoc(this, data, merge));
 
     // Ensure document exists
     // This costs one write operation at startup only

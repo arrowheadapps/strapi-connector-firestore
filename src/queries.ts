@@ -5,11 +5,12 @@ import { populateDoc, populateDocs } from './populate';
 import { relationsDelete, relationsUpdate } from './relations';
 import { buildPrefixQuery } from './utils/prefix-query';
 import { StatusError } from './utils/status-error';
-import { updateComponentsMetadata, validateComponents } from './utils/components';
+import { validateComponents } from './utils/components';
 import type { FirestoreConnectorModel } from './model';
 import type { StrapiQuery, StrapiAttributeType, StrapiFilter, AttributeKey, StrapiContext, StrapiWhereFilter } from './types';
 import type { Queryable, Reference, Snapshot } from './utils/queryable-collection';
 import type { Transaction } from './utils/transaction';
+import { updateComponentsMetadata } from './utils/components-indexing';
 
 
 /**
@@ -307,7 +308,7 @@ function buildSearchQuery<T extends object>(model: FirestoreConnectorModel<T>, v
       filters.push({ field: model.primaryKey, operator: 'containss', value });
     }
 
-    Object.keys(model.attributes).forEach((field) => {
+    for (const field of Object.keys(model.attributes)) {
       const attr = model.attributes[field];
       switch (attr.type) {
         case 'integer':
@@ -351,7 +352,7 @@ function buildSearchQuery<T extends object>(model: FirestoreConnectorModel<T>, v
           // Don't search in these fields
           break;
       }
-    });
+    }
 
     return query.whereAny(filters);
   }
@@ -410,13 +411,13 @@ function buildFirestoreQuery<T extends object>(model: FirestoreConnectorModel<T>
     }
   }
 
-  (sort || []).forEach(({ field, order }) => {
+  for (const { field, order } of (sort || [])) {
     if (field === model.primaryKey) {
       if (searchQuery || 
         (where || []).some(w => w.field !== model.primaryKey)) {
         // Ignore sort by document ID when there are other filers
         // on fields other than the document ID
-        // Document ID is the default sort for all queryies 
+        // Document ID is the default sort for all queries 
         // And more often than not, it interferes with Firestore inequality filter
         // or indexing rules
       } else {
@@ -425,7 +426,7 @@ function buildFirestoreQuery<T extends object>(model: FirestoreConnectorModel<T>
     } else {
       query = query.orderBy(field, order);
     }
-  });
+  };
 
   if (start && (start > 0)) {
     query = query.offset(start);
