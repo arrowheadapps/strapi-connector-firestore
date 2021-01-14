@@ -89,8 +89,8 @@ These are the available options to be specified in the Strapi database configura
 | `options.logTransactionStats`   | `boolean \| undefined` | `process.env.NODE_ENV === 'development'` | Indicates whether or not to log the number of read and write operations for every transaction that is executed. Defaults to `true` for development environments and `false` otherwise. |
 | `options.logQueries`   | `boolean \| undefined` | `false` | Indicates whether or not to log the details of every query that is executed. Defaults to `false`. |
 | `options.singleId`      | `string \| undefined`    | `"default"` | The document ID to used for `singleType` models and flattened models. |
-| `options.flattenModels` | `boolean \| string \| RegExp \| FlattenFn \| (string \| RegExp \| FlattenFn)[]`   | `false` | A boolean to enable or disable flattening on all models, or a regex or (or array of those) that are matched against the `uid` property of each model, or a function (or array of those) used to test each model to determine if it should be flattened (see [collection flattening](#collection-flattening)). If a function is provided it must return a string which acts as the `singleId` or `true` (in which case the `singleId` option is used) or "falsey". If the returned string contains `"/"` characters then it is parsed as a document path (overrides the models `collectionName` option). It can also return a `DocumentReference` which is used as the document to store the flattened collection (create using `model.firestore.doc(...)`).<br><br>This is useful for flattening models built-in models or plugin models where you don't have access to the model configuration JSON. |
-| `options.allowNonNativeQueries` | `boolean \| string \| RegExp \| TestFn \| (string \| RegExp \| TestFn)` | `false` | Indicates whether to allow the connector to manually perform search and other query types than are not natively supported by Firestore (see [Search and non-native queries](#search-and-non-native-queries)). These can have poor performance and higher usage costs, and can cause some queries to fail. If disabled, then search will not function. If a `string` or `RegExp` is provided, then this will be tested against each model's `uid` (but this may still be overridden by the model's own setting).  |
+| `options.flattenModels` | `boolean \| string \| RegExp \| FlattenFn \| (string \| RegExp \| FlattenFn)[]`<br/><br/>Where `FlattenFn` is `(model: StrapiModel) => string \| boolean \| DocumentReference \| null \| undefined`. | `false` | A boolean to enable or disable flattening on all models, or a regex or (or array of those) that are matched against the `uid` property of each model, or a function (or array of those) used to test each model to determine if it should be flattened (see [collection flattening](#collection-flattening)). If a function is provided it must return a string which acts as the `singleId` or `true` (in which case the `singleId` option is used) or "falsey". If the returned string contains `"/"` characters then it is parsed as a document path (overrides the models `collectionName` option). It can also return a `DocumentReference` which is used as the document to store the flattened collection (create using `model.firestore.doc(...)`).<br><br>This is useful for flattening models built-in models or plugin models where you don't have access to the model configuration JSON. |
+| `options.allowNonNativeQueries` | `boolean \| string \| RegExp \| TestFn \| (string \| RegExp \| TestFn)`<br/><br/>Where `TestFn` is `(model: StrapiModel<T>) => boolean`. | Indicates whether to allow the connector to manually perform search and other query types than are not natively supported by Firestore (see [Search and non-native queries](#search-and-non-native-queries)). These can have poor performance and higher usage costs, and can cause some queries to fail. If disabled, then search will not function. If a `string` or `RegExp` is provided, then this will be tested against each model's `uid` (but this may still be overridden by the model's own setting).  |
 | `options.ensureComponentIds` | `boolean \| undefined` | `false` | If `true`, then ID's are automatically generated and assigned for embedded components (including dynamic zone) if they don't already exist. ID's are assigned immediately before being sent to Firestore, so they aren't be assigned yet during lifecycle hooks. |
 | `options.maxQuerySize` | `number \| undefined` | `200` | If defined, enforces a maximum limit on the size of all queries. You can use this to limit out-of-control quota usage. Does not apply to flattened collections which use only a single read operation anyway. Set to `0` to remove the limit. <br/><br/>**WARNING:** It is highly recommend to set a maximum limit, and to set it as low as applicable for your application, to limit unexpected quota usage. |
 | `options.metadataField` | `string \| ((attrKey: string) => string) \| undefined` | `"$meta"` | The field used to build the field that will store the metadata map which holds the indexes for repeatable and dynamic-zone components. If it is a string, then it will be combined with the component  field as a postfix. If it is a function, then it will be called with the field of the attribute containing component, and the function must return the string to be used as the field. See [Indexing fields in repeatable and dynamic-zone components](#indexing-fields-in-repeatable-and-dynamic-zone-components). |
@@ -108,209 +108,9 @@ In addition to the normal model options, you can provide the following to custom
 | `options.ensureComponentIds` | `boolean \| undefined` | `undefined` | If defined, overrides the connector's global `ensureComponentIds` setting (see above) for this model. |
 | `options.maxQuerySize` | `number \| undefined` | `undefined` | If defined, overrides the connector's global `maxQuerySize` setting (see above) for this model. Set to `0` to disable the limit. |
 | `options.logQueries`   | `boolean \| undefined` | `undefined` | If defined, overrides the connector's global `logQueries` setting (see above) for this model. |
-| `options.converter` | `{ toFirestore: (data: Object) => Object, fromFirestore: (data: Object) => Object }` | `undefined` | An object with functions used to convert objects going in and out of Firestore. The `toFirestore` function will be called to convert an object immediately before writing to Firestore. The `fromFirestore` function will be called to convert an object immediately after it is read from Firestore. You can config this parameter in a Javascript file called `./api/{model-name}/models/{model-name}.config.js`, which must export an object with the `converter` property. |
+| `options.converter` | `{ toFirestore?: (data: Object) => Object, fromFirestore?: (data: Object) => Object }` | `undefined` | An object with functions used to convert objects going in and out of Firestore. The `toFirestore` function will be called to convert an object immediately before writing to Firestore. The `fromFirestore` function will be called to convert an object immediately after it is read from Firestore. You can config this parameter in a Javascript file called `./api/{model-name}/models/{model-name}.config.js`, which must export an object with the `converter` property. |
 | `options.metadataField` | `string \| ((attrKey: string) => string) \| undefined` | `undefined` | If defined, overrides the connector's global `metadataField` setting (see above) for this model. |
-
-
-### Collection flattening
-
-You can choose to "flatten" a collection of Firestore documents down to fields within a single Firestore document. Considering that Firestore charges for document read and write operations, you may choose to flatten a collection to reduce usage costs and/or improve performance, however it may increase bandwidth costs as the collection will always be retrieved in it's entirety. 
-
-Flattening may be especially beneficial for collections that are often counted or queried in their entirety anyway. It will cost a single read to retrieve the entire flattened collection, but with increased bandwidth usage. If a collection is normally only queried one document at a time, then that would only have resulted in a single in the first place.
-
-Flattening also enables search and other query types that are not natively supported in Firestore.
-
-Before choosing to flatten a collection, consider the following:
-
-- The collection should be bounded (i.e. you can guarantee that there will only be a finite number of entries). For example, a collection of users would be unbounded, but Strapi configurations and permissions/roles would be bounded.
-- The number of entries and size of the entries must fit within a single Firestore document. The size limit for a Firestore document is 1MiB ([see limits](https://firebase.google.com/docs/firestore/quotas#limits)).
-- The benefits of flattening will be diminished if the collection is most commonly queried one document at a time (flattening would increase bandwidth usage with same amount of read operations).
-- If entries in the collection are written to at a high frequency, then flattening would cause contention, because all of those writes would be targetting the same document.
-
-### Search and non-native queries
-
-Firestore does not natively support search. Nor does it support several Strapi filter types such as:
-
-- `'contains'` (case-insensitive string contains)
-- `'containss'` (case-sensitive string contains)
-- `'ncontains'` (case-insensitive string doesn't contain)
-- `'ncontainss'` (case-sensitive string doesn't contain)
-
-This connector manually implements search and these other filters by reading the Firestore collection in blocks without any filters, and then "manually" filtering the results. This can cause poor performance, and also increased usage costs, because more documents are read from Firestore.
-
-You can enable manual search and manual implementations of unsupported queries by using the `allowNonNativeQueries` option, but you should consider cost exposure. It is therefore recommended that you only enable this on models that specifically require it.
-
-You can enable a primitive kind of search without enabling `allowNonNativeQueries` by using the `searchAttribute` setting. This nominates a single attribute to query against when a search query is performed. If the attribute is a string, a search query will result in a case-sensitive query for strings starting with the given query term (case-sensitive string prefix). If the attribute of any other type, a search query will result in an equality query on this attribute.
-
-If `searchAttribute` is defined, the primitive search behaviour is used regardless of whether or not fully-featured search is available.
-
-Flattened models support all of these filters including search, because the collection is fetched as a whole and filtered "manually" anyway.
-
-
-### Indexing fields in repeatable and dynamic-zone components
-
-Repeatable components and dynamic-zone components are embedded as an array in the parent document. Firestore cannot query the document based on any field in the components (cannot query inside array).
-
-To support querying, the connector can be configured to maintain a metadata map (index) for any attribute inside these repeatable components. This configured by adding `"index": true` to any attribute in the component model JSON. This is ignored for non-repeatable components, because they can be queried directly.
-
-The connector automatically does this for all relation attributes. This can be disabled by setting `"index": false` on a relation attribute. Be aware that this will break relation behaviour and result in dangling references when the referred-to documents are deleted.
-
-The metadata map is stored in the document in a field named by appending "$meta" to the name of the field storing the components. The map contains a field for every indexed attribute, and each field is an array of all the unique values of that attribute on all the components, or `null` if there are no values. If the attribute itself is an array (e.g. many-way relations), then the array is flattened.
-
-Note: when indexing attributes inside components, the data will be duplicated inside the document, increasing document size and bandwidth costs.
-
-For example, consider a model JSON with the shape below:
-
-```JSON
-{
-  "attributes": {
-    "myRepeatableComponents": {
-      "component": "my-component",
-      "repeatable": true
-    }
-  }
-}
-```
-
-Where the "my-component" model JSON is like below:
-
-```JSON
-{
-  "attributes": {
-    "name": {
-      "type": "string",
-      "index": true
-    },
-    "name": {
-      "type": "string",
-      "index": true
-    },
-    "related": {
-      "model": "otherModel"
-    }
-  }
-}
-```
-
-Such a model may have a document with the database output below:
-
-```JSON
-{
-  "myRepeatableComponents": [
-    {
-      "name": "Component 1",
-      "related": "/otherModel/doc1", (DocumentReference)
-    },
-    {
-      "name": "Component 2",
-      "related": null,
-    }
-  ],
-  "myRepeatableComponents$meta": {
-    "name": [
-      "Component 1",
-      "Component 2"
-    ],
-    "related": [
-      "/collection/doc1", (DocumentReference)
-      null
-    ]
-  },
-}
-```
-
-Where the `myRepeatableComponents$meta` field is automatically maintained and overwritten by the connector.
-
-In this example, we can query documents based on a field inside a component using a query like `.where('myRepeatableComponents$meta.name', 'array-contains', 'Component 1')`. We can also query a document that contains *any* value with `.where('myRepeatableComponents$meta.name', '!=', null)`, or a document that contains no values with `.where('myRepeatableComponents$meta.name', '==', null)`.
-
-The `"index"` field on the attribute can be:
-- `true`, which enables indexing, and the attribute key will be used as the key in the metadata map;
-- `string`, which enables indexing, and the string will be used as the key in the metadata map;
-- `{ [key: string]: true | ((value: any, component: object) => any) }` which enables indexing, and each entry in the object is a key in the metadata map. If a function is provided then that function is called for each value in the index to perform mapping and filtering. The function is called with the value to index and the parent component object, and must return the value to store in the index or `undefined` (which causes the value to be omitted).
-
-If an object is provided and the attribute is a relation, then the connector will always ensure there is a default indexer, which is required for reverse-lookup of relations to function.
-
-To define a function, this configuration must be defined in JavaScript, not JSON.
-
-This allows advanced indexing such as below (in the component model):
-
-```JavaScript
-module.exports = {
-  options: {
-    // Rename the metadata map with prefix rather than postfix
-    metadataField: field => `index$${field}`,
-  },
-  attributes: {
-    name: {
-      type: 'string',
-      // Index and rename the metadata key instead of default "name"
-      // Non-relation attributes are not indexed by default
-      index: 'names',
-    }
-    active: {
-      type: 'boolean',
-      // Index with default name "active"
-      index: true,
-    },
-    related: {
-      collection: 'other-model',
-      // Because it is a relation the connector will always apply a
-      // default indexer in addition to those defined in indexedBy
-      // but we can override the key
-      index: {
-        // Rename default indexer
-        // If this is omitted then a default indexer with the
-        // attribute name "related" will be ensured because
-        // this is a relation attribute
-        relations: true,
-        // Create an index of all relations that are active
-        relationsActive: (value, obj) => obj.active ? value : undefined,
-        // Create an index of all relations that are inactive
-        relationsInactive: (value, obj) => obj.active ? undefined : value,
-      },
-    },
-  },
-};
-```
-
-Which would result in a database output like below:
-
-```JSON
-{
-  "myRepeatableComponents": [
-    {
-      "name": "Component 1",
-      "active": true,
-      "related": "/otherModel/doc1" (DocumentReference)
-    },
-    {
-      "name": "Component 2",
-      "active": false,
-      "related": null
-    }
-  ],
-  "index$myRepeatableComponents": {
-    "names": [
-      "Component 1",
-      "Component 2"
-    ],
-    "active": [
-      true,
-      false
-    ],
-    "relations": [
-      "/collection/doc1", (DocumentReference)
-      null
-    ],
-    "relationsActive": [
-      "/collection/doc1" (DocumentReference)
-    ],
-    "relationsInactive": [
-      null
-    ]
-  }
-}
-```
+| `attributes.*.index` | `true \| string \| { [key: string]: true \| IndexerFn }`<br/><br/>Where `IndexerFn` is `(value: any, component: object) => any`. | `undefined` | Only relevant for attributes in component models. When the component is embedded as a repeatable or dynamic-zone component, this indicates that the containing parent document should maintain an index for this attribute (see [Indexing fields in repeatable and dynamic-zone components](#indexing-fields-in-repeatable-and-dynamic-zone-components)).<br/><br/>If `true`, the attribute will be indexed with the attribute name used as the key. If `string`, the attribute will be indexed with this string used as the key. If an object, then the attribute will be indexed with each key in the object. The value in the object can be `true` directing an index aliased with that key, or a function which can map and filter values in the index. The function takes the value to be indexed, and the containing component object, and returns the value to be stored in the index, or `undefined` for the value to be omitted. |
 
 
 ### Minimal example
@@ -437,9 +237,201 @@ module.exports = {
     },
   },
   attributes: {
-
+    // ...
   },
 };
+```
+
+### Collection flattening
+
+You can choose to "flatten" a collection of Firestore documents down to fields within a single Firestore document. Considering that Firestore charges for document read and write operations, you may choose to flatten a collection to reduce usage costs and/or improve performance, however it may increase bandwidth costs as the collection will always be retrieved in it's entirety. 
+
+Flattening may be especially beneficial for collections that are often counted or queried in their entirety anyway. It will cost a single read to retrieve the entire flattened collection, but with increased bandwidth usage. If a collection is normally only queried one document at a time, then that would only have resulted in a single in the first place.
+
+Flattening also enables search and other query types that are not natively supported in Firestore.
+
+Before choosing to flatten a collection, consider the following:
+
+- The collection should be bounded (i.e. you can guarantee that there will only be a finite number of entries). For example, a collection of users would be unbounded, but Strapi configurations and permissions/roles would be bounded.
+- The number of entries and size of the entries must fit within a single Firestore document. The size limit for a Firestore document is 1MiB ([see limits](https://firebase.google.com/docs/firestore/quotas#limits)).
+- The benefits of flattening will be diminished if the collection is most commonly queried one document at a time (flattening would increase bandwidth usage with same amount of read operations).
+- If entries in the collection are written to at a high frequency, then flattening would cause contention, because all of those writes would be targetting the same document.
+
+### Search and non-native queries
+
+Firestore does not natively support search. Nor does it support several Strapi filter types such as:
+
+- `'contains'` (case-insensitive string contains)
+- `'containss'` (case-sensitive string contains)
+- `'ncontains'` (case-insensitive string doesn't contain)
+- `'ncontainss'` (case-sensitive string doesn't contain)
+
+This connector manually implements search and these other filters by reading the Firestore collection in blocks without any filters, and then "manually" filtering the results. This can cause poor performance, and also increased usage costs, because more documents are read from Firestore.
+
+You can enable manual search and manual implementations of unsupported queries by using the `allowNonNativeQueries` option, but you should consider cost exposure. It is therefore recommended that you only enable this on models that specifically require it.
+
+You can enable a primitive kind of search without enabling `allowNonNativeQueries` by using the `searchAttribute` setting. This nominates a single attribute to query against when a search query is performed. If the attribute is a string, a search query will result in a case-sensitive query for strings starting with the given query term (case-sensitive string prefix). If the attribute of any other type, a search query will result in an equality query on this attribute.
+
+If `searchAttribute` is defined, the primitive search behaviour is used regardless of whether or not fully-featured search is available.
+
+Flattened models support all of these filters including search, because the collection is fetched as a whole and filtered "manually" anyway.
+
+
+### Indexing fields in repeatable and dynamic-zone components
+
+Repeatable components and dynamic-zone components are embedded as an array in the parent document. Firestore cannot query the document based on any field in the components (cannot query inside array).
+
+To support querying, the connector can be configured to maintain a metadata map (index) for any attribute inside these repeatable components. This configured by adding `"index": true` to any attribute in the component model JSON. This is ignored for non-repeatable components, because they can be queried directly.
+
+The connector automatically does this for all relation attributes. Even if an object is provided for `index`, the connector will always ensure there is a default indexer for all relation attributes, which is required for reverse-lookup of relations to function.
+
+The metadata map is stored in the document in a field named by appending "$meta" to the name of the field storing the components. The map contains a field for every indexed attribute, and each field is an array of all the unique values of that attribute on all the components, or `null` if there are no values. If the attribute itself is an array (e.g. many-way relations), then the array is flattened.
+
+Note: when indexing attributes inside components, the data will be duplicated inside the document, increasing document size and bandwidth costs.
+
+For example, consider a model JSON with the shape below:
+
+```JSON
+{
+  "attributes": {
+    "myRepeatableComponents": {
+      "component": "my-component",
+      "repeatable": true
+    }
+  }
+}
+```
+
+Where the "my-component" model JSON is like below:
+
+```JSON
+{
+  "attributes": {
+    "name": {
+      "type": "string",
+      "index": true
+    },
+    "name": {
+      "type": "string",
+      "index": true
+    },
+    "related": {
+      "model": "otherModel"
+    }
+  }
+}
+```
+
+Such a model may have a document with the database output below:
+
+```JSON
+{
+  "myRepeatableComponents": [
+    {
+      "name": "Component 1",
+      "related": "/otherModel/doc1", (DocumentReference)
+    },
+    {
+      "name": "Component 2",
+      "related": null,
+    }
+  ],
+  "myRepeatableComponents$meta": {
+    "name": [
+      "Component 1",
+      "Component 2"
+    ],
+    "related": [
+      "/collection/doc1", (DocumentReference)
+      null
+    ]
+  },
+}
+```
+
+Where the `myRepeatableComponents$meta` field is automatically maintained and overwritten by the connector.
+
+In this example, we can query documents based on a field inside a component using a query like `.where('myRepeatableComponents$meta.name', 'array-contains', 'Component 1')`. We can also query a document that contains *any* value with `.where('myRepeatableComponents$meta.name', '!=', null)`, or a document that contains no values with `.where('myRepeatableComponents$meta.name', '==', null)`.
+
+
+Advanced indexing can be configured as below (in the component model config):
+
+```JavaScript
+module.exports = {
+  options: {
+    // Rename the metadata map with prefix rather than postfix
+    metadataField: field => `index$${field}`,
+  },
+  attributes: {
+    name: {
+      type: 'string',
+      // Index and rename the metadata key instead of default "name"
+      // Non-relation attributes are not indexed by default
+      index: 'names',
+    }
+    active: {
+      type: 'boolean',
+      // Index with default name "active"
+      index: true,
+    },
+    related: {
+      collection: 'other-model',
+      // Because it is a relation, the connector will always apply a
+      // default indexer in addition to those defined in indexedBy
+      // but we can override the key
+      index: {
+        // Rename default indexer
+        // If this is omitted then a default indexer with the
+        // attribute name "related" will be ensured because
+        // this is a relation attribute
+        relations: true,
+        // Create an index of all relations that are active
+        relationsActive: (value, obj) => obj.active ? value : undefined,
+        // Create an index of all relations that are inactive
+        relationsInactive: (value, obj) => obj.active ? undefined : value,
+      },
+    },
+  },
+};
+```
+
+Which would result in a database output like below:
+
+```JSON
+{
+  "myRepeatableComponents": [
+    {
+      "name": "Component 1",
+      "active": true,
+      "related": "/otherModel/doc1" (DocumentReference)
+    },
+    {
+      "name": "Component 2",
+      "active": false,
+      "related": null
+    }
+  ],
+  "index$myRepeatableComponents": {
+    "names": [
+      "Component 1",
+      "Component 2"
+    ],
+    "active": [
+      true,
+      false
+    ],
+    "relations": [
+      "/collection/doc1", (DocumentReference)
+      null
+    ],
+    "relationsActive": [
+      "/collection/doc1" (DocumentReference)
+    ],
+    "relationsInactive": [
+      null
+    ]
+  }
+}
 ```
 
 ## Considerations
