@@ -14,6 +14,13 @@ export function doesComponentRequireMetadata(attr: StrapiAttribute): boolean {
 
 export function updateComponentsMetadata<T extends object>(model: FirestoreConnectorModel<T>, data: T, output: T = data) {
   for (const parentAlias of model.componentKeys) {
+
+    // Don't overwrite metadata with empty map if the value 
+    // doesn't exist because this could be a partial update
+    if (!_.has(data, parentAlias)) {
+      continue;
+    }
+
     const parentAttr = model.attributes[parentAlias];
     if (doesComponentRequireMetadata(parentAttr)) {
       const metaField = model.getMetadataMapKey(parentAlias);

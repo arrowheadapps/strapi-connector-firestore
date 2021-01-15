@@ -11,6 +11,7 @@ import type { StrapiQuery, StrapiAttributeType, StrapiFilter, AttributeKey, Stra
 import type { Queryable, Reference, Snapshot } from './utils/queryable-collection';
 import type { Transaction } from './utils/transaction';
 import { updateComponentsMetadata } from './utils/components-indexing';
+import { coerceToModel } from './coerce/coerce-to-model';
 
 
 /**
@@ -65,9 +66,9 @@ export function queries<T extends object>({ model, strapi }: StrapiContext<T>): 
   const create = async (values: any, populate = model.defaultPopulate) => {
     log('create', { populate });
 
-    // Validate components dynamiczone
-    const components = validateComponents(model, values);
-    updateComponentsMetadata(model, values);
+    // Validate and coerce
+    const data = coerceToModel(model, , values, null, { strict: true });
+    updateComponentsMetadata(model, data);
 
     // Add timestamp data
     if (model.timestamps) {
@@ -95,8 +96,8 @@ export function queries<T extends object>({ model, strapi }: StrapiContext<T>): 
       // Populate relations
       const entry = await populateDoc(model, { ref, data: () => values }, populate, trans);
 
-      trans.create(ref, values);
-      return entry;
+      trans.create(ref, data);
+      return data;
     });
   };
 
