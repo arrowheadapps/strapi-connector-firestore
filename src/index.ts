@@ -68,13 +68,13 @@ module.exports = (strapi: Strapi) => {
   // See: https://github.com/strapi/rfcs/pull/17
 
   const dataMapperService: any = _.get(strapi.plugins, 'content-manager.services.data-mapper');
-  if (!dataMapperService) {
-    throw new Error(
+  const { toContentManagerModel: _toContentManagerModel } = dataMapperService || {};
+  if (!dataMapperService || !_toContentManagerModel) {
+    strapi.log.warn(
       'An update to Strapi has broken the patch applied to strapi-plugin-content-manager. ' +
       'Please revert to the previous version.'
     );
   }
-  const { toContentManagerModel: _toContentManagerModel } = dataMapperService;
   dataMapperService.toContentManagerModel = (...params) => {
     const model: StrapiModel<any> = _toContentManagerModel(...params);
     for (const key of Object.keys(model.attributes)) {
@@ -86,10 +86,26 @@ module.exports = (strapi: Strapi) => {
   }
   
 
+  const { connections } = strapi.config;
+  const firestoreConnections = Object.keys(connections)
+    .filter(connectionName => {
+      const connection = connections[connectionName];
+      if (connection.connector !== 'firestore') {
+        strapi.log.warn(
+          'You are using the Firestore connector alongside ' +
+          'other connector types. The Firestore connector is not ' +
+          'designed for this, so you will likely run into problems.'
+        );
+        return false;
+      } else {
+        return true;
+      }
+    });
+
+
   const initialize = async () => {
-    const { connections } = strapi.config;
     await Promise.all(
-      Object.keys(connections).map(async connectionName => {
+      firestoreConnections.map(async connectionName => {
         const connection = connections[connectionName];
         if (connection.connector !== 'firestore') {
           strapi.log.warn(
@@ -122,6 +138,7 @@ module.exports = (strapi: Strapi) => {
         }
 
         const firestore = new Firestore(settings);
+        _.set(strapi, `connections.${connectionName}`, firestore);
 
         const initFunctionPath = path.resolve(
           strapi.config.appPath,
@@ -156,11 +173,23 @@ module.exports = (strapi: Strapi) => {
         await Promise.all(tasks);
       })
     );
-  }
+  };
+
+  const destroy = async () => {
+    await Promise.all(
+      firestoreConnections.map(async connectionName => {
+        const firestore = strapi.connections[connectionName];
+        if (firestore instanceof Firestore) {
+          await firestore.terminate();
+        }
+      })
+    );
+  };
 
   return {
     defaults,
-    initialize, 
+    initialize,
+    destroy, 
     queries, 
     defaultTimestamps: [DEFAULT_CREATE_TIME_KEY, DEFAULT_UPDATE_TIME_KEY],
   };

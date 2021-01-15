@@ -189,6 +189,7 @@ export interface Strapi {
   admin: Readonly<StrapiPlugin>
   plugins: { [key: string]: Readonly<StrapiPlugin> }
   db: StrapiDatabaseManager
+  connections: { [name: string]: any }
   log: Logger
 
   getModel(modelKey: string, plugin?: string): Readonly<FirestoreConnectorModel>
