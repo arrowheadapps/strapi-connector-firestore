@@ -1,103 +1,48 @@
-'use-strict';
+'use strict';
 
-const execa = require('execa');
-const waitOn = require('wait-on');
-const { log } = require('./log');
+const path = require('path');
+const _ = require('lodash');
+const strapi = require('strapi/lib');
+const { createUtils } = require('./utils');
 
-/**
- * @type {execa.ExecaChildProcess | null}
- */
-let strapiProc = null;
+const superAdminCredentials = {
+  email: 'admin@strapi.io',
+  firstname: 'admin',
+  lastname: 'admin',
+  password: 'Password123',
+};
 
-/**
- * Starts Strapi if not already started, and returns
- * a promise that resolves when the Strapi server is available.
- */
-async function startStrapi() {
+const superAdminLoginInfo = _.pick(superAdminCredentials, ['email', 'password']);
 
-  if (!strapiProc) {
-    log('Starting Strapi... ');
-    strapiProc = execa.command('nyc --silent --no-clean strapi start', { 
-      preferLocal: true,
-      cleanup: true,
-      reject: false,
-      stdio: 'pipe',
-      env: {
-        BROWSER: 'none',
-        STRAPI_HIDE_STARTUP_MESSAGE: 'true',
-      },
-    });
+const TEST_APP_URL = path.resolve(__dirname, '../');
 
-    // Pipe Strapi output to the parent
-    strapiProc.stderr.pipe(process.stderr);
-    if (!process.env.SILENT) {
-      strapiProc.stdout.pipe(process.stdout);
-    }
+const createStrapiInstance = async ({ ensureSuperAdmin = true, logLevel = 'fatal' } = {}) => {
+  const options = { dir: TEST_APP_URL };
+  const instance = strapi(options);
 
-    strapiProc.finally(() => {
-      strapiProc = null;
-      log('Strapi stopped!\n');
-    });
+  await instance.load();
 
-  } else {
-    log('Strapi already started.\n');
+  instance.log.level = logLevel;
+
+  await instance.app
+    // Populate Koa routes
+    .use(instance.router.routes())
+    // Populate Koa methods
+    .use(instance.router.allowedMethods());
+
+  const utils = createUtils(instance);
+
+  if (ensureSuperAdmin) {
+    await utils.createUserIfNotExists(superAdminCredentials);
   }
 
-  // Wait for Strapi to become available
-  // or throw error if Strapi exits before becoming available
-  await Promise.race([
-    waitForStrapi(),
-    strapiProc.then(() => Promise.reject(new Error('Strapi failed to start!'))),
-  ]);
-}
+  return instance;
+};
 
-/**
- * Stops Strapi if it is running, then starts it again.
- * Returns a promise that resolves when the server is available.
- */
-async function reloadStrapi() {
-  await stopStrapi();
-  await startStrapi();
-}
-
-
-async function stopStrapi() {
-  if (strapiProc) {
-    log('Stopping Strapi... ');
-    strapiProc.kill();
-    // strapiProc.send('stop');
-    await strapiProc;
-
-    // Wait for the next event loop so that the cleanup
-    // of the strapiProc will have completed
-    await new Promise(resolve => setImmediate(resolve));
-  } else {
-    log('Strapi already stopped.\n');
-  }
-}
-
-async function waitForStrapi(timeoutMs = 60_000) {
-  log('Waiting for Strapi to come online... ');
-  try {
-    await waitOn({
-      resources: ['http://localhost:1337/_health'],
-      headers: {
-        'Content-Type': 'application/json',
-        'Keep-Alive': false,
-      },
-      window: 0,
-      timeout: timeoutMs,
-    });
-  } catch {
-    throw new Error('Timeout waiting for Strapi to come online');
-  }
-
-  log('Strapi online!\n');
-}
-
-module.exports = { 
-  startStrapi,
-  reloadStrapi,
-  stopStrapi,
-  waitForStrapi,
+module.exports = {
+  createStrapiInstance,
+  superAdmin: {
+    loginInfo: superAdminLoginInfo,
+    credentials: superAdminCredentials,
+  },
 };

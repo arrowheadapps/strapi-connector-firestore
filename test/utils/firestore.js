@@ -2,7 +2,6 @@
 
 const execa = require('execa');
 const { log } = require('./log');
-// const firebase = require('@firebase/rules-unit-testing');
 
 /**
  * @type {{ proc: execa.ExecaChildProcess, started: Promise<void> } | null}
@@ -85,17 +84,7 @@ const stopFirestore = async () => {
   }
 };
 
-const purgeFirestore = async () => {
-  // if (firestore) {
-  //   process.stderr.write('Purging Firestore data\n');
-  //   await firestore.app.clearFirestoreData({
-  //     projectId: "test-project-id",
-  //   });
-  // }
-};
-
 module.exports = {
   startFirestore,
   stopFirestore,
-  purgeFirestore,
 };

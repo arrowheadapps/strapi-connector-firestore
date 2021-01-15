@@ -1,9 +1,5 @@
-const { stopFirestore } = require('./helpers/firestore');
-const { stopStrapi } = require('./helpers/strapi');
+const { stopFirestore } = require('./utils/firestore');
 
 module.exports = async () => {
-  await Promise.all([
-    stopFirestore(),
-    stopStrapi(),
-  ]);
+  await stopFirestore();
 };
