@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "develop": "npm run clean && strapi develop",
-    "emulator": "firebase emulators:start --only firestore",
+    "emulator": "firebase emulators:start --only=firestore --import=./.tmp --export-on-exit",
     "start": "NODE_ENV=production strapi start",
     "build": "strapi build",
     "build:prod": "npm run clean && patch-package && NODE_ENV=production strapi build",
