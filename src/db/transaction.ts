@@ -254,7 +254,7 @@ export class TransactionImpl implements Transaction {
     if (deepRef) {
       Object.assign(op.data, mapToFlattenedDoc(deepRef, data, true));
     } else {
-      if (data === null) {
+      if (!data) {
         op.data = null;
       } else {
         Object.assign(op.data, data);
