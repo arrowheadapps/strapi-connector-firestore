@@ -1,5 +1,12 @@
 lib/
 
+# Ignore any APIs created in the example projects
+# for testing
+examples/*/api/*/**
+examples/*/components/**
+examples/*/extensions/*/models/**
+examples/*/public/uploads/**
+
 ############################
 # OS X
 ############################

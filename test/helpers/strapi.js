@@ -1,3 +1,5 @@
+'use-strict';
+
 const execa = require('execa');
 const waitOn = require('wait-on');
 const { log } = require('./log');
@@ -74,7 +76,7 @@ async function stopStrapi() {
   }
 }
 
-async function waitForStrapi(timeoutMs = 30_000) {
+async function waitForStrapi(timeoutMs = 60_000) {
   log('Waiting for Strapi to come online... ');
   try {
     await waitOn({

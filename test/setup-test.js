@@ -5,7 +5,7 @@ const { purgeFirestore } = require('./helpers/firestore');
 beforeAll(async done => {
   await startStrapi();
   done();
-}, 60_000);
+}, 70_000);
 
 afterAll(async done => {
   await Promise.all([
@@ -13,4 +13,4 @@ afterAll(async done => {
     stopStrapi().then(() => cleanTestApp()),
   ]);
   done();
-}, 60_000);
+}, 70_000);

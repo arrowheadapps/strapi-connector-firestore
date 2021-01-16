@@ -1,403 +1,197 @@
 import * as _ from 'lodash';
-import { FieldValue, DocumentReference } from '@google-cloud/firestore';;
-import type { FirestoreConnectorModel } from './types';
-import type { TransactionWrapper } from './utils/transaction-wrapper';
-import type { Reference } from './utils/queryable-collection';
-import { DeepReference } from './utils/deep-reference';
-import { coerceReference } from './utils/coerce';
+import * as utils from 'strapi-utils';
+import { allModels, FirestoreConnectorModel } from './model';
+import type { StrapiModel, StrapiAttribute } from './types';
+import type { Transaction } from './db/transaction';
+import { RelationAttrInfo, RelationHandler, RelationInfo } from './utils/relation-handler';
+import { doesComponentRequireMetadata } from './utils/components-indexing';
+import type { Reference, SetOpts } from './db/reference';
 
-interface MorphDef {
-  id?: Reference
-  alias: string
-  refId: Reference
-  ref: string
-  field: string
-  filter: string
+export function shouldUpdateRelations(opts: SetOpts | undefined): boolean {
+  return !opts || (opts.updateRelations !== false);
 }
 
-function refEquals(a: Reference | null, b: Reference | null): boolean {
-  if (a instanceof DocumentReference) {
-    return a.isEqual(b as any);
-  }
-  if (a instanceof DeepReference) {
-    return a.isEqual(b as any);
-  }
-  return false;
-}
 
-const removeUndefinedKeys = (obj: any) => _.pickBy(obj, _.negate(_.isUndefined));
-
-const addRelationMorph = async (model: FirestoreConnectorModel, params: MorphDef, transaction: TransactionWrapper) => {
-  const { id, alias, refId, ref, field, filter } = params;
-
-  await model.setMerge(
-    id!, 
-    {
-      [alias]: FieldValue.arrayUnion({
-        ref: refId,
-        kind: ref,
-        [filter]: field,
-      })
-    },
-    transaction
+/**
+ * Parse relation attributes on this updated model and update the referred-to
+ * models accordingly.
+ */
+export async function relationsUpdate<T extends object>(model: FirestoreConnectorModel<T>, ref: Reference<T>, prevData: T | undefined, newData: T | undefined, transaction: Transaction) {
+  await Promise.all(
+    model.relations.map(r => r.update(ref, prevData, newData, transaction))
   );
-};
+}
 
-const removeRelationMorph = async (model: FirestoreConnectorModel, params: MorphDef, transaction: TransactionWrapper) => {
-  const { id, alias, filter, field, ref, refId } = params;
+/**
+ * When this model is being deleted, parse and update the referred-to models accordingly.
+ */
+export async function relationsDelete<T extends object>(model: FirestoreConnectorModel<T>, ref: Reference<T>, prevData: T, transaction: Transaction) {
+  await relationsUpdate(model, ref, prevData, undefined, transaction); 
+}
 
-  const value = {
-    [alias]: FieldValue.arrayRemove({
-      ref: refId,
-      kind: ref,
-      [filter]: field,
-    }),
-  };
+/**
+ * When this model is being created, parse and update the referred-to models accordingly.
+ */
+export async function relationsCreate<T extends object>(model: FirestoreConnectorModel<T>, ref: Reference<T>, newData: T, transaction: Transaction) {
+  await relationsUpdate(model, ref, undefined, newData, transaction); 
+}
 
-  if (id) {
-    await model.setMerge(id, value, transaction);
 
-  } else {
+export function buildRelations<T extends object>(model: FirestoreConnectorModel<T>, strapiInstance = strapi) {
+  
+  // Build the dominant relations (these exist as attributes on this model)
+  // The non-dominant relations will be populated as a matter of course
+  // when the other models are built
+  for (const alias of Object.keys(model.attributes)) {
+    const attr = model.attributes[alias];
+    if (attr.isMeta) {
+      continue;
+    }
 
-    const q = model.db.where(alias, 'array-contains', value);
-    const docs = (await (transaction ? transaction.get(q) : q.get())).docs;
-    await Promise.all(docs.map(d => model.setMerge(d.ref, value, transaction)));
+    // Required for other parts of Strapi to work
+    utils.models.defineAssociations(model.uid.toLowerCase(), model, attr, alias);
+
+    const targetModelName = attr.model || attr.collection;
+    if (!targetModelName) {
+      // Not a relation attribute
+      continue;
+    }
+
+    const isMorph = targetModelName === '*';
+    const attrInfo = makeAttrInfo(alias, attr);
+    const thisEnd: RelationInfo<any> = {
+      model,
+      parentModels: findParentModels(model, attrInfo, strapiInstance),
+      attr: attrInfo,
+    };
+
+    let otherEnds: RelationInfo<any>[];
+    if (isMorph) {
+      otherEnds = findModelsRelatingTo(
+        { model, attr, alias }, 
+        strapiInstance
+      );
+    } else {
+      const targetModel = strapiInstance.db.getModel(targetModelName, attr.plugin);
+      if (!targetModel) {
+        throw new Error(
+          `Problem building relations. The model targetted by attribute "${alias}" ` +
+          `on model "${model.uid}" does not exist.`
+        );
+      }
+      const attrInfo = findOtherAttr(model, alias, attr, targetModel);
+      otherEnds = [{
+        model: targetModel,
+        parentModels: findParentModels(model, attrInfo, strapiInstance),
+        attr: attrInfo,
+      }];
+    }
+
+    model.relations.push(new RelationHandler(thisEnd, otherEnds));
+
+    // If there are any non-dominant other ends
+    // Then we add them to the other model also
+    // so that the other model knows about the relation
+    // (I.e. This is necessary when that model is deleting itself)
+    for (const other of otherEnds) {
+      if (!other.attr) {
+        other.model.relations = other.model.relations || [];
+        other.model.relations.push(new RelationHandler(other, [thisEnd]));
+      }
+    }
   }
-};
+}
 
 
-export async function updateRelations(model: FirestoreConnectorModel, params: { data, values, ref: Reference }, transaction: TransactionWrapper) {
 
-  const { data, ref, values } = params;
-  const relationUpdates: Promise<any>[] = [];
-
-  // Only update fields which are on this document.
-  Object.keys(removeUndefinedKeys(values)).forEach((attribute) => {
-    const details = model.attributes[attribute];
-    const association = model.associations.find(x => x.alias === attribute)!;
-
-    const assocModel = strapi.db.getModelByAssoc(details);
-    if (!assocModel) {
-      throw new Error('Associated model no longer exists');
+function findModelsRelatingTo(info: { model: FirestoreConnectorModel<any>, attr: StrapiAttribute, alias: string }, strapiInstance = strapi): RelationInfo<any>[] {
+  const related: RelationInfo<any>[] = [];
+  for (const model of allModels(strapiInstance)) {
+    for (const alias of Object.keys(model.attributes)) {
+      const attr = model.attributes[alias];
+      const otherModelName = attr.model || attr.collection;
+      if (otherModelName
+        && (otherModelName === info.model.modelName)
+        && ((attr.via === info.alias) || (info.attr.via === alias))) {
+        const attrInfo = makeAttrInfo(alias, attr);
+        related.push({
+          model: model as FirestoreConnectorModel<any>,
+          parentModels: findParentModels(model, attrInfo, strapiInstance),
+          attr: attrInfo,
+        });
+      }
     }
+  }
+  return related;
+}
 
-    const currentRef = coerceReference(data[attribute], assocModel);
-    const newRef = coerceReference(values[attribute], assocModel);
-
-    switch (association.nature) {
-      case 'oneWay': {
-        if (_.isArray(newRef)) {
-          throw new Error('oneWay relation cannot be an array');
-        }
-        return _.set(data, attribute, newRef);
+function findOtherAttr(thisModel: StrapiModel<any>, key: string, attr: StrapiAttribute, otherModel: StrapiModel<any>): RelationAttrInfo | undefined {
+  const alias = Object.keys(otherModel.attributes).find(alias => {
+    const otherAttr = otherModel.attributes[alias];
+    if ((otherAttr.model || otherAttr.collection) === thisModel.modelName) {
+      if (attr.via && (attr.via === alias)) {
+        return true;
       }
-
-      case 'oneToOne': {
-        if (_.isArray(currentRef) || _.isArray(newRef)) {
-          throw new Error('oneToOne relation cannot be an array');
-        }
-
-        // if value is the same don't do anything
-        if (refEquals(newRef, currentRef)) return;
-
-        // if the value is null, set field to null on both sides
-        if (!newRef) {
-          if (currentRef) {
-            relationUpdates.push(assocModel.setMerge(currentRef, { [details.via]: null }, transaction));
-          }
-          return _.set(data, attribute, null);
-        }
-
-        // set old relations to null
-        relationUpdates.push(transaction.get(newRef).then(async snap => {
-          const d = snap.data();
-          if (d && d[details.via]) {
-            const oldLink = coerceReference(d[details.via], assocModel);
-            if (oldLink) {
-              await assocModel.setMerge(oldLink as DocumentReference, { [attribute]: null }, transaction);
-            }
-          }
-
-          // set new relation
-          await assocModel.setMerge(newRef, { [details.via]: ref }, transaction);
-
-        }));
-        return _.set(data, attribute, newRef);
+      if (otherAttr.via && (otherAttr.via === key)) {
+        return true;
       }
-
-      case 'oneToMany': {
-        // set relation to null for all the ids not in the list
-        const currentArray = currentRef ? _.castArray(currentRef): [];
-        const newArray = newRef ? _.castArray(newRef) : [];
-        const toRemove = _.differenceWith(currentArray, newArray, refEquals);
-        
-        toRemove.forEach(r => {
-          relationUpdates.push(assocModel.setMerge(r, { [details.via]: null }, transaction));
-        });
-        newArray.map(r => {
-          relationUpdates.push(assocModel.setMerge(r, { [details.via]: ref }, transaction));
-        });
-        
-        return;
-      }
-      
-      case 'manyToOne': {
-        return _.set(data, attribute, newRef);
-      }
-
-      case 'manyWay':
-      case 'manyToMany': {
-        if ((currentRef && !_.isArray(currentRef)) || (newRef && !_.isArray(newRef))) {
-          throw new Error('manyToMany relation must be an array');
-        }
-        if (association.dominant) {
-          return _.set(data, attribute, newRef);
-        }
-
-        ((currentRef as Reference[]) || []).map(v => {
-          relationUpdates.push(assocModel.setMerge(v, { [association.via]: FieldValue.arrayRemove(ref) }, transaction));
-        });
-        ((newRef as Reference[]) || []).map(v => {
-          relationUpdates.push(assocModel.setMerge(v, { [association.via]: FieldValue.arrayUnion(ref) }, transaction));
-        });
-
-        return;
-      }
-
-      // media -> model
-      case 'manyMorphToMany':
-      case 'manyMorphToOne': {
-
-        const newValue = values[attribute];
-        if (newValue && !_.isArray(newValue)) {
-          throw new Error('manyMorphToMany or manyMorphToOne relation must be an array');
-        }
-
-        relationUpdates.push(Promise.all((newValue || []).map(async obj => {
-          const refModel = strapi.getModel(obj.ref, obj.source);
-
-          const createRelation = () => {
-            return addRelationMorph(assocModel, {
-              id: ref,
-              alias: association.alias,
-              ref: obj.kind || refModel.globalId,
-              refId: model.doc(obj.refId),
-              field: obj.field,
-              filter: association.filter,
-            }, transaction);
-          };
-
-          // Clear relations to refModel
-          const reverseAssoc = refModel.associations.find(assoc => assoc.alias === obj.field);
-          if (reverseAssoc && reverseAssoc.nature === 'oneToManyMorph') {
-            await removeRelationMorph(assocModel, {
-              alias: association.alias,
-              ref: obj.kind || refModel.globalId,
-              refId: model.doc(obj.refId),
-              field: obj.field,
-              filter: association.filter,
-            }, transaction);
-            await createRelation();
-            await assocModel.setMerge(refModel.doc(obj.refId), {
-              [obj.field]: ref
-            }, transaction);
-          } else {
-            createRelation();
-            await assocModel.setMerge(refModel.doc(obj.refId), FieldValue.arrayUnion(ref), transaction);
-          }
-        })));
-        break;
-      }
-
-      // model -> media
-      case 'oneToManyMorph':
-      case 'manyToManyMorph': {
-        const newIds = newRef ? _.castArray(newRef) : [];
-        const currentIds = currentRef ? _.castArray(currentRef) : [];
-
-        // Compare array of ID to find deleted files.
-        const toAdd = _.differenceWith(newIds, currentIds, refEquals);
-        const toRemove = _.differenceWith(currentIds, currentIds, refEquals);
-
-        const morphModel = strapi.db.getModelByAssoc(details);
-
-        _.set(data, attribute, newIds);
-
-        toRemove.forEach(id => {
-          relationUpdates.push(removeRelationMorph(morphModel!, {
-            id,
-            alias: association.via,
-            ref: model.globalId,
-            refId: ref,
-            field: association.alias,
-            filter: association.filter,
-          }, transaction));
-        });
-
-        toAdd.forEach(id => {
-          relationUpdates.push(addRelationMorph(morphModel!, {
-            id,
-            alias: association.via,
-            ref: model.globalId,
-            refId: ref,
-            field: association.alias,
-            filter: association.filter,
-          }, transaction));
-        });
-
-        break;
-      }
-      case 'oneMorphToOne':
-      case 'oneMorphToMany':
-        break;
-      default:
     }
+    return false;
   });
 
-  await Promise.all(relationUpdates);
+  if (alias) {
+    const otherAttr = otherModel.attributes[alias];
+    return makeAttrInfo(alias, otherAttr);
+  }
+  return undefined;
 }
 
-export async function deleteRelations(model: FirestoreConnectorModel, params: { entry: any, ref: Reference}, transaction: TransactionWrapper) {
-  const { entry, ref } = params;
+function findParentModels<T extends object>(componentModel: FirestoreConnectorModel<T>, componentAttr: RelationAttrInfo | undefined, strapiInstance = strapi): RelationInfo<T>[] | undefined {
+  const relations: RelationInfo<T>[] = [];
+  if (componentModel.isComponent && componentAttr) {
+    const indexer = (componentModel.indexers || []).find(info => info.alias === componentAttr.alias);
+    if (!indexer || !indexer.defaultIndexer) {
+      // This should not be able to happen because it is guaranteed by buildIndexers()
+      throw new Error('Relation in component does not have a default indexer');
+    }
 
-  // Update oneWay and manyWay relations from other models
-  // that point to this entry which is being deleted
-  // This entry has no link to those relations so we have
-  // to search for them manually
-  const relatedAssocAsync = Promise.all(
-    model.relatedNonDominantAttrs.map(async ({ key, attr, modelKey }) => {
-      const relatedModel = strapi.db.getModelByGlobalId(modelKey);
-      if (!relatedModel) {
-        // Silently ignore non-existent models
-        return;
+    for (const otherModel of allModels(strapiInstance)) {
+      if (componentModel.uid !== otherModel.uid) {
+        for (const alias of Object.keys(otherModel.attributes)) {
+          const attr = otherModel.attributes[alias];
+          if ((attr.component === componentModel.uid)
+             || (attr.components && attr.components.includes(componentModel.uid))) {
+            const isRepeatable = doesComponentRequireMetadata(attr);
+            relations.push({
+              model: otherModel,
+              attr: componentAttr ? {
+                ...componentAttr,
+                isMeta: isRepeatable,
+                actualAlias: {
+                  componentAlias: componentAttr.alias,
+                  parentAlias: alias,
+                },
+                alias: isRepeatable 
+                  ? `${otherModel.getMetadataMapKey(alias)}.${indexer.defaultIndexer}`
+                  : `${alias}.${componentAttr.alias}`,
+              } : undefined,
+              parentModels: undefined,
+            });
+          }
+        }
       }
-      const q = attr.model
-        ? relatedModel.db.where(key, '==', ref)
-        : relatedModel.db.where(key, 'array-contains', ref);
-      const docs = (await transaction.get(q)).docs;
-      await Promise.all(docs.map(async d => {
-        if (attr.model) {
-          await relatedModel.setMerge(d.ref, { [key]: null }, transaction);
-        } else {
-          await relatedModel.setMerge(d.ref, { [key]: FieldValue.arrayRemove(ref) }, transaction);
-        }
-      }));
-    })
-  );
-
-  // Update the relations that point to this entry which
-  // is being deleted
-  const assocAsync = Promise.all(
-    model.associations.map(async association => {
-      const { nature, via, dominant, alias } = association;
-      const details = model.attributes[alias];
-  
-      const assocModel = strapi.db.getModelByAssoc(details);
-      if (!assocModel) {
-        throw new Error('Associated model no longer exists');
-      }
-      const currentValue = coerceReference(entry[alias], assocModel);
-
-      // TODO: delete all the ref to the model
-
-      switch (nature) {
-        case 'oneWay':
-        case 'manyWay': {
-          return;
-        }
-
-        case 'oneToMany':
-        case 'oneToOne': {
-          if (!via || !currentValue) {
-            return;
-          }
-          if (_.isArray(currentValue)) {
-            throw new Error('oneToMany or oneToOne relation must not be an array');
-          }
-          await assocModel.setMerge(currentValue, { [via]: null }, transaction);
-          return;
-        }
-
-        case 'manyToMany':
-        case 'manyToOne': {
-          if (!via || dominant || !currentValue) {
-            return;
-          }
-          if (_.isArray(currentValue)) {
-            await Promise.all(currentValue.map(async v => {
-              await assocModel.setMerge(v, { [via]: FieldValue.arrayRemove(ref) }, transaction);
-            }));
-          } else {
-            await assocModel.setMerge(currentValue, { [via]: FieldValue.arrayRemove(ref) }, transaction);
-          }
-          return;
-        }
-
-        case 'oneToManyMorph':
-        case 'manyToManyMorph': {
-          // delete relation inside of the ref model
-          const targetModel = strapi.db.getModelByAssoc(details);
-
-          // ignore them ghost relations
-          if (!targetModel) return;
-
-          const element = {
-            ref,
-            kind: model.globalId,
-            [association.filter]: association.alias,
-          };
-
-          await assocModel.setMerge(ref, { [via]: FieldValue.arrayRemove(element) }, transaction);
-          return;
-        }
-
-        case 'manyMorphToMany':
-        case 'manyMorphToOne': {
-          // delete relation inside of the ref model
-
-          if (Array.isArray(entry[association.alias])) {
-            return Promise.all(
-              entry[association.alias].map(async val => {
-                const targetModel = strapi.db.getModelByGlobalId(val.kind);
-
-                // ignore them ghost relations
-                if (!targetModel) return;
-
-                const field = val[association.filter];
-                const reverseAssoc = targetModel.associations.find(
-                  assoc => assoc.alias === field
-                );
-
-                const q = targetModel.db.where(targetModel.primaryKey, '==', val.ref && (val.ref._id || val.ref));
-                const docs = (await transaction.get(q)).docs;
-
-                if (reverseAssoc && reverseAssoc.nature === 'oneToManyMorph') {
-                  await Promise.all(docs.map(async d => {
-                    await assocModel.setMerge(d.ref, { [field]: null }, transaction);
-                  }));
-                } else {
-                  await Promise.all(docs.map(async d => {
-                    await assocModel.setMerge(d.ref, { [field]: FieldValue.arrayRemove(ref) }, transaction);
-                  }));
-                }
-              })
-            );
-          }
-
-          return;
-        }
-
-        case 'oneMorphToOne':
-        case 'oneMorphToMany': {
-          return;
-        }
-
-        default:
-          return;
-      }
-    })
-  );
-
-  await Promise.all([assocAsync, relatedAssocAsync]);
+    }
+  }
+  return relations.length ? relations : undefined;
 }
-  
+
+function makeAttrInfo(alias: string, attr: StrapiAttribute): RelationAttrInfo {
+  return {
+    alias,
+    isArray: !attr.model || Boolean(attr.collection) || attr.repeatable || (attr.type === 'dynamiczone'),
+    isMorph: (attr.model || attr.collection) === '*',
+    filter: attr.filter,
+    actualAlias: undefined,
+    isMeta: false,
+  };
+}

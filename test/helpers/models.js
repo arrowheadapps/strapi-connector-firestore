@@ -1,4 +1,6 @@
-const { reloadStrapi } = require('./strapi');
+'use strict';
+
+const waitRestart = require('./waitRestart');
 
 module.exports = ({ rq }) => {
   async function createComponent(data) {
@@ -15,16 +17,16 @@ module.exports = ({ rq }) => {
       },
     });
 
-    await reloadStrapi();
+    await waitRestart();
   }
 
   async function deleteComponent(name) {
-    await rq({
-      url: `/content-type-builder/components/${name}`,
-      method: 'DELETE',
-    });
+    // await rq({
+    //   url: `/content-type-builder/components/${name}`,
+    //   method: 'DELETE',
+    // });
 
-    await reloadStrapi();
+    // await waitRestart();
   }
 
   function createContentTypeWithType(name, type, opts = {}) {
@@ -40,8 +42,8 @@ module.exports = ({ rq }) => {
     });
   }
 
-  async function createContentType(data, restart = true) {
-    const result = await rq({
+  async function createContentType(data) {
+    await rq({
       url: '/content-type-builder/content-types',
       method: 'POST',
       body: {
@@ -52,13 +54,7 @@ module.exports = ({ rq }) => {
       },
     });
 
-    if (result.body.errors) {
-      console.error(result.body.errors);
-    }
-
-    if (restart) {
-      await reloadStrapi();
-    }
+    await waitRestart();
   }
 
   async function createContentTypes(models) {
@@ -67,7 +63,7 @@ module.exports = ({ rq }) => {
     }
   }
 
-  async function modifyContentType(data, restart = true) {
+  async function modifyContentType(data) {
     const sanitizedData = { ...data };
     delete sanitizedData.editable;
     delete sanitizedData.restrictRelationsTo;
@@ -83,9 +79,7 @@ module.exports = ({ rq }) => {
       },
     });
 
-    if (restart) {
-      await reloadStrapi();
-    }
+    await waitRestart();
   }
 
   async function modifyContentTypes(models) {
@@ -106,15 +100,18 @@ module.exports = ({ rq }) => {
   }
 
   async function deleteContentType(model) {
-    // Don't do anything
-    // Total cleanup will be handled be the afterAll
-    // hook in Jest
+    // await rq({
+    //   url: `/content-type-builder/content-types/application::${model}.${model}`,
+    //   method: 'DELETE',
+    // });
+
+    // await waitRestart();
   }
 
   async function deleteContentTypes(models) {
-    // Don't do anything
-    // Total cleanup will be handled be the afterAll
-    // hook in Jest
+    // for (let model of models) {
+    //   await deleteContentType(model);
+    // }
   }
 
   async function cleanupContentTypes(models) {
@@ -125,16 +122,20 @@ module.exports = ({ rq }) => {
 
   async function cleanupContentType(model) {
     const { body } = await rq({
-      url: `/content-manager/explorer/application::${model}.${model}`,
+      url: `/content-manager/collection-types/application::${model}.${model}`,
+      qs: {
+        pageSize: 1000,
+      },
       method: 'GET',
     });
 
-    if (Array.isArray(body) && body.length > 0) {
-      const queryString = body.map((item, i) => `${i}=${item.id}`).join('&');
-
+    if (Array.isArray(body.results) && body.results.length > 0) {
       await rq({
-        url: `/content-manager/explorer/deleteAll/application::${model}.${model}?${queryString}`,
-        method: 'DELETE',
+        url: `/content-manager/collection-types/application::${model}.${model}/actions/bulkDelete`,
+        method: 'POST',
+        body: {
+          ids: body.results.map(({ id }) => id),
+        },
       });
     }
   }

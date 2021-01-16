@@ -1,49 +1,288 @@
-/**
- * Implementation of model queries for mongo
- */
-
 import * as _ from 'lodash';
-import { populateDoc, populateDocs } from './populate';
 import { convertRestQueryParams } from 'strapi-utils';
-import type { StrapiQueryParams, StrapiFilter, StrapiQuery, StrapiAttributeType } from './types';
-import { StatusError } from './utils/status-error';
-import { deleteRelations, updateRelations } from './relations';
 import { FieldPath } from '@google-cloud/firestore';
-import { validateComponents } from './utils/validate-components';
-import { TransactionWrapper } from './utils/transaction-wrapper';
-import type { Snapshot, QueryableCollection, Reference } from './utils/queryable-collection';
-import { ManualFilter, convertWhere } from './utils/convert-where';
-import { coerceAttribute, toFirestore } from './utils/coerce';
+import { populateDoc } from './populate';
 import { buildPrefixQuery } from './utils/prefix-query';
+import { StatusError } from './utils/status-error';
+import type { FirestoreConnectorModel } from './model';
+import type { StrapiQuery, StrapiAttributeType, StrapiFilter, AttributeKey, StrapiContext, StrapiWhereFilter } from './types';
+import type { Queryable } from './db/queryable-collection';
+import type { Transaction } from './db/transaction';
+import type { Reference, Snapshot } from './db/reference';
 
 
+/**
+ * Firestore connector implementation of the Strapi query interface.
+ */
+export interface FirestoreConnectorQueries<T extends object> extends StrapiQuery<T> {
 
-export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
+}
+
+
+export function queries<T extends object>({ model, strapi }: StrapiContext<T>): FirestoreConnectorQueries<T> {
+
+  const log = model.options.logQueries
+    ? (name: string, details: object) => { strapi.log.debug(`QUERY ${model.modelName}.${name}: ${JSON.stringify(details)}`) }
+    : () => {};
+
+  const find = async (params: any, populate = model.defaultPopulate) => {
+    log('find', { params, populate });
+
+    return await model.runTransaction(async trans => {
+      let snaps: Snapshot<T>[];
+      if (model.hasPK(params)) {
+        const ref = model.db.doc(model.getPK(params));
+        const snap = await trans.getNonAtomic(ref);
+        if (!snap.exists) {
+          snaps = [];
+        } else {
+          snaps = [snap];
+        }
+      } else {
+        snaps = await runFirestoreQuery(model, params, null, trans);
+      }
+
+      return await Promise.all(
+        snaps.map(async snap => {
+          const data = snap.data()!;
+          return await populateDoc(model, snap.ref, data, populate, trans);
+        })
+      );
+    });
+  };
+
+  const findOne = async (params: any, populate = model.defaultPopulate) => {
+    const entries = await find({ ...params, _limit: 1 }, populate);
+    return entries[0] || null;
+  };
+
+  const count = async (params: any) => {
+    log('count', { params });
+
+    return await model.runTransaction(async trans => {
+      // Don't populate any fields, we are just counting
+      const docs = await runFirestoreQuery(model, params, null, trans);
+      return docs.length;
+    });
+  };
+
+  const create = async (values: any, populate = model.defaultPopulate) => {
+    log('create', { populate });
+
+    const ref = model.hasPK(values)
+      ? model.db.doc(model.getPK(values))
+      : model.db.doc();
+
+    return await model.runTransaction(async trans => {
+      // Create while coercing data and updating relations
+      const data = await trans.create(ref, values);
+      
+      // Populate relations
+      return await populateDoc(model, ref, data, populate, trans);
+    });
+  };
+
+  const update = async (params: any, values: any, populate = model.defaultPopulate) => {
+    log('update', { params, populate });
+    
+    return await model.runTransaction(async trans => {
+      let snap: Snapshot<T>;
+      if (model.hasPK(params)) {
+        snap = await trans.getAtomic(model.db.doc(model.getPK(params)));
+      } else {
+        const docs = await runFirestoreQuery(model, { ...params, _limit: 1 }, null, trans);
+        snap = docs[0];
+      }
+
+      const prevData = snap.data();
+      if (!prevData) {
+        throw new StatusError('entry.notFound', 404);
+      }
+
+      // Update while coercing data and updating relations
+      const data = await trans.update(snap.ref, values);
+
+      // Populate relations
+      return await populateDoc(model, snap.ref, data, populate, trans);
+    });
+  };
+
+  const deleteMany = async (params: any, populate = model.defaultPopulate) => {
+    log('delete', { params, populate });
+
+    return await model.runTransaction(async trans => {
+      if (model.hasPK(params)) {
+        const ref = model.db.doc(model.getPK(params));
+        const snap = await trans.getNonAtomic(ref);
+        const result = await deleteOne(snap, populate, trans);
+        return [result];
+      } else {
+        const snaps = await runFirestoreQuery(model, params, null, trans);
+        return Promise.all(snaps.map(snap => deleteOne(snap, populate, trans)));
+      }
+    });
+  };
+
+  const deleteOne = async (snap: Snapshot<T>, populate: AttributeKey<T>[], trans: Transaction) => {
+    const prevData = snap.data();
+    if (!prevData) {
+      throw new StatusError('entry.notFound', 404);
+    }
+
+    // Delete while updating relations
+    await trans.delete(snap.ref);
+
+    // Populate relations
+    return await populateDoc(model, snap.ref, prevData, populate, trans);
+  };
+
+  const search = async (params: any, populate = model.defaultPopulate) => {
+    log('search', { params, populate });
+
+    return await model.runTransaction(async trans => {
+      let snaps: Snapshot<T>[];
+      if (model.hasPK(params)) {
+        const ref = model.db.doc(model.getPK(params));
+        const snap = await trans.getNonAtomic(ref);
+        if (!snap.exists) {
+          snaps = [];
+        } else {
+          snaps = [snap];
+        }
+      } else {
+        snaps = await runFirestoreQuery(model, params, params._q, trans);
+      }
+
+      
+      return await Promise.all(
+        snaps.map(async snap => {
+          const data = snap.data()!;
+          return await populateDoc(model, snap.ref, data, populate, trans);
+        })
+      );
+    });
+  };
+
+  const countSearch = async (params: any) => {
+    log('countSearch', { params });
+
+    return await model.runTransaction(async trans => {
+      // Don't populate any fields, we are just counting
+      const docs = await runFirestoreQuery(model, params, params._q, trans);
+      return docs.length;
+    });
+  };
+
+  const fetchRelationCounters = async (attribute: AttributeKey<T>, entitiesIds: string[] = []) => {
+    log('fetchRelationCounters', { attribute, entitiesIds });
+
+    const relation = model.relations.find(a => a.alias === attribute);
+    if (!relation) {
+      throw new Error(`Could not find relation "${attribute}" in model "${model.globalId}".`);
+    }
+
+    if (!entitiesIds.length) {
+      return [];
+    }
+
+    return await model.runTransaction(async trans => {
+      const snaps = await trans.getNonAtomic(entitiesIds.map(id => model.db.doc(id)));
+
+      return Promise.all(snaps.map(async snap => {
+        const data = snap.data();
+        const count = data ? (await relation.findRelated(snap.ref, data, trans)).length : 0;
+        return {
+          id: snap.id,
+          count,
+        };
+      }));
+    });
+  };
+
+  const queries: FirestoreConnectorQueries<T> = {
+    model,
+    find,
+    findOne,
+    count,
+    create,
+    update,
+    delete: deleteMany,
+    search,
+    countSearch,
+    fetchRelationCounters,
+  };
+  return queries;
+}
+
+
   
 
-  function buildSearchQuery(value: any, query: QueryableCollection) {
+function buildSearchQuery<T extends object>(model: FirestoreConnectorModel<T>, value: any, query: Queryable<T>) {
 
-    if (model.options.searchAttribute) {
-      const field = model.options.searchAttribute;
-      const type: StrapiAttributeType = (field === model.primaryKey)
-        ? 'uid'
-        : model.attributes[field].type;
+  if (model.options.searchAttribute) {
+    const field = model.options.searchAttribute;
+    const type: StrapiAttributeType | undefined = (field === model.primaryKey)
+      ? 'uid'
+      : model.attributes[field].type;
 
-      // Build a native implementation of primitive search
-      switch (type) {
+    // Build a native implementation of primitive search
+    switch (type) {
+      case 'integer':
+      case 'float':
+      case 'decimal':
+      case 'biginteger':
+      case 'date':
+      case 'time':
+      case 'datetime':
+      case 'timestamp':
+      case 'json':
+      case 'boolean':
+        // Use equality operator 
+        return query.where(field, 'eq', value);
+
+      case 'string':
+      case 'text':
+      case 'richtext':
+      case 'email':
+      case 'enumeration':
+      case 'uid':
+        // Use prefix operator
+        const { gte, lt } = buildPrefixQuery(value);
+        return query
+          .where(field, 'gte', gte)
+          .where(field, 'lt', lt);
+
+      case 'password':
+        // Explicitly don't search in password fields
+        throw new Error('Not allowed to query password fields');
+        
+      default:
+        throw new Error(`Search attribute "${field}" is an of an unsupported type`);
+    }
+
+  } else {
+
+    // Build a manual implementation of fully-featured search
+    const filters: StrapiWhereFilter[] = [];
+
+    if (value != null) {
+      filters.push({ field: model.primaryKey, operator: 'containss', value });
+    }
+
+    for (const field of Object.keys(model.attributes)) {
+      const attr = model.attributes[field];
+      switch (attr.type) {
         case 'integer':
         case 'float':
         case 'decimal':
         case 'biginteger':
-        case 'date':
-        case 'time':
-        case 'datetime':
-        case 'timestamp':
-        case 'json':
-        case 'boolean':
-          // Use equality operator 
-          value = coerceAttribute(model.attributes[field], value, toFirestore);
-          return query.where(convertWhere(field, 'eq', value, 'nativeOnly'));
+          try {
+            // Use equality operator for numbers
+            filters.push({ field, operator: 'eq', value });
+          } catch {
+            // Ignore if the query can't be coerced to this type
+          }
+          break;
 
         case 'string':
         case 'text':
@@ -51,107 +290,76 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
         case 'email':
         case 'enumeration':
         case 'uid':
-          // Use prefix operator
-          value = coerceAttribute(model.attributes[field], value, toFirestore);
-          const { gte, lt } = buildPrefixQuery(value);
-          return query
-            .where(convertWhere(field, 'gte', gte, 'nativeOnly'))
-            .where(convertWhere(field, 'lt', lt, 'nativeOnly'));
+          try {
+            // User contains operator for strings
+            filters.push({ field, operator: 'contains', value });
+          } catch {
+            // Ignore if the query can't be coerced to this type
+          }
+          break;
 
+        case 'date':
+        case 'time':
+        case 'datetime':
+        case 'timestamp':
+        case 'json':
+        case 'boolean':
         case 'password':
-          // Explicitly don't search in password fields
-          throw new Error('Not allowed to query password fields');
+          // Explicitly don't search in these fields
+          break;
           
         default:
-          throw new Error(`Search attribute "${field}" is an of an unsupported type`);
+          // Unsupported field type for search
+          // Don't search in these fields
+          break;
       }
-
-    } else {
-
-      // Build a manual implementation of fully-featured search
-      const filters: ManualFilter[] = [];
-
-      if (value != null) {
-        filters.push(convertWhere(FieldPath.documentId(), 'contains', value.toString(), 'manualOnly'));
-      }
-
-      Object.keys(model.attributes).forEach((field) => {
-        const attr = model.attributes[field];
-        switch (attr.type) {
-          case 'integer':
-          case 'float':
-          case 'decimal':
-          case 'biginteger':
-            try {
-              // Use equality operator for numbers
-              filters.push(convertWhere(field, 'eq', coerceAttribute(attr, value, toFirestore), 'manualOnly'));
-            } catch {
-              // Ignore if the query can't be coerced to this type
-            }
-            break;
-
-          case 'string':
-          case 'text':
-          case 'richtext':
-          case 'email':
-          case 'enumeration':
-          case 'uid':
-            try {
-              // User contains operator for strings
-              filters.push(convertWhere(field, 'contains', coerceAttribute(attr, value, toFirestore), 'manualOnly'));
-            } catch {
-              // Ignore if the query can't be coerced to this type
-            }
-            break;
-
-          case 'date':
-          case 'time':
-          case 'datetime':
-          case 'timestamp':
-          case 'json':
-          case 'boolean':
-          case 'password':
-            // Explicitly don't search in these fields
-            break;
-            
-          default:
-            // Unsupported field type for search
-            // Don't search in these fields
-            break;
-        }
-      });
-
-      return query.whereAny(filters);
     }
-  };
 
-  function buildFirestoreQuery(params, searchQuery: string | null, query: QueryableCollection): QueryableCollection | null {
-    // Remove any search query
-    // because we extract and handle it separately
-    // Otherwise `convertRestQueryParams` will also handle it
-    delete params._q;
-    const filters: StrapiFilter = convertRestQueryParams(params);
+    return query.whereAny(filters);
+  }
+};
 
-    if (searchQuery) {
-      query = buildSearchQuery(searchQuery, query);
+function buildFirestoreQuery<T extends object>(model: FirestoreConnectorModel<T>, params, searchQuery: string | null, query: Queryable<T>): Queryable<T> | Reference<T>[] | null {
+  // Remove any search query
+  // because we extract and handle it separately
+  // Otherwise `convertRestQueryParams` will also handle it
+  delete params._q;
+  const { where, limit, sort, start }: StrapiFilter = convertRestQueryParams(params);
+
+  if (searchQuery) {
+    query = buildSearchQuery(model, searchQuery, query);
+  } else {
+    // Check for special case where the only filter is id_in
+    // In this case it is more effective to fetch the documents
+    // by id, because the "in" operator only supports ten arguments
+    if (where && (where.length === 1)
+      && (where[0].field === model.primaryKey)
+      && (where[0].operator === 'in')) {
+      
+      return _.castArray(where[0].value || [])
+        .slice(start || 0, (limit || -1) < 1 ? undefined : limit)
+        .map(value => {
+          if (!value || (typeof value !== 'string')) {
+            throw new StatusError(`Argument for "${model.primaryKey}_in" must be an array of strings`, 400);
+          }
+          return model.db.doc(value);
+        });
+
     } else {
-      for (const where of (filters.where || [])) {
-        let { operator, value } = where;
-        let field: string | FieldPath = where.field;
-
+      for (let { field, operator, value } of (where || [])) {
         if (operator === 'in') {
-          value = _.castArray(value);
-          if ((value as Array<any>).length === 0) {
+          if (Array.isArray(value) && (value.length === 0)) {
             // Special case: empty query
             return null;
           }
+          value = _.castArray(value);
         }
         if (operator === 'nin') {
-          value = _.castArray(value);
-          if ((value as Array<any>).length === 0) {
+          if (Array.isArray(value) && (value.length === 0)) {
             // Special case: no effect
             continue;
           }
+          value = _.castArray(value);
         }
 
         // Prevent querying passwords
@@ -159,286 +367,48 @@ export function queries({ model, modelKey, strapi }: StrapiQueryParams) {
           throw new Error('Not allowed to query password fields');
         }
 
-        // Coerce to the appropriate types
-        // Because values from querystring will always come in as strings
-        
-        if ((field === model.primaryKey) || (field === 'id')) {
-          // Detect and enable filtering on document ID
-          // FIXME:
-          // Does the value need to be coerceed to a DocumentReference? 
-          value = _.isArray(value)
-            ? value.map(v => v?.toString())
-            : value?.toString();
-          field = FieldPath.documentId();
-
-        } else if (operator !== 'null') {
-          // Don't coerce the 'null' operatore because the value is true/false
-          // not the type of the field
-          value = coerceAttribute(model.attributes[field], value, toFirestore);
-        }
-
         query = query.where(field, operator, value);
       }
     }
+  }
 
-
-    (filters.sort || []).forEach(({ field, order }) => {
-      if (_.includes(model.idKeys, field)) {
-        if (searchQuery || 
-          (filters.where || []).some(w => !_.includes(model.idKeys, w.field))) {
-          // Ignore sort by document ID when there are other filers
-          // on fields other than the document ID
-          // Document ID is the default sort for all queryies 
-          // And more often than not, it interferes with Firestore inequality filter
-          // or indexing rules
-        } else {
-          query = query.orderBy(FieldPath.documentId() as any, order);
-        }
+  for (const { field, order } of (sort || [])) {
+    if (field === model.primaryKey) {
+      if (searchQuery || 
+        (where || []).some(w => w.field !== model.primaryKey)) {
+        // Ignore sort by document ID when there are other filers
+        // on fields other than the document ID
+        // Document ID is the default sort for all queries 
+        // And more often than not, it interferes with Firestore inequality filter
+        // or indexing rules
       } else {
-        query = query.orderBy(field, order);
+        query = query.orderBy(FieldPath.documentId() as any, order);
       }
-    });
-
-    if (filters.start && (filters.start > 0)) {
-      query = query.offset(filters.start);
-    }
-
-    const limit = Math.max(0, filters.limit || 0);
-    query = query.limit(limit);
-
-    return query;
-  }
-
-  async function runFirestoreQuery(params, searchQuery: string | null, transaction: TransactionWrapper | undefined) {
-    const query = buildFirestoreQuery(params, searchQuery, model.db);
-    if (!query) {
-      return [];
-    }
-
-    const result = await (transaction ? transaction.get(query) : query.get());
-    return result.docs;
-  }
-
-
-
-
-  async function find(params: any, populateFields?: string[]) {
-    const populateOpt = populateFields || model.defaultPopulate;
-
-    return await model.runTransaction(async trans => {
-      let docs: Snapshot[];
-      if (model.hasPK(params)) {
-        const ref = model.doc(model.getPK(params));
-        const snap = await trans.get(ref);
-        if (!snap.exists) {
-          docs = [];
-        } else {
-          docs = [snap];
-        }
-      } else {
-        docs = await runFirestoreQuery(params, null, trans);
-      }
-
-      return await populateDocs(model, docs, populateOpt, trans);
-    });
-  }
-
-  async function findOne(params: any, populateFields?: string[]) {
-    const entries = await find({ ...params, _limit: 1 }, populateFields);
-    return entries[0] || null;
-  }
-
-  async function count(params: any): Promise<number> {
-    // Don't populate any fields, we are just counting
-    const docs = await runFirestoreQuery(params, null, undefined);
-    return docs.length;
-  }
-
-  async function create(values: any, populate?: string[]) {
-    const populateOpt = populate || model.defaultPopulate;
-
-    // Validate components dynamiczone
-    const components = validateComponents(values, model);
-
-    // Extract values related to relational data.
-    const relations = model.pickRelations(values);
-    const data = model.omitExernalValues(values);
-
-    // Add timestamp data
-    if (_.isArray(model.options.timestamps)) {
-      const now = new Date();
-      const [createdAtKey, updatedAtKey] = model.options.timestamps;
-      data[createdAtKey] = now;
-      data[updatedAtKey] = now;
-    }
-
-    // Create entry without relational data
-    const id = model.getPK(values);
-    const ref = id ? model.doc(id) : model.doc();
-
-    return await model.runTransaction(async trans => {
-      
-      // Update components
-      await Promise.all(components.map(async ({ model, value }) => {
-        await updateRelations(model, {
-          values: model.pickRelations(value),
-          data: value,
-          ref
-        }, trans);
-      }));
-      
-      // Update relations
-      await updateRelations(model, {
-        values: relations,
-        data,
-        ref
-      }, trans);
-      
-      // Populate relations
-      const entry = await populateDoc(model, { ref, data: () => data }, populateOpt, trans);
-
-      await model.create(ref, data, trans);
-      return entry;
-    });
-  }
-
-  async function update(params: any, values: any, merge = false, populateFields?: string[]) {
-    const populateOpt = populateFields || model.defaultPopulate;
-
-    // Validate components dynamiczone
-    const components = validateComponents(values, model);
-
-    // Extract values related to relational data.
-    const relations = model.pickRelations(values);
-    const data = model.omitExernalValues(values);
-
-    // Add timestamp data
-    if (_.isArray(model.options.timestamps)) {
-      const now = new Date();
-      const [createdAtKey, updatedAtKey] = model.options.timestamps;
-
-      // Prevent creation timestamp from being overwritten
-      delete data[createdAtKey];
-      data[updatedAtKey] = now;
-    }
-
-    // Run the transaction
-    return await model.runTransaction(async trans => {
-
-      let ref: Reference;
-      if (model.hasPK(params)) {
-        ref = model.doc(model.getPK(params));
-      } else {
-        const docs = await runFirestoreQuery({ ...params, _limit: 1 }, null, trans);
-        if (!docs.length) {
-          throw new StatusError('entry.notFound', 404);
-        }
-
-        ref = docs[0].ref;
-      }
-
-
-      // Update components
-      await Promise.all(components.map(async ({ model, value }) => {
-        await updateRelations(model, {
-          values: model.pickRelations(value),
-          data: value,
-          ref
-        }, trans);
-      }));
-
-      // Update relations
-      await updateRelations(model, {
-        values: relations,
-        data,
-        ref
-      }, trans);
-
-      // Populate relations
-      const entry = await populateDoc(model, { ref, data: () => data }, populateOpt, trans);
-
-      // Update entry without relational data.
-      if (merge) {
-        await model.setMerge(ref, data, trans);
-      } else {
-        await model.update(ref, data, trans);
-      }
-
-      return entry;
-
-    });
-  }
-
-  async function deleteMany(params: any, populate?: string[]) {
-    if (model.hasPK(params)) {
-      return await deleteOne(model.getPK(params), populate)
     } else {
-      // TODO: FIXME: Running multiple deletes at the same time
-      // Deletes may affect many relations
-      // All are transacted so they all may interfere with eachother
-      // Should run in the same transaction
-      const entries = await find(params);
-      return Promise.all(entries.map(entry => deleteOne(entry[model.primaryKey], populate)));
+      query = query.orderBy(field, order);
     }
-  }
-
-  async function deleteOne(id: string, populateFields: string[] | undefined) {
-    const populateOpt = populateFields || model.defaultPopulate;
-
-    return await model.runTransaction(async trans => {
-
-      const ref = model.doc(id);
-      const snap = await trans.get(ref);
-      const entry = snap.data();
-      if (!entry) {
-        throw new StatusError('entry.notFound', 404);
-      }
-
-      const doc = await populateDoc(model, snap, populateOpt, trans);
-
-      await deleteRelations(model, { entry: doc, ref }, trans);
-
-      await model.delete(ref, trans);
-      return doc;
-    });
-  }
-
-  async function search(params: any, populate?: string[]) {
-    const populateOpt = populate || model.defaultPopulate;
-
-    return await model.runTransaction(async trans => {
-      let docs: Snapshot[];
-      if (model.hasPK(params)) {
-        const ref = model.doc(model.getPK(params));
-        const snap = await trans.get(ref);
-        if (!snap.exists) {
-          docs = [];
-        } else {
-          docs = [snap];
-        }
-      } else {
-        docs = await runFirestoreQuery(params, params._q, trans);
-      }
-
-      return await populateDocs(model, docs, populateOpt, trans);
-    });
-  }
-
-  async function countSearch(params: any) {
-    // Don't populate any fields, we are just counting
-    const docs = await runFirestoreQuery(params, params._q, undefined);
-    return docs.length;
-  }
-
-  const queries: StrapiQuery = {
-    findOne,
-    find,
-    create,
-    update,
-    delete: deleteMany,
-    count,
-    search,
-    countSearch,
   };
-  return queries;
-};
+
+  if (start && (start > 0)) {
+    query = query.offset(start);
+  }
+
+  if (limit && (limit > 1)) {
+    query = query.limit(limit);
+  }
+
+  return query;
+}
+
+async function runFirestoreQuery<T extends object>(model: FirestoreConnectorModel<T>, params, searchQuery: string | null, transaction: Transaction): Promise<Snapshot<T>[]> {
+  const queryOrIds = buildFirestoreQuery(model, params, searchQuery, model.db);
+  if (!queryOrIds) {
+    return [];
+  }
+  if (Array.isArray(queryOrIds)) {
+    return await transaction.getNonAtomic(queryOrIds);
+  } else {
+    const result = await transaction.getNonAtomic(queryOrIds);
+    return result.docs
+  }
+}

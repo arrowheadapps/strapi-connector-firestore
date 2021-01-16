@@ -11,7 +11,7 @@ module.exports = ({ env }) => ({
       },
       options: {
         useEmulator: env('NODE_ENV') !== 'production',
-        maxQuerySize: 100,
+        logQueries: env('NODE_ENV') !== 'production',
       }
     }
   },

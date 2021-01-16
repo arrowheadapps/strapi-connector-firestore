@@ -1,3 +1,5 @@
+'use-strict';
+
 /**
  * Writes to `process.stdout` only if the env configuration
  * is set to verbose.

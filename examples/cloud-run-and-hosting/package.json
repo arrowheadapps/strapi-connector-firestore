@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "develop": "npm run clean && strapi develop",
-    "emulator": "firebase emulators:start --only firestore",
+    "emulator": "firebase emulators:start --only=firestore --import=./.tmp --export-on-exit",
     "start": "NODE_ENV=production strapi start",
     "build": "strapi build",
     "build:prod": "npm run clean && patch-package && NODE_ENV=production strapi build",
@@ -15,16 +15,16 @@
     "clean": "rimraf .temp .cache build"
   },
   "dependencies": {
-    "strapi": "^3.3.4",
-    "strapi-admin": "^3.3.4",
+    "strapi": "^3.4.3",
+    "strapi-admin": "^3.4.3",
     "strapi-connector-firestore": "^3.0.0-alpha.24",
-    "strapi-plugin-content-manager": "^3.3.4",
-    "strapi-plugin-content-type-builder": "^3.3.4",
-    "strapi-plugin-email": "^3.3.4",
-    "strapi-plugin-upload": "^3.3.4",
-    "strapi-plugin-users-permissions": "^3.3.4",
+    "strapi-plugin-content-manager": "^3.4.3",
+    "strapi-plugin-content-type-builder": "^3.4.3",
+    "strapi-plugin-email": "^3.4.3",
+    "strapi-plugin-upload": "^3.4.3",
+    "strapi-plugin-users-permissions": "^3.4.3",
     "strapi-provider-upload-google-cloud-storage": "^3.1.6",
-    "strapi-utils": "^3.3.4"
+    "strapi-utils": "^3.4.3"
   },
   "devDependencies": {
     "patch-package": "^6.2.2",
