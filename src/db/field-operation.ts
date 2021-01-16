@@ -1,15 +1,19 @@
 import * as _ from 'lodash';
 import { FieldValue } from '@google-cloud/firestore';
-import { isEqualHandlingRef } from './queryable-collection';
+import { isEqualHandlingRef } from './reference';
 
 /**
- * Acts as a wrapper for Firestores `FieldValue` but allows
+ * Acts as a wrapper for Firestore's `FieldValue` but allows
  * manual implementation (where Firestore's) API is not public.
  */
 export abstract class FieldOperation {
 
   static delete(): FieldOperation {
     return new DeleteFieldOperation();
+  }
+
+  static increment(n: number): FieldOperation {
+    return new IncrementFieldOperation(n);
   }
 
   static arrayRemove(...items: any[]): FieldOperation {
@@ -77,6 +81,26 @@ class DeleteFieldOperation extends FieldOperation {
 
   transform(): undefined {
     return undefined;
+  }
+
+  coerceWith() {
+    return this;
+  }
+}
+
+class IncrementFieldOperation extends FieldOperation {
+
+  constructor(readonly n: number) {
+    super()
+  }
+
+  toFirestoreValue(): FieldValue {
+    return FieldValue.increment(this.n);
+  }
+
+  transform(value: any): number {
+    const number = (typeof value === 'number') ? value : 0;
+    return number + this.n;
   }
 
   coerceWith() {

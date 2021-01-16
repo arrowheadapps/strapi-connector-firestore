@@ -1,17 +1,14 @@
 import * as _ from 'lodash';
 import { convertRestQueryParams } from 'strapi-utils';
 import { FieldPath } from '@google-cloud/firestore';
-import { populateDoc, populateDocs } from './populate';
-import { relationsDelete, relationsUpdate } from './relations';
+import { populateDoc } from './populate';
 import { buildPrefixQuery } from './utils/prefix-query';
 import { StatusError } from './utils/status-error';
-import { validateComponents } from './utils/components';
 import type { FirestoreConnectorModel } from './model';
 import type { StrapiQuery, StrapiAttributeType, StrapiFilter, AttributeKey, StrapiContext, StrapiWhereFilter } from './types';
-import type { Queryable, Reference, Snapshot } from './utils/queryable-collection';
-import type { Transaction } from './utils/transaction';
-import { updateComponentsMetadata } from './utils/components-indexing';
-import { coerceToModel } from './coerce/coerce-to-model';
+import type { Queryable } from './db/queryable-collection';
+import type { Transaction } from './db/transaction';
+import type { Reference, Snapshot } from './db/reference';
 
 
 /**
@@ -30,21 +27,27 @@ export function queries<T extends object>({ model, strapi }: StrapiContext<T>): 
 
   const find = async (params: any, populate = model.defaultPopulate) => {
     log('find', { params, populate });
+
     return await model.runTransaction(async trans => {
-      let docs: Snapshot<T>[];
+      let snaps: Snapshot<T>[];
       if (model.hasPK(params)) {
         const ref = model.db.doc(model.getPK(params));
         const snap = await trans.getNonAtomic(ref);
         if (!snap.exists) {
-          docs = [];
+          snaps = [];
         } else {
-          docs = [snap];
+          snaps = [snap];
         }
       } else {
-        docs = await runFirestoreQuery(model, params, null, trans);
+        snaps = await runFirestoreQuery(model, params, null, trans);
       }
 
-      return await populateDocs(model, docs, populate, trans);
+      return await Promise.all(
+        snaps.map(async snap => {
+          const data = snap.data()!;
+          return await populateDoc(model, snap.ref, data, populate, trans);
+        })
+      );
     });
   };
 
@@ -66,61 +69,23 @@ export function queries<T extends object>({ model, strapi }: StrapiContext<T>): 
   const create = async (values: any, populate = model.defaultPopulate) => {
     log('create', { populate });
 
-    // Validate and coerce
-    const data = coerceToModel(model, , values, null, { strict: true });
-    updateComponentsMetadata(model, data);
-
-    // Add timestamp data
-    if (model.timestamps) {
-      const now = new Date();
-      const [createdAtKey, updatedAtKey] = model.timestamps;
-      values[createdAtKey] = now;
-      values[updatedAtKey] = now;
-    }
-
-    // Create entry without relational data
-    const id = model.getPK(values);
-    const ref = id ? model.db.doc(id) : model.db.doc();
-    values[model.primaryKey] = ref.id;
+    const ref = model.hasPK(values)
+      ? model.db.doc(model.getPK(values))
+      : model.db.doc();
 
     return await model.runTransaction(async trans => {
-      
-      // Update components
-      await Promise.all(components.map(async ({ model, value }) => {
-        await relationsUpdate(model, ref, undefined, value, trans);
-      }));
-      
-      // Update relations
-      await relationsUpdate(model, ref, undefined, values, trans);
+      // Create while coercing data and updating relations
+      const data = await trans.create(ref, values);
       
       // Populate relations
-      const entry = await populateDoc(model, { ref, data: () => values }, populate, trans);
-
-      trans.create(ref, data);
-      return data;
+      return await populateDoc(model, ref, data, populate, trans);
     });
   };
 
   const update = async (params: any, values: any, populate = model.defaultPopulate) => {
     log('update', { params, populate });
-
-    // Validate components dynamiczone
-    const components = validateComponents(model, values);
-    updateComponentsMetadata(model, values);
-
-    // Add timestamp data
-    if (model.timestamps) {
-      const now = new Date();
-      const [createdAtKey, updatedAtKey] = model.timestamps;
-
-      // Prevent creation timestamp from being overwritten
-      delete values[createdAtKey];
-      values[updatedAtKey] = now;
-    }
-
-    // Run the transaction
+    
     return await model.runTransaction(async trans => {
-
       let snap: Snapshot<T>;
       if (model.hasPK(params)) {
         snap = await trans.getAtomic(model.db.doc(model.getPK(params)));
@@ -134,22 +99,11 @@ export function queries<T extends object>({ model, strapi }: StrapiContext<T>): 
         throw new StatusError('entry.notFound', 404);
       }
 
-
-      // Update components
-      await Promise.all(components.map(async ({ model, key, value }) => {
-        const prevValue = _.castArray(_.get(prevData, key) || []).find(c => model.getPK(c) === model.getPK(value));
-        await relationsUpdate(model, snap.ref, prevValue, value, trans);
-      }));
-
-      // Update relations
-      await relationsUpdate(model, snap.ref, prevData, values, trans);
+      // Update while coercing data and updating relations
+      const data = await trans.update(snap.ref, values);
 
       // Populate relations
-      const entry = await populateDoc(model, { ref: snap.ref, data: () => values }, populate, trans);
-
-      // Write the entry
-      trans.update(snap.ref, values);
-      return entry;
+      return await populateDoc(model, snap.ref, data, populate, trans);
     });
   };
 
@@ -159,7 +113,8 @@ export function queries<T extends object>({ model, strapi }: StrapiContext<T>): 
     return await model.runTransaction(async trans => {
       if (model.hasPK(params)) {
         const ref = model.db.doc(model.getPK(params));
-        const result = await deleteOne(await trans.getNonAtomic(ref), populate, trans);
+        const snap = await trans.getNonAtomic(ref);
+        const result = await deleteOne(snap, populate, trans);
         return [result];
       } else {
         const snaps = await runFirestoreQuery(model, params, null, trans);
@@ -169,37 +124,42 @@ export function queries<T extends object>({ model, strapi }: StrapiContext<T>): 
   };
 
   const deleteOne = async (snap: Snapshot<T>, populate: AttributeKey<T>[], trans: Transaction) => {
-    const data = snap.data();
-    if (!data) {
+    const prevData = snap.data();
+    if (!prevData) {
       throw new StatusError('entry.notFound', 404);
     }
 
-    const doc = await populateDoc(model, snap, populate, trans);
+    // Delete while updating relations
+    await trans.delete(snap.ref);
 
-    await relationsDelete(model, snap.ref, data, trans);
-
-    trans.delete(snap.ref);
-    return doc;
+    // Populate relations
+    return await populateDoc(model, snap.ref, prevData, populate, trans);
   };
 
   const search = async (params: any, populate = model.defaultPopulate) => {
     log('search', { params, populate });
 
     return await model.runTransaction(async trans => {
-      let docs: Snapshot<T>[];
+      let snaps: Snapshot<T>[];
       if (model.hasPK(params)) {
         const ref = model.db.doc(model.getPK(params));
         const snap = await trans.getNonAtomic(ref);
         if (!snap.exists) {
-          docs = [];
+          snaps = [];
         } else {
-          docs = [snap];
+          snaps = [snap];
         }
       } else {
-        docs = await runFirestoreQuery(model, params, params._q, trans);
+        snaps = await runFirestoreQuery(model, params, params._q, trans);
       }
 
-      return await populateDocs(model, docs, populate, trans);
+      
+      return await Promise.all(
+        snaps.map(async snap => {
+          const data = snap.data()!;
+          return await populateDoc(model, snap.ref, data, populate, trans);
+        })
+      );
     });
   };
 
@@ -225,12 +185,12 @@ export function queries<T extends object>({ model, strapi }: StrapiContext<T>): 
       return [];
     }
 
-    return await model.runTransaction(async transaction => {
-      const snaps = await transaction.getNonAtomic(entitiesIds.map(id => model.db.doc(id)));
+    return await model.runTransaction(async trans => {
+      const snaps = await trans.getNonAtomic(entitiesIds.map(id => model.db.doc(id)));
 
       return Promise.all(snaps.map(async snap => {
         const data = snap.data();
-        const count = data ? (await relation.findRelated(snap.ref, data, transaction)).length : 0;
+        const count = data ? (await relation.findRelated(snap.ref, data, trans)).length : 0;
         return {
           id: snap.id,
           count,

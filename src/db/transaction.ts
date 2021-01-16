@@ -1,17 +1,18 @@
 import * as _ from 'lodash';
-import { DocumentReference, Transaction as FirestoreTransaction, DocumentData, Query, Firestore, SetOptions, FirestoreDataConverter } from '@google-cloud/firestore';
-import { DeepReference } from './deep-reference';
-import { makeFlattenedSnap, mapToFlattenedDoc } from './flattened-doc';
-import { ReadRepository } from './read-repository';
+import { DocumentReference, Transaction as FirestoreTransaction, DocumentData, Firestore, DocumentSnapshot, FirestoreDataConverter } from '@google-cloud/firestore';
+import { DeepReference, makeDeepSnap, mapToFlattenedDoc } from './deep-reference';
+import { ReadRepository } from '../utils/read-repository';
+import type { Queryable, QuerySnapshot } from './queryable-collection';
+import { Reference, SetOpts, Snapshot } from './reference';
 import { MorphReference } from './morph-reference';
-import type { FirestoreConnectorModel } from '../model';
-import type { Queryable, Snapshot, QuerySnapshot, Reference } from './queryable-collection';
+import { makeNormalSnap, NormalReference } from './normal-reference';
+import { runUpdateLifecycle } from '../utils/lifecycle';
 
-interface WriteOp {
+export interface WriteOp {
   ref: DocumentReference
   data: DocumentData | null
   create: boolean
-  conv: FirestoreDataConverter<any>
+  converter: FirestoreDataConverter<any>
 }
 
 
@@ -56,33 +57,26 @@ export interface Transaction {
   /**
    * Creates the given document, merging the data with any other `create()` or `update()`
    * operations on the document within this transaction.
+   * 
+   * @returns The coerced data
    */
-  create<T extends object>(ref: Reference<T>, data: T): void
+  create<T extends object>(ref: Reference<T>, data: T, opts?: SetOpts): Promise<T>
+  create<T extends object>(ref: Reference<T>, data: Partial<T>, opts?: SetOpts): Promise<Partial<T>>
   
-
   /**
    * Updates the given document, merging the data with any other `create()` or `update()`
    * operations on the document within this transaction.
    * 
-   * 
-   * @deprecated *WARNING:* This method does not behave the same as Firestore's
-   * `set()` method. Instead it behaves exactly the same as `update()`, meaning it
-   * fails if the document doesn't exist, and it treats fields with dot paths as deep
-   * merging.
+   * @returns The coerced data
    */
-  set<T extends object>(ref: Reference<T>, data: Partial<T>, options?: SetOptions): void
-
-  /**
-   * Updates the given document, merging the data with any other `create()` or `update()`
-   * operations on the document within this transaction.
-   */
-  update<T extends object>(ref: Reference<T>, data: Partial<T>): void
+  update<T extends object>(ref: Reference<T>, data: Partial<T>, opts?: SetOpts): Promise<T>
+  update<T extends object>(ref: Reference<T>, data: Partial<Partial<T>>, opts?: SetOpts): Promise<Partial<T>>
 
   /**
    * Deletes the given document, overriding all other write operations
    * on the document in this transaction.
    */
-  delete<T extends object>(ref: Reference<T>): void
+  delete<T extends object>(ref: Reference<T>, opts?: SetOpts): Promise<void>
 
 }
 
@@ -97,21 +91,15 @@ export class TransactionImpl implements Transaction {
 
 
   constructor(
-    firestore: Firestore,
-    private readonly transaction: FirestoreTransaction,
+    readonly firestore: Firestore,
+    readonly transaction: FirestoreTransaction,
     private readonly logStats: boolean,
     private readonly attempt: number,
   ) {
     
     this.atomicReads = new ReadRepository(null, {
       getAll: (...refs) => this.transaction.getAll(...refs),
-      getQuery: query => {
-        if (query instanceof Query) {
-          return this.transaction.get(query);
-        } else {
-          return query.get(this.transaction);
-        }
-      },
+      getQuery: query => this.transaction.get(query),
     });
 
     this.nonAtomicReads = new ReadRepository(this.atomicReads, {
@@ -121,37 +109,19 @@ export class TransactionImpl implements Transaction {
   }
 
   private async _get(refOrQuery: Reference<any> | Queryable<any>, repo: ReadRepository): Promise<Snapshot<any> | QuerySnapshot<any>> {
-    if ((refOrQuery instanceof DocumentReference)
-      || (refOrQuery instanceof DeepReference)
-      || (refOrQuery instanceof MorphReference)) {
+    if (refOrQuery instanceof Reference) {
       return (await this._getAll([refOrQuery], repo))[0];
+    } else {
+      // Queryable
+      return await refOrQuery.get(repo);
     }
     
-    // Queryable
-    return await refOrQuery.get(this.transaction);
   }
 
 
   private async _getAll(refs: Reference<any>[], repo: ReadRepository): Promise<Snapshot<any>[]> {
-    const docs: DocumentReference[] = new Array(refs.length);
-    const deep: (DeepReference<any> | undefined)[] = new Array(refs.length);
-    refs.forEach((r, i) => {
-      const { ref, deepRef } = getDocRef(r);
-      docs[i] = ref;
-      deep[i] = deepRef;
-    });
-
-    const results = await repo.getAll(docs);
-    return results.map((s, i) => {
-      const deepRef = deep[i];
-      const snap = deepRef ? makeFlattenedSnap(deepRef, s) : s;
-      return {
-        id: snap.id,
-        ref: snap.ref,
-        exists: snap.exists,
-        data: () => snap.data(),
-      };
-    });
+    const results = await repo.getAll(refs.map(r => getDocRef(r).ref));
+    return refs.map((ref, i) => makeSnap(ref, results[i]));
   }
   
   getAtomic<T extends object>(ref: Reference<T>): Promise<Snapshot<T>>
@@ -178,6 +148,7 @@ export class TransactionImpl implements Transaction {
 
   /**
    * @private
+   * @deprecated For internal connector use only
    */
   async commit() {
     if (this.logStats) {
@@ -196,9 +167,8 @@ export class TransactionImpl implements Transaction {
         if (op.create) {
           this.transaction.create(op.ref, op.data);
         } else {
-          // Firestore does not run the converter 
-          // on update operations
-          op.data = op.conv.toFirestore(op.data);
+          // Firestore does not run the converter on update operations
+          op.data = op.converter.toFirestore(op.data);
           this.transaction.update(op.ref, op.data);
         }
       }
@@ -206,33 +176,62 @@ export class TransactionImpl implements Transaction {
   }
 
 
-  create<T extends object>(ref: Reference<T>, data: T): void {
-    this._mergeData(ref, data, true);
+  create<T extends object>(ref: Reference<T>, data: T, opts?: SetOpts): Promise<T>
+  create<T extends object>(ref: Reference<T>, data: Partial<T>, opts?: SetOpts): Promise<Partial<T>>
+  async create<T extends object>(ref: Reference<T>, data: T | Partial<T>, opts?: SetOpts): Promise<T | Partial<T>> {
+    return (await runUpdateLifecycle({
+      editMode: 'create',
+      ref,
+      data,
+      opts,
+      transaction: this,
+    }))!;
   }
   
-  set<T extends object>(ref: Reference<T>, data: Partial<T>, options?: SetOptions): void {
-    this._mergeData(ref, data);
+  update<T extends object>(ref: Reference<T>, data: T, opts?: SetOpts): Promise<T>
+  update<T extends object>(ref: Reference<T>, data: Partial<T>, opts?: SetOpts): Promise<Partial<T>>
+  async update<T extends object>(ref: Reference<T>, data: T | Partial<T>, opts?: SetOpts): Promise<T | Partial<T>> {
+    return (await runUpdateLifecycle({
+      editMode: 'update',
+      ref,
+      data,
+      opts,
+      transaction: this,
+    }))!;
   }
   
-  update<T extends object>(ref: Reference<T>, data: Partial<T>): void {
-    this._mergeData(ref, data);
-  }
-  
-  delete<T extends object>(ref: Reference<T>): void {
-    this._mergeData(ref, null);
+  async delete<T extends object>(ref: Reference<T>, opts?: SetOpts): Promise<void> {
+    await runUpdateLifecycle({
+      editMode: 'update',
+      ref,
+      data: undefined,
+      opts,
+      transaction: this,
+    });
   }
 
 
-  private _mergeData(ref: Reference<any>, data: DocumentData | null, isCreating?: boolean) {
-    const { deepRef, ref: rootRef } = getDocRef(ref);
+  
+  /**
+   * Merges a create, update, or delete operation into pending writes for a given
+   * reference in this transaction, without any coercion or lifecycles.
+   * @private
+   * @deprecated For internal connector use only
+   */
+  mergeWriteInternal<T extends object>(ref: Reference<T>, data: Partial<T> | undefined, editMode: 'create' | 'update') {
+
+    const { ref: rootRef, deepRef } = getDocRef(ref);
     const { path } = rootRef;
 
-    if (!this.writes.has(path)) {
-      const op: WriteOp = {
+    let op: WriteOp;
+    if (this.writes.has(path)) {
+      op = this.writes.get(path)!;
+    } else {
+      op = {
         ref: rootRef,
         data: {},
         create: false,
-        conv: getModelByRef(ref).db.converter,
+        converter: ref.parent.converter,
       };
       this.writes.set(path, op);
 
@@ -243,7 +242,6 @@ export class TransactionImpl implements Transaction {
       }
     }
 
-    const op = this.writes.get(path)!;
     if (op.data === null) {
       // Deletion overrides all other operations
       return;
@@ -251,7 +249,7 @@ export class TransactionImpl implements Transaction {
 
     // Don't create documents for flattened collections
     // because we use ensureDocument() and then update()
-    op.create = op.create || (isCreating && !deepRef) || false;
+    op.create = op.create || ((editMode === 'create') && !deepRef) || false;
 
     if (deepRef) {
       Object.assign(op.data, mapToFlattenedDoc(deepRef, data, true));
@@ -268,22 +266,37 @@ export class TransactionImpl implements Transaction {
 interface RefInfo {
   ref: DocumentReference<any>,
   deepRef?: DeepReference<any>,
+  morphRef?: MorphReference<any>,
 }
 
 function getDocRef(ref: Reference<any>): RefInfo {
+  if (ref instanceof NormalReference) {
+    return { ref: ref.ref };
+  }
   if (ref instanceof DeepReference) {
     return { ref: ref.doc, deepRef: ref };
   }
   if (ref instanceof MorphReference) {
-    return getDocRef(ref.ref);
+    return {
+      ...getDocRef(ref.ref),
+      morphRef: ref,
+    };
   }
-  return { ref };
+  throw new Error('Unknown type of reference');
 }
 
-function getModelByRef({ parent: { path } }: Reference<any>): FirestoreConnectorModel<any> {
-  const model = strapi.db.getModelByCollectionName(path);
-  if (!model) {
-    throw new Error(`Model for path "${path}" not found`);
+function makeSnap(ref: Reference<any>, snap: DocumentSnapshot<any>): Snapshot<any> {
+  if (ref instanceof NormalReference) {
+    return makeNormalSnap(ref, snap);
   }
-  return model;
+  if (ref instanceof DeepReference) {
+    return makeDeepSnap(ref, snap);
+  }
+  if (ref instanceof MorphReference) {
+    return {
+      ...makeSnap(ref, snap),
+      ref,
+    }
+  }
+  throw new Error('Unknown type of reference');
 }

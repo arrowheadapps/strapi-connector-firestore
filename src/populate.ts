@@ -1,75 +1,58 @@
 import * as _ from 'lodash';
 import { getComponentModel } from './utils/components';
-import type { FirestoreConnectorModel } from './model';
-import type { Snapshot } from './utils/queryable-collection';
-import type { Transaction } from './utils/transaction';
-import { StatusError } from './utils/status-error';
+import type { Transaction } from './db/transaction';
 import type { AttributeKey } from './types';
-
-
-export type PartialSnapshot<T extends object> = Pick<Snapshot<T>, 'data'> & Pick<Snapshot<T>, 'ref'>
-
+import type { Reference } from './db/reference';
+import { FirestoreConnectorModel } from './model';
 
 /**
  * Populates all the requested relational field on the given documents.
  */
-export async function populateDocs<T extends object>(model: FirestoreConnectorModel<T>, docs: PartialSnapshot<T>[], populate: AttributeKey<T>[], transaction: Transaction) {
-  return await Promise.all(docs.map(doc => populateDoc(model, doc, populate, transaction)));
+export async function populateDocs<T extends object>(model: FirestoreConnectorModel<T>, snaps: { ref: Reference<T>, data: T }[], populate: AttributeKey<T>[], transaction: Transaction) {
+  return await Promise.all(snaps.map(({ ref, data }) => populateDoc(model, ref, data, populate, transaction)));
 };
-
 
 /**
  * Populates all the requested relational field on the given document.
  */
-export async function populateDoc<T extends object>(model: FirestoreConnectorModel<T>, doc: PartialSnapshot<T>, populate: AttributeKey<T>[], transaction: Transaction) {
-  const values = doc.data();
-  if (!values) {
-    throw new StatusError(`Document not found: ${doc.ref.path}`, 404);
+export async function populateDoc<T extends object>(model: FirestoreConnectorModel<T>, ref: Reference<T>, data: T, populateKeys: AttributeKey<T>[], transaction: Transaction): Promise<T> {
+  const promises: Promise<any>[] = [];
+
+  // Shallow copy the object
+  const newData = Object.assign({}, data);
+
+  // Populate own relations
+  for (const key of populateKeys) {
+    const relation = model.relations.find(r => r.alias === key);
+    if (relation) {
+      promises.push(relation.populateRelated(ref, newData, transaction));
+    }
   }
 
-  // Clone the object (shallow)
-  const data = Object.assign({}, values);
+  // Recursively populate components
+  promises.push(
+    Promise.all(
+      model.componentKeys.map(async componentKey => {
+        const component: any = _.get(newData, componentKey);
+        if (component) {
+          if (Array.isArray(component)) {
+            const values = await Promise.all(
+              component.map(c => {
+                const componentModel = getComponentModel(model, componentKey, c);
+                return populateDoc(componentModel, ref, c, componentModel.defaultPopulate, transaction);
+              })
+            );
+            _.set(newData, componentKey, values);
+          } else {
+            const componentModel = getComponentModel(model, componentKey, component);
+            const value = await populateDoc(componentModel, ref, component, componentModel.defaultPopulate, transaction);
+            _.set(newData, componentKey, value);
+          }
+        }
+      })
+    )
+  );
 
-  const relationPromises = Promise.all(populate.map(field => {
-    const relation = model.relations.find(r => r.alias === field);
-    return relation
-      ? relation.populateRelated(doc.ref, data, transaction)
-      : null;
-  }));
-
-  const componentPromises = Promise.all(model.componentKeys.map(async componentKey => {
-    const component = _.get(data, componentKey);
-    if (component) {
-      // FIXME:
-      // `ref` is pointing to the parent document that the component is embedded into
-      // In the future, components embedding or not may be configurable
-      // so we need a way to handle and differentiate this
-
-      // FIXME:
-      // The typeings were a bit hard to get working here so I ended up
-      // casting them all as `any`
-
-      if (Array.isArray(component)) {
-        _.set(
-          data, 
-          componentKey, 
-          await Promise.all((component as any[]).map(c => {
-            const componentModel = getComponentModel(model, componentKey, c);
-            return populateDoc(componentModel, { ref: doc.ref, data: () => c }, componentModel.defaultPopulate, transaction);
-          })) as any
-        );
-      } else {
-        const componentModel = getComponentModel(model, componentKey, component);
-        _.set(
-          data,
-          componentKey,
-          await populateDoc(componentModel, { ref: doc.ref, data: () => component }, componentModel.defaultPopulate, transaction) as any
-        );
-      }
-    }
-  }));
-
-  await Promise.all([relationPromises, componentPromises]);
-
-  return data;
+  await Promise.all(promises);
+  return newData
 }

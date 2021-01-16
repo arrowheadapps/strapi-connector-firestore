@@ -1,19 +1,24 @@
 import * as _ from 'lodash';
-import type { DocumentData } from '@google-cloud/firestore';
-import { DeepReference } from '../utils/deep-reference';
-import { MorphReference } from '../utils/morph-reference';
-import { FieldOperation } from '../utils/field-operation';
+import { FieldOperation } from '../db/field-operation';
+import type { FirestoreConnectorModel } from '../model';
+
+/**
+ * Lightweight converter for a root model object. Ensures that the
+ * `primaryKey` is not set on the Firestore data.
+ */
+export function coerceModelToFirestore<T extends object>(model: FirestoreConnectorModel<T>, data: T): T {
+  const obj = coerceToFirestore(data);
+  _.unset(obj, model.primaryKey);
+  return obj;
+}
 
 /**
  * Lightweight converter that converts known custom classes
  * to Firestore-compatible values.
  */
-export function coerceToFirestore<T extends object>(data: T, isRootObj = true): DocumentData {
-  const obj = _.cloneDeepWith(data, value => {
-    if ((value instanceof DeepReference) || (value instanceof MorphReference)) {
-      return value.toFirestoreValue();
-    }
-
+export function coerceToFirestore<T extends object>(data: T): T {
+  return _.cloneDeepWith(data, value => {
+    
     // Coerce values within FieldOperation
     // and convert to its native counterpart
     if (value instanceof FieldOperation) {
@@ -22,12 +27,10 @@ export function coerceToFirestore<T extends object>(data: T, isRootObj = true): 
         .toFirestoreValue();
     }
 
+    if (value && (typeof value === 'object') && ('toFirestoreValue' in value)) {
+      return value.toFirestoreValue()
+    }
+
     return undefined;
   });
-
-  if (isRootObj) {
-    delete obj[model.primaryKey];
-  }
-
-  return obj;
 }

@@ -1,12 +1,12 @@
 import * as _ from 'lodash';
-import { Reference, Snapshot, refEquals } from './queryable-collection';
 import type { FirestoreConnectorModel } from '../model';
-import type { Transaction } from './transaction';
-import { coerceToReference } from './coerce';
+import type { Transaction } from '../db/transaction';
 import { StatusError } from './status-error';
-import { MorphReference } from './morph-reference';
-import { FieldOperation } from './field-operation';
-import { updateComponentsMetadata } from './components-indexing';
+import { MorphReference } from '../db/morph-reference';
+import { FieldOperation } from '../db/field-operation';
+import { isEqualHandlingRef, Reference, Snapshot } from '../db/reference';
+import { NormalReference } from '../db/normal-reference';
+import { DeepReference } from '../db/deep-reference';
 
 
 export interface AsyncSnapshot<R extends object> {
@@ -103,8 +103,8 @@ export class RelationHandler<T extends object, R extends object = object> {
       this._setThis(newData, thisAttr, newValues.map(v => this._makeRefToOther(v.ref, thisAttr)));
 
       // Set the value stored in the references documents appropriately
-      const removed = _.differenceWith(prevValues, newValues, refInfoEquals);
-      const added = _.differenceWith(newValues, prevValues, refInfoEquals);
+      const removed = _.differenceWith(prevValues, newValues, (a, b) => isEqualHandlingRef(a.ref, b.ref));
+      const added = _.differenceWith(newValues, prevValues, (a, b) => isEqualHandlingRef(a.ref, b.ref));
       await Promise.all([
         Promise.all(added.map(r => this._setRelated(r, ref, true, transaction))),
         Promise.all(removed.map(r => this._setRelated(r, ref, false, transaction)))
@@ -178,7 +178,11 @@ export class RelationHandler<T extends object, R extends object = object> {
       if (!attr && otherAttr.filter) {
         throw new Error('Polymorphic reference does not have the required information');
       }
-      ref = new MorphReference(ref, attr ? attr.alias : null);
+      if ((ref instanceof NormalReference) || (ref instanceof DeepReference)) {
+        ref = new MorphReference(ref, attr ? attr.alias : null);
+      } else {
+        throw new Error(`Unknown type of reference: ${ref}`);
+      }
     }
 
     return ref;
@@ -215,7 +219,7 @@ export class RelationHandler<T extends object, R extends object = object> {
     }
   }
 
-  private async _setRelated({ ref, attr, data, model, refValue }: InternalAsyncSnapshot<T, R>, thisRef: Reference<T>, set: boolean, transaction: Transaction) {
+  private async _setRelated({ ref, attr, data, refValue }: InternalAsyncSnapshot<T, R>, thisRef: Reference<T>, set: boolean, transaction: Transaction) {
     if (attr) {
       refValue = refValue || this._makeRefToThis(thisRef, attr);
       const value = set
@@ -238,12 +242,9 @@ export class RelationHandler<T extends object, R extends object = object> {
           }
         }
 
-        // Update the metadata map
-        updateComponentsMetadata(model, prevData, newData);
-        transaction.update(ref, newData);
-
+        await transaction.update(ref, newData, { updateRelations: false });
       } else {
-        transaction.update(ref, { [attr.alias]: value } as object);
+        await transaction.update(ref, { [attr.alias]: value } as object, { updateRelations: false });
       }
     }
   }
@@ -261,11 +262,6 @@ export class RelationHandler<T extends object, R extends object = object> {
         // The refValue will be coerced appropriately
         // by the model that is performing the query
         const refValue = this._makeRefToThis(ref, attr);
-
-        // FIXME: For metadata fields the attribute type is not known
-        // so will not be coerced properly
-        // This means normal collections (coerced to Firestore) will match Firestore
-        // But flat collection (coerced from Firestore) will not match
         let q = attr.isArray
           ? model.db.where(attr.alias, 'array-contains', refValue)
           : model.db.where(attr.alias, '==', refValue);
@@ -289,11 +285,13 @@ export class RelationHandler<T extends object, R extends object = object> {
       .filter(v => v != null);
   }
 
-  private _getSingleRefInfo(value: any, transaction: Transaction): InternalAsyncSnapshot<T, R> | null {
+  private _getSingleRefInfo(ref: any, transaction: Transaction): InternalAsyncSnapshot<T, R> | null {
     let other = this._singleOtherEnd;
-    const ref = coerceToReference(value, other?.model, true);
-
     if (ref) {
+      if (!(ref instanceof Reference)) {
+        throw new Error('Value is not an instance of Reference. Data must be coerced before updating relations.')
+      }
+
       if (!other) {
         // Find the end which this reference relates to
         other = this.otherEnds.find(({ model }) => model.db.path === ref.parent.path);
@@ -362,8 +360,3 @@ function asyncFromRef<T extends object, R extends object>(info: RelationInfo<R>,
     },
   };
 }
-
-function refInfoEquals(a: InternalAsyncSnapshot<any, any>, b: InternalAsyncSnapshot<any, any>): boolean {
-  return refEquals(a.ref, b.ref);
-}
-

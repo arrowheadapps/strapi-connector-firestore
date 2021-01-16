@@ -1,9 +1,8 @@
 import * as _ from 'lodash';
+import { isEqualHandlingRef } from '../db/reference';
 import type { FirestoreConnectorModel } from '../model';
-import type { IndexerFn, StrapiAttribute, StrapiModel } from '../types';
-import { toFirestore } from './coerce';
+import type { AttributeKey, IndexerFn, StrapiAttribute, StrapiModel } from '../types';
 import { getComponentModel } from './components';
-import { isEqualHandlingRef } from './queryable-collection';
 
 
 
@@ -13,73 +12,81 @@ export function doesComponentRequireMetadata(attr: StrapiAttribute): boolean {
 }
 
 export function updateComponentsMetadata<T extends object>(model: FirestoreConnectorModel<T>, data: T, output: T = data) {
-  for (const parentAlias of model.componentKeys) {
+  if (model.isComponent) {
+    return;
+  }
 
+  for (const parentAlias of model.componentKeys) {
     // Don't overwrite metadata with empty map if the value 
     // doesn't exist because this could be a partial update
     if (!_.has(data, parentAlias)) {
       continue;
     }
 
-    const parentAttr = model.attributes[parentAlias];
-    if (doesComponentRequireMetadata(parentAttr)) {
-      const metaField = model.getMetadataMapKey(parentAlias);
+    Object.assign(output, generateMetadataForComponent(model, parentAlias, data));
+  }
+}
 
-      // Initialise the map will null for all known keys
-      const meta: { [key: string]: any[] | null } = {};
-      const componentModels = parentAttr.component ? [parentAttr.component] : (parentAttr.components || []);
-      for (const modelName of componentModels) {
-        const { indexers = [] } = getComponentModel(modelName);
-        for (const info of indexers) {
-          for (const key of Object.keys(info.indexers)) {
-            meta[key] = null;
-          }
+export function generateMetadataForComponent<T extends object>(model: FirestoreConnectorModel<T>, parentAlias: AttributeKey<T>, data: T): object | undefined {
+
+  const parentAttr = model.attributes[parentAlias];
+  if (doesComponentRequireMetadata(parentAttr)) {
+    const metaField = model.getMetadataMapKey(parentAlias);
+
+    // Initialise the map will null for all known keys
+    const meta: { [key: string]: any[] | null } = {};
+    const componentModels = parentAttr.component ? [parentAttr.component] : (parentAttr.components || []);
+    for (const modelName of componentModels) {
+      const { indexers = [] } = getComponentModel(modelName);
+      for (const info of indexers) {
+        for (const key of Object.keys(info.indexers)) {
+          meta[key] = null;
         }
       }
+    }
 
-      // Make an array containing the value of this attribute from all the components in the array
-      // If the value itself is an array then is is concatenated/flattened
-      const components: any[] = _.castArray(_.get(data, parentAlias) || []);
-      for (const component of components) {
-        const componentModel = getComponentModel(model, parentAlias, component);
-        if (!componentModel.indexers) {
-          continue;
-        }
+    // Make an array containing the value of this attribute from all the components in the array
+    // If the value itself is an array then is is concatenated/flattened
+    const components: any[] = _.castArray(_.get(data, parentAlias) || []);
+    for (const component of components) {
+      const componentModel = getComponentModel(model, parentAlias, component);
+      if (!componentModel.indexers) {
+        continue;
+      }
 
-        for (const { alias, attr, indexers } of componentModel.indexers) {
-          const values = _.castArray(_.get(component, alias, []));
+      for (const { alias, indexers } of componentModel.indexers) {
+        const values = _.castArray(_.get(component, alias, []));
 
-          for (const key of Object.keys(indexers)) {
-            const arr = meta[key] = meta[key] || [];
-            const indexer = indexers[key];
+        for (const key of Object.keys(indexers)) {
+          const arr = meta[key] = meta[key] || [];
+          const indexer = indexers[key];
 
-            for (let value of values) {
-              // FIXME: Coercion will not be required when coercion lifecycle is fixed
-              value = toFirestore(attr, value);
-              const result = indexer(value, component);
+          for (let value of values) {
+            const result = indexer(value, component);
 
-              // Only add if the element doesn't already exist
-              // and is not undefined
-              if ((result !== undefined)
-                && (!arr.some(v => isEqualHandlingRef(v, result)))) {
-                arr.push(result);
-              }
+            // Only add if the element doesn't already exist
+            // and is not undefined
+            if ((result !== undefined)
+              && (!arr.some(v => isEqualHandlingRef(v, result)))) {
+              arr.push(result);
             }
           }
         }
       }
-
-      // Ensure all empty indexes are null
-      for (const key of Object.keys(meta)) {
-        const arr = meta[key];
-        if (!arr || !arr.length) {
-          meta[key] = null;
-        }
-      }
-
-      _.set(output, metaField, meta);
     }
+
+    // Ensure all empty indexes are null
+    for (const key of Object.keys(meta)) {
+      const arr = meta[key];
+      if (!arr || !arr.length) {
+        meta[key] = null;
+      }
+    }
+
+    return { [metaField]: meta };
   }
+
+  return undefined;
 }
 
 

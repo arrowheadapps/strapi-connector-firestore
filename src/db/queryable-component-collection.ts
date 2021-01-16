@@ -5,9 +5,9 @@ import type { QueryableCollection } from './queryable-collection';
 
 export class QueryableComponentCollection<T extends object = never> implements QueryableCollection<T> {
 
-  private dummyCollection: CollectionReference
-  constructor({ firestore, collectionName }: FirestoreConnectorModel<T>) {
-    this.dummyCollection = firestore.collection(collectionName);
+  private collection: CollectionReference
+  constructor(readonly model: FirestoreConnectorModel<T>) {
+    this.collection = model.firestore.collection(model.collectionName);
   }
 
   private throw(): never {
@@ -27,7 +27,7 @@ export class QueryableComponentCollection<T extends object = never> implements Q
 
   autoId(): string {
     // This is used to generate IDs for components
-    return this.dummyCollection.doc().id;
+    return this.collection.doc().id;
   }
   
   doc() {

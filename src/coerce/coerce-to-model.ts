@@ -1,47 +1,65 @@
 import * as _ from 'lodash';
 import * as parseType from 'strapi-utils/lib/parse-type';
-import { DocumentReference, Timestamp } from '@google-cloud/firestore';
-import { FirestoreConnectorModel } from '../model';
-import { DeepReference } from '../utils/deep-reference';
-import { FlatReferenceShape, MorphReferenceShape, Reference, ReferenceShape } from '../utils/queryable-collection';
+import { DocumentReference, FieldValue, Timestamp } from '@google-cloud/firestore';
+import type { FirestoreConnectorModel } from '../model';
+import { DeepReference } from '../db/deep-reference';
+import { FlatReferenceShape, MorphReferenceShape, Reference } from '../db/reference';
 import { StatusError } from '../utils/status-error';
-import { StrapiAttribute } from '../types';
+import type { StrapiAttribute } from '../types';
 import { getComponentModel } from '../utils/components';
-import { MorphReference } from '../utils/morph-reference';
+import { MorphReference } from '../db/morph-reference';
+import { updateComponentsMetadata } from '../utils/components-indexing';
+import { NormalReference } from '../db/normal-reference';
+import { FieldOperation } from '../db/field-operation';
 
 
 
 export interface CoerceOpts {
-  /**
-   * If `true`, then coercion problems will throw and error.
-   * Otherwise a warning may be logged and the problem will be
-   * ignored if possible.
-   */
-  strict: boolean
+  editMode?: 'create' | 'update'
 }
 
 /**
  * Attempts to coerce the data to the correct types based on the
- * given model schema, and builds `Reference` instances for relations.
+ * given model schema, builds `Reference` instances for relations, and generates
+ * index metadata for components.
  * 
  * Designed to both coerce from user input, or rehydrate from Firestore.
  */
-export function coerceToModel<T extends object>(model: FirestoreConnectorModel<T>, id: string, data: unknown, fieldPath: string | null | undefined, opts: CoerceOpts): T {
+export function coerceToModel<T extends object>(model: FirestoreConnectorModel<T>, id: string | undefined, data: unknown, fieldPath: string | null | undefined, opts: CoerceOpts): T {
   
-  const obj = coerceModelRecursive(model, data, fieldPath);
+  const obj = coerceModelRecursive(model, data, fieldPath, opts);
 
-  // Set the document ID
   // If fieldPath is provided then this is a partial update map
+  // and this is not the root object
   if (!fieldPath) {
-    obj[model.primaryKey] = id;
+
+    // Set the document ID
+    if (id) {
+      _.set(obj, model.primaryKey, id);
+    }
+
+    // Assign timestamps
+    if (model.timestamps && opts.editMode) {
+      const now = new Date();
+      const [createdAtKey, updatedAtKey] = model.timestamps;
+      _.set(obj, updatedAtKey, now);
+      if (opts.editMode === 'create') {
+        _.set(obj, createdAtKey, now);
+      }
+    }
+
+    // Generate metadata only for edits (to Firestore)
+    if (opts.editMode) {
+      updateComponentsMetadata(model, obj);
+    }
   }
-  
+
   return obj;
 }
 
 
-function fallbackCoerceOrCopy(value: any): any {
-  const result = coerceAttrToModel(undefined, value);
+function fallbackCoerceOrCopy(value: any, opts: CoerceOpts): any {
+  const result = coerceAttrToModel(undefined, value, opts);
   if (result === value) {
     // If coercion returned the same object then we return undefined
     // to that cloneDeepWith handles the copying
@@ -51,7 +69,7 @@ function fallbackCoerceOrCopy(value: any): any {
   return result;
 }
 
-function coerceModelRecursive<T extends object>(model: FirestoreConnectorModel<T>, data: unknown, parentPath: string | null | undefined) {
+function coerceModelRecursive<T extends object>(model: FirestoreConnectorModel<T>, data: unknown, parentPath: string | null | undefined, opts: CoerceOpts) {
   return _.cloneDeepWith(data, (value, key) => {
     const path = [parentPath, key].filter(Boolean).join('.');
     if (!path) {
@@ -59,41 +77,45 @@ function coerceModelRecursive<T extends object>(model: FirestoreConnectorModel<T
       // Perform basic coercion
       // E.g. this handles document-level FieldOperation.delete()
       // for flattened collections
-      return fallbackCoerceOrCopy(value);
+      return fallbackCoerceOrCopy(value, opts);
     }
 
     const attr = model.attributes[path];
     if (!attr && _.isPlainObject(value)) {
       if (key) {
-        return coerceModelRecursive(model, value, path);
+        return coerceModelRecursive(model, value, path, opts);
       } else {
         // Stop infinite recursion
         // Perform basic coercion of necessary types
-        return fallbackCoerceOrCopy(value);
+        return fallbackCoerceOrCopy(value, opts);
       }
     }
 
-    return coerceAttrToModel(attr, value);
+    return coerceAttrToModel(attr, value, opts);
   });
 }
-
-
-function coerceAttribute(relation: StrapiAttribute | undefined, value: unknown) {
-  if (Array.isArray(value)) {
-    value = value.map(v => coerceAttrToModel(relation, v));
-  } else {
-    value = coerceAttrToModel(relation, value);
-  }
-  return value;
-}
-
 
 
 /**
  * Coerces a given attribute value to out of the value stored in Firestore to the
  * value expected by the given attribute schema.
  */
-export function coerceAttrToModel(attr: StrapiAttribute | undefined, value: unknown): unknown {
+export function coerceAttrToModel(attr: StrapiAttribute | undefined, value: unknown, opts: CoerceOpts): unknown {
+
+  // Coerce values inside FieldOperation
+  if (value instanceof FieldOperation) {
+    return value.coerceWith(v => coerceAttrToModel(attr, v, opts));
+  }
+
+  // Cannot operate on FieldValue
+  if (value instanceof FieldValue) {
+    strapi.log.warn(
+      'Cannot coerce instances of FieldValue, which may result in incorrect data types being ' +
+      'written to Firestore. Recommend to use FieldOperation equivalent instead.'
+    );
+    return value;
+  }
+
   // Firestore returns Timestamp for all Date values
   if (value instanceof Timestamp) {
     return value.toDate();
@@ -118,28 +140,26 @@ export function coerceAttrToModel(attr: StrapiAttribute | undefined, value: unkn
   }
 
 
-  // FIXME: integrate component validation
   // Recursively coerce components
   // type == 'component'
   if (attr.component) {
     const componentModel = getComponentModel(attr.component);
     if (Array.isArray(value)) {
       // Generate ID if setting dictates
-      return value.map(v => coerceToModel(componentModel, getIdOrAuto(componentModel, v), v, null));
+      return value.map(v => coerceToModel(componentModel, getIdOrAuto(componentModel, v), v, null, opts));
     } else {
       if (value) {
         if (typeof value !== 'object') {
-          throw new StatusError('Invalid value provided. Component must be an array or an object.', 400);
+          return fault(opts, 'Invalid value provided. Component must be an array or an object.');
         }
         // Generate ID if setting dictates
-        return coerceToModel(componentModel, getIdOrAuto(componentModel, value), value!, null);
+        return coerceToModel(componentModel, getIdOrAuto(componentModel, value), value!, null, opts);
       } else {
         return null;
       }
     }
   }
 
-  // FIXME: integrate component validation
   // Recursively coerce dynamiczone
   // type == 'dynamiczone'
   if (attr.components) {
@@ -147,16 +167,16 @@ export function coerceAttrToModel(attr: StrapiAttribute | undefined, value: unkn
       return value.map(v => {
         // Generate ID if setting dictates
         const componentModel = getComponentModel(v.__component);
-        return coerceToModel(componentModel, getIdOrAuto(componentModel, v), v, null);
+        return coerceToModel(componentModel, getIdOrAuto(componentModel, v), v, null, opts);
       });
     } else {
       if (value) {
         if (typeof value !== 'object') {
-          throw new StatusError('Invalid value provided. Component must be an array or an object.', 400);
+          return fault(opts, 'Invalid value provided. Component must be an array or an object.');
         }
         // Generate ID if setting dictates
         const componentModel = getComponentModel((value as any).__component);
-        return coerceToModel(componentModel, getIdOrAuto(componentModel, value), value!, null);
+        return coerceToModel(componentModel, getIdOrAuto(componentModel, value), value!, null, opts);
       } else {
         return null;
       }
@@ -165,7 +185,7 @@ export function coerceAttrToModel(attr: StrapiAttribute | undefined, value: unkn
 
   if (attr.type) {
     const v = value;
-    const err = () => new Error(`Invalid value provided. Could not coerce to type "${attr.type}" from value "${v}".`);
+    const err = () => fault(opts, `Invalid value provided. Could not coerce to type "${attr.type}" from value "${v}".`);
 
     switch (attr.type) {
       case 'integer':
@@ -174,7 +194,7 @@ export function coerceAttrToModel(attr: StrapiAttribute | undefined, value: unkn
         if (typeof value !== 'number') {
           value = Number(value);
           if (Number.isNaN(value)) {
-            throw err();
+            return err();
           }
         }
         break;
@@ -184,7 +204,7 @@ export function coerceAttrToModel(attr: StrapiAttribute | undefined, value: unkn
           try {
             value = BigInt(value);
           } catch {
-            throw err();
+            return err();
           }
         }
         break;
@@ -207,7 +227,7 @@ export function coerceAttrToModel(attr: StrapiAttribute | undefined, value: unkn
             ? JSON.parse(value)
             : value;
         } catch {
-          throw err();
+          return err();
         }
         break;
 
@@ -234,12 +254,10 @@ export function coerceAttrToModel(attr: StrapiAttribute | undefined, value: unkn
         // that can be serialised to Firestore
         if (Array.isArray(value)) {
           value = value.map(v => {
-            const ref = coerceToReference(v, assocModel, false);
-            return ref && coerceToReferenceShape(ref);
+            return coerceToReference(v, assocModel, opts);
           });
         } else {
-          const ref = coerceToReference(value, assocModel, false);
-          value = ref && coerceToReferenceShape(ref);
+          return coerceToReference(value, assocModel, opts);
         }
       }
     }
@@ -257,22 +275,19 @@ export function coerceAttrToModel(attr: StrapiAttribute | undefined, value: unkn
 /**
  * Coerces a value to a `Reference` if it is one.
  */
-export function coerceToReference<T extends object = object>(value: any, to: FirestoreConnectorModel<T> | undefined, strict = false): Reference<T> | null {
+function coerceToReference<T extends object = object>(value: any, to: FirestoreConnectorModel<T> | undefined, opts: CoerceOpts): Reference<T> | null {
   if ((value === undefined) || (value === null)) {
     return null;
+  }
+
+  if (value instanceof Reference) {
+    return value;
   }
 
   if (value instanceof DocumentReference) {
     // When deserialised from Firestore it comes without any converters
     // We want to get the appropriate converters so we reinstantiate it
-    return reinstantiateReference(value, undefined, to, strict);
-  }
-
-  if ((value instanceof DeepReference) || (value instanceof MorphReference)) {
-    // DeepReference and DeepReference are not native to Firestore
-    // to it has already been instantiated with 
-    // the appropriate converters
-    return value;
+    return reinstantiateReference(value, undefined, to, opts);
   }
 
   if ((typeof value === 'object')
@@ -285,19 +300,19 @@ export function coerceToReference<T extends object = object>(value: any, to: Fir
     let id: string | undefined
     if ('id' in obj) {
       if (!obj.id || (typeof obj.id !== 'string')) {
-        return fault(strict, 'Malformed polymorphic reference: `id` must be a string');
+        return fault(opts, 'Malformed polymorphic reference: `id` must be a string');
       }
       id = obj.id;
     }
 
-    const ref = reinstantiateReference(obj.ref, id, to, strict);
+    const ref = reinstantiateReference(obj.ref, id, to, opts);
     if (!ref) {
       return ref;
     }
     
     if ('filter' in obj) {
       if ((obj.filter !== null) && (!obj.filter || (typeof obj.filter !== 'string'))) {
-        return fault(strict, 'Malformed polymorphic reference: `filter` must be a string');
+        return fault(opts, 'Malformed polymorphic reference: `filter` must be a string');
       }
       return new MorphReference(ref, obj.filter);
     } else {
@@ -321,7 +336,7 @@ export function coerceToReference<T extends object = object>(value: any, to: Fir
       && (!field || (typeof field === 'string'))) {
       const targetModel = strapi.db.getModel(targetModelName, plugin);
       if (!targetModel) {
-        return fault(strict, `The model "${targetModelName}" with plugin "${plugin}" in polymorphic relation could not be found`)
+        return fault(opts, `The model "${targetModelName}" with plugin "${plugin}" in polymorphic relation could not be found`)
       }
       return new MorphReference(targetModel.db.doc(id), field);
     }
@@ -335,7 +350,7 @@ export function coerceToReference<T extends object = object>(value: any, to: Fir
       if (to) {
         return to.db.doc(value);
       } else {
-        return fault(strict, `Polymorphic reference must be fully qualified. Got the ID segment only.`);
+        return fault(opts, `Polymorphic reference must be fully qualified. Got the ID segment only.`);
       }
     }
     
@@ -352,27 +367,21 @@ export function coerceToReference<T extends object = object>(value: any, to: Fir
       if (to) {
         const deepRef = to.db.doc(id);
         if (deepRef.path !== value) {
-          return fault(strict, `Reference is pointing to the wrong model. Expected "${deepRef.path}", got "${id}".`);
+          return fault(opts, `Reference is pointing to the wrong model. Expected "${deepRef.path}", got "${id}".`);
         }
         return deepRef;
       } else {
         const collection = _.trim(value.slice(0, lastSep), '/');
         const model = strapi.db.getModelByCollectionName(collection);
         if (!model) {
-          return fault(strict, `The model referred to by "${collection}" doesn't exist`);
+          return fault(opts, `The model referred to by "${collection}" doesn't exist`);
         }
         return model.db.doc(id);
       }
     }
   }
 
-  return fault(strict, `Value could not be coerced to a reference: "${JSON.stringify(value)}"`);
-}
-
-function coerceToReferenceShape<T extends object>(ref: Reference<T>): ReferenceShape<T> {
-  return ('toFirestoreValue' in ref)
-    ? ref.toFirestoreValue()
-    : ref;
+  return fault(opts, `Value could not be coerced to a reference: "${JSON.stringify(value)}"`);
 }
 
 /**
@@ -380,17 +389,17 @@ function coerceToReferenceShape<T extends object>(ref: Reference<T>): ReferenceS
  * Reinstantiates the reference via the target model so that it comes
  * loaded with the appropriate converter.
  */
-function reinstantiateReference<T extends object>(value: DocumentReference<T | { [id: string]: T }>, id: string | undefined, to: FirestoreConnectorModel<T> | undefined, strict: boolean): DocumentReference<T> | DeepReference<T> | null {
+function reinstantiateReference<T extends object>(value: DocumentReference<T | { [id: string]: T }>, id: string | undefined, to: FirestoreConnectorModel<T> | undefined, opts: CoerceOpts): NormalReference<T> | DeepReference<T> | null {
   if (to) {
     const newRef = to.db.doc(id || value.id);
     if (newRef.parent.path !== value.parent.path) {
-      return fault(strict, `Reference is pointing to the wrong model. Expected "${newRef.path}", got "${value.path}".`);
+      return fault(opts, `Reference is pointing to the wrong model. Expected "${newRef.path}", got "${value.path}".`);
     }
     return newRef;
   } else {
     const model = strapi.db.getModelByCollectionName(value.parent.path);
     if (!model) {
-      return fault(strict, `The model referred to by "${value.parent.path}" doesn't exist`);
+      return fault(opts, `The model referred to by "${value.parent.path}" doesn't exist`);
     }
     return model.db.doc(value.id);
   }
@@ -399,15 +408,15 @@ function reinstantiateReference<T extends object>(value: DocumentReference<T | {
 function getIdOrAuto(model: FirestoreConnectorModel, value: any): string | undefined {
   if (model.options.ensureComponentIds) {
     // Ensure there is a guaranteed ID
-    return value[model.primaryKey] || model.db.autoId();
+    return _.get(value, model.primaryKey) || model.db.autoId();
   } else {
     // Don't delete it if it already exists
-    return value[model.primaryKey];
+    return _.get(value, model.primaryKey);
   }
 }
 
-function fault(strict: boolean | undefined, message: string): null {
-  if (strict) {
+function fault({ editMode }: CoerceOpts, message: string): null {
+  if (editMode) {
     throw new StatusError(message, 400);
   } else {
     strapi.log.warn(message);

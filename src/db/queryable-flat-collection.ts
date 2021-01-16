@@ -1,16 +1,20 @@
 import * as _ from 'lodash';
 import * as path from 'path';
-import { convertWhere, ManualFilter, WhereFilter, getAtFieldPath } from './convert-where';
-import { DocumentReference, OrderByDirection, Transaction, FieldPath, WhereFilterOp, DocumentData, FirestoreDataConverter } from '@google-cloud/firestore';
-import type { QueryableCollection, QuerySnapshot, Snapshot } from './queryable-collection';
+import { convertWhere, ManualFilter, WhereFilter, getAtFieldPath } from '../utils/convert-where';
+import { DocumentReference, OrderByDirection, FieldPath, WhereFilterOp, DocumentData, FirestoreDataConverter } from '@google-cloud/firestore';
+import type { QueryableCollection, QuerySnapshot } from './queryable-collection';
 import type { StrapiWhereFilter, StrapiWhereOperator } from '../types';
 import { DeepReference } from './deep-reference';
-import { coerceModelFromFirestore, coerceModelToFirestore } from './coerce';
 import type { FirestoreConnectorModel } from '../model';
+import { coerceModelToFirestore, coerceToFirestore } from '../coerce/coerce-to-firestore';
+import { coerceToModel } from '../coerce/coerce-to-model';
+import type { Snapshot } from './reference';
+import type { ReadRepository } from '../utils/read-repository';
 
 
 export class QueryableFlatCollection<T extends object = DocumentData> implements QueryableCollection<T> {
 
+  readonly model: FirestoreConnectorModel<T>
   readonly flatDoc: DocumentReference<{ [id: string]: T }>;
   readonly converter: FirestoreDataConverter<{ [id: string]: T }>;
 
@@ -21,7 +25,6 @@ export class QueryableFlatCollection<T extends object = DocumentData> implements
 
   private _ensureDocument: Promise<any> | null;
 
-  private readonly model: FirestoreConnectorModel<T>
 
   constructor(model: FirestoreConnectorModel<T>)
   constructor(other: QueryableFlatCollection<T>)
@@ -46,14 +49,21 @@ export class QueryableFlatCollection<T extends object = DocumentData> implements
       this.converter = {
         toFirestore: data => {
           return _.mapValues(data, (d, path) => {
-            const [, ...rest] = path.split('.');
-            return toFirestore(coerceModelToFirestore(modelOrOther, d, rest.join('.')));
+            // Remove the document ID component from the field path
+            const { fieldPath } = spitId(path);
+            if (fieldPath === modelOrOther.primaryKey) {
+              return undefined;
+            }
+
+            // If the field path exists then the value isn't a root model object
+            const obj: T = fieldPath ? coerceToFirestore(d) : coerceModelToFirestore(modelOrOther, d);
+            return toFirestore(obj);
           });
         },
         fromFirestore: data => {
           return _.mapValues(data.data(), (d, path) => {
-            const [id, ...rest] = path.split('.');
-            return coerceModelFromFirestore(modelOrOther, id, fromFirestore(d), rest.join('.'));
+            const { id, fieldPath } = spitId(path);
+            return coerceToModel(modelOrOther, id, fromFirestore(d), fieldPath, {});
           });
         },
       };
@@ -99,7 +109,7 @@ export class QueryableFlatCollection<T extends object = DocumentData> implements
     return this._ensureDocument;
   }
 
-  async get(trans?: Transaction): Promise<QuerySnapshot<T>> {
+  async get(trans?: ReadRepository): Promise<QuerySnapshot<T>> {
     const snap = await (trans ? trans.get(this.flatDoc) : this.flatDoc.get());
 
     let docs: Snapshot<T>[] = [];
@@ -175,5 +185,20 @@ export class QueryableFlatCollection<T extends object = DocumentData> implements
     const other = new QueryableFlatCollection(this);
     other._offset = offset;
     return other;
+  }
+}
+
+function spitId(path: string): { id: string, fieldPath: string | null } {
+  const i = path.indexOf('.');
+  if (i === -1) {
+    return {
+      id: path,
+      fieldPath: null,
+    };
+  } else {
+    return {
+      id: path.slice(0, i),
+      fieldPath: path.slice(i + 1),
+    };
   }
 }

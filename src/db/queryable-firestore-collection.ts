@@ -1,22 +1,25 @@
 import * as _ from 'lodash';
-import { ManualFilter, convertWhere, WhereFilter } from './convert-where';
-import { Query, Transaction, QueryDocumentSnapshot, FieldPath, WhereFilterOp, DocumentData, CollectionReference, FirestoreDataConverter, DocumentReference } from '@google-cloud/firestore';
-import type { QueryableCollection, QuerySnapshot, Snapshot } from './queryable-collection';
+import { ManualFilter, convertWhere, WhereFilter } from '../utils/convert-where';
+import { Query, QueryDocumentSnapshot, FieldPath, WhereFilterOp, DocumentData, CollectionReference, FirestoreDataConverter } from '@google-cloud/firestore';
+import type { QueryableCollection, QuerySnapshot } from './queryable-collection';
 import type { StrapiWhereFilter, StrapiWhereOperator } from '../types';
-import { coerceModelFromFirestore, coerceModelToFirestore } from './coerce';
 import type { FirestoreConnectorModel } from '../model';
+import { coerceModelToFirestore, coerceToFirestore } from '../coerce/coerce-to-firestore';
+import { coerceToModel } from '../coerce/coerce-to-model';
+import { makeNormalSnap, NormalReference } from './normal-reference';
+import type { ReadRepository } from '../utils/read-repository';
 
 
 export class QueryableFirestoreCollection<T extends object = DocumentData> implements QueryableCollection<T> {
 
-  private readonly model: FirestoreConnectorModel<T>
-  private readonly collection: CollectionReference<T>
+  readonly model: FirestoreConnectorModel<T>
   readonly converter: FirestoreDataConverter<T>;
   
+  private readonly collection: CollectionReference<T>
   private readonly allowNonNativeQueries: boolean
   private readonly maxQuerySize: number
+  private readonly manualFilters: ManualFilter[];
   private query: Query<T>
-  private readonly manualFilters: ManualFilter[] = [];
   private _limit?: number;
   private _offset?: number;
 
@@ -41,8 +44,14 @@ export class QueryableFirestoreCollection<T extends object = DocumentData> imple
         fromFirestore = (value) => value,
       } = modelOrOther.options.converter;
       this.converter = {
-        toFirestore: data => toFirestore(coerceModelToFirestore(modelOrOther, data)),
-        fromFirestore: snap => coerceModelFromFirestore(modelOrOther, snap.id, fromFirestore(snap.data())),
+        toFirestore: data => {
+          const d = coerceModelToFirestore(modelOrOther, data);
+          return toFirestore(d);
+        },
+        fromFirestore: snap => {
+          const d = fromFirestore(snap.data());
+          return coerceToModel(modelOrOther, snap.id, d, null, {});
+        },
       };
 
       this.collection = modelOrOther.firestore
@@ -52,6 +61,7 @@ export class QueryableFirestoreCollection<T extends object = DocumentData> imple
       this.query = this.collection;
       this.allowNonNativeQueries = modelOrOther.options.allowNonNativeQueries;
       this.maxQuerySize = modelOrOther.options.maxQuerySize;
+      this.manualFilters = [];
       
       if (this.maxQuerySize < 0) {
         throw new Error("maxQuerySize cannot be less than zero");
@@ -69,10 +79,11 @@ export class QueryableFirestoreCollection<T extends object = DocumentData> imple
     return this.collection.doc().id;
   }
 
-  doc(): DocumentReference<T>;
-  doc(id: string): DocumentReference<T>;
+  doc(): NormalReference<T>;
+  doc(id: string): NormalReference<T>;
   doc(id?: string) {
-    return id ? this.collection.doc(id.toString()) : this.collection.doc();
+    const doc = id ? this.collection.doc(id.toString()) : this.collection.doc();
+    return new NormalReference(doc, this);
   }
 
 
@@ -92,7 +103,7 @@ export class QueryableFirestoreCollection<T extends object = DocumentData> imple
     }
   }
 
-  get(trans?: Transaction): Promise<QuerySnapshot<T>> {
+  async get(trans?: ReadRepository): Promise<QuerySnapshot<T>> {
     // Ensure the maximum limit is set if no limit has been set yet
     let q: QueryableFirestoreCollection<T> = this;
     if (this.maxQuerySize && (this._limit === undefined)) {
@@ -101,12 +112,18 @@ export class QueryableFirestoreCollection<T extends object = DocumentData> imple
       q = q.limit(this.maxQuerySize);
     }
 
-    if (q.manualFilters.length) {
-      // Only use manual implementation when manual filters are present
-      return queryWithManualFilters(q.query, q.manualFilters, q._limit || 0, q._offset || 0, trans);
-    } else {
-      return trans ? trans.get(q.query) : q.query.get();
-    }
+    const docs = q.manualFilters.length
+      ? await queryWithManualFilters(q.query, q.manualFilters, q._limit || 0, q._offset || 0, trans)
+      : await (trans ? trans.getQuery(q.query) : q.query.get()).then(snap => snap.docs);
+
+
+    return {
+      empty: docs.length === 0,
+      docs: docs.map(s => {
+        const ref = this.doc(s.id);
+        return makeNormalSnap(ref, s);
+      }),
+    };
   }
 
   where(filter: StrapiWhereFilter | WhereFilter): QueryableFirestoreCollection<T>
@@ -118,7 +135,9 @@ export class QueryableFirestoreCollection<T extends object = DocumentData> imple
       if (typeof filter === 'function') {
         other.manualFilters.push(filter);
       } else {
-        other.query = this.query.where(filter.field, filter.operator, filter.value);
+        // Convert the value for Firestore-native query
+        const value = coerceToFirestore(filter.value);
+        other.query = this.query.where(filter.field, filter.operator, value);
       }
       return other;
     } else {
@@ -166,7 +185,7 @@ export class QueryableFirestoreCollection<T extends object = DocumentData> imple
 }
 
 
-async function* queryChunked<T extends object>(query: Query<T>, chunkSize:number, transaction: Transaction | undefined) {
+async function* queryChunked<T extends object>(query: Query<T>, chunkSize:number, transaction: ReadRepository | undefined) {
   let cursor: QueryDocumentSnapshot<T> | undefined
   while (true) {
     let q = query.limit(chunkSize);
@@ -180,7 +199,7 @@ async function* queryChunked<T extends object>(query: Query<T>, chunkSize:number
       q = q.startAfter(cursor);
     }
 
-    const { docs } = await (transaction ? transaction.get(q) : q.get());
+    const { docs } = await (transaction ? transaction.getQuery(q) : q.get());
     cursor = docs[docs.length - 1];
 
     for (const d of docs) {
@@ -193,7 +212,7 @@ async function* queryChunked<T extends object>(query: Query<T>, chunkSize:number
   }
 }
 
-async function queryWithManualFilters<T extends object>(query: Query<T>, filters: ManualFilter[], limit: number, offset: number, transaction: Transaction | undefined): Promise<QuerySnapshot<T>> {
+async function queryWithManualFilters<T extends object>(query: Query<T>, filters: ManualFilter[], limit: number, offset: number, transaction: ReadRepository | undefined): Promise<QueryDocumentSnapshot<T>[]> {
 
   // Use a chunk size of 10 for the native query
   // E.g. if we only want 1 result, we will still query
@@ -201,10 +220,10 @@ async function queryWithManualFilters<T extends object>(query: Query<T>, filters
   // But it will increase read usage (at most 9 reads will be unused)
   const chunkSize = Math.max(10, limit);
 
-  // Improve performace by performing some native offset
+  // Improve performance by performing some native offset
   const q = query.offset(offset);
 
-  const docs: Snapshot<T>[] = [];
+  const docs: QueryDocumentSnapshot<T>[] = [];
   let skipped = 0;
 
   for await (const doc of queryChunked(q, chunkSize, transaction)) {
@@ -220,8 +239,5 @@ async function queryWithManualFilters<T extends object>(query: Query<T>, filters
     }
   }
 
-  return {
-    docs,
-    empty: docs.length === 0,
-  };
+  return docs;
 }

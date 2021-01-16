@@ -1,14 +1,19 @@
 import * as _ from 'lodash';
 import { WhereFilterOp, FieldPath } from '@google-cloud/firestore';
-import { isEqualHandlingRef, Snapshot } from './queryable-collection';
 import type { StrapiAttribute, StrapiWhereOperator } from '../types';
-import { FirestoreConnectorModel } from '../model';
-import { coerceAttribute, fromFirestore, toFirestore } from './coerce';
+import type { FirestoreConnectorModel } from '../model';
+import { coerceAttrToModel } from '../coerce/coerce-to-model';
+import { isEqualHandlingRef, Snapshot } from '../db/reference';
 
 const FIRESTORE_MAX_ARRAY_ELEMENTS = 10;
 
+
+export type PartialSnapshot<T extends object> =
+  Pick<Snapshot<T>, 'data'> &
+  Pick<Snapshot<T>, 'id'>;
+
 export interface ManualFilter {
-  (data: Snapshot<any>): boolean
+  (data: PartialSnapshot<any>): boolean
 }
 
 export interface WhereFilter {
@@ -28,7 +33,7 @@ export function fieldPathToPath(model: FirestoreConnectorModel<any>, field: stri
   return field;
 }
 
-export function getAtPath(model: FirestoreConnectorModel<any>, path: string, data: Snapshot<any>): any {
+export function getAtPath(model: FirestoreConnectorModel<any>, path: string, data: PartialSnapshot<any>): any {
   if (path === model.primaryKey) {
     return data.id;
   }
@@ -202,18 +207,16 @@ export function convertWhere(model: FirestoreConnectorModel<any>, field: string 
   const path = fieldPathToPath(model, field);
   const attr: StrapiAttribute = (path === model.primaryKey) ? { type: 'string' } : model.attributes[path];
 
+  // Coerce the attribute into the correct type
+  value = coerceAttribute(attr, value);
+  
   if (typeof op === 'function') {
-    // Coerce the value from Firestore because we are doing manual
-    // queries and all the documents will also have been coerced from firestore
-    value = coerceAttribute(attr, value, fromFirestore);
     const fn = op;
-    return (snap: Snapshot) => {
+    return(snap: PartialSnapshot<any>) => {
       const fieldValue = getAtPath(model, path, snap);
       return fn(fieldValue, value);
     };
   } else {
-    // Coerce the value to Firestore because we are doing a native query
-    value = coerceAttribute(attr, value, toFirestore);
     if (field === model.primaryKey) {
       field = FieldPath.documentId();
     }
@@ -224,6 +227,18 @@ export function convertWhere(model: FirestoreConnectorModel<any>, field: string 
     };
   }
 }
+
+
+
+function coerceAttribute(attr: StrapiAttribute | undefined, value: unknown): unknown {
+  if (Array.isArray(value)) {
+    value = value.map(v => coerceAttrToModel(attr, v, {}));
+  } else {
+    value = coerceAttrToModel(attr, value, {});
+  }
+  return value;
+}
+
 
 interface TestFn<A = any, B = any> {
   (fieldValue: A, filterValue: B): boolean

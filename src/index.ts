@@ -5,7 +5,7 @@ import { Firestore, Settings, DocumentReference, Timestamp } from '@google-cloud
 import { allModels, DEFAULT_CREATE_TIME_KEY, DEFAULT_UPDATE_TIME_KEY, mountModels } from './model';
 import { queries } from './queries';
 import type { Strapi, ConnectorOptions, StrapiModel } from './types';
-import { QueryableFlatCollection } from './utils/queryable-flat-collection';
+import { QueryableFlatCollection } from './db/queryable-flat-collection';
 
 export type { 
   Strapi,
@@ -18,14 +18,17 @@ export type {
   FlattenFn,
   ModelTestFn,
 } from './types';
+export type {
+  Reference,
+  Snapshot
+} from './db/reference';
 export type { 
   Queryable,
   QueryableCollection,
-  QuerySnapshot,
-  Reference 
-} from './utils/queryable-collection';
+  QuerySnapshot, 
+} from './db/queryable-collection';
 export type { FirestoreConnectorModel } from './model';
-export type { Transaction } from './utils/transaction';
+export type { Transaction } from './db/transaction';
 
 
 const defaults = {
@@ -37,7 +40,7 @@ const defaultOptions: Required<ConnectorOptions> = {
   singleId: 'default',
   flattenModels: [],
   allowNonNativeQueries: false,
-  ensureComponentIds: false,
+  ensureComponentIds: true,
   logTransactionStats: process.env.NODE_ENV === 'development',
   logQueries: false,
   metadataField: '$meta',

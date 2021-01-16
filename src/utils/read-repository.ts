@@ -1,21 +1,19 @@
 import * as _ from 'lodash';
-import type { DocumentReference, DocumentSnapshot } from '@google-cloud/firestore';
-import type { Queryable, Snapshot, QuerySnapshot } from './queryable-collection';
+import type { DocumentReference, DocumentSnapshot, Query, QuerySnapshot } from '@google-cloud/firestore';
 
 
 export interface ReadRepositoryHandler {
   getAll(...refs: DocumentReference<any>[]): Promise<DocumentSnapshot<any>[]>
-  getQuery(query: Queryable): Promise<QuerySnapshot<any>>
+  getQuery(query: Query<any>): Promise<QuerySnapshot<any>>
 }
 
 
 /**
- * Utility class for transactions that acts as a 
- * caching proxy for read operations.
+ * Utility class for transactions that acts as a caching proxy for read operations.
  */
 export class ReadRepository {
 
-  private readonly cache = new Map<string, Promise<Snapshot<any>>>();
+  private readonly cache = new Map<string, Promise<DocumentSnapshot<any>>>();
 
   constructor(
     private readonly delegate: ReadRepository | null, 
@@ -26,7 +24,7 @@ export class ReadRepository {
     return this.cache.size;
   }
 
-  get(ref: DocumentReference): Promise<Snapshot<any>> {
+  get(ref: DocumentReference): Promise<DocumentSnapshot<any>> {
     const { path } = ref;
     if (this.cache.has(path)) {
       return this.cache.get(path)!;
@@ -34,12 +32,13 @@ export class ReadRepository {
       return this.delegate!.cache.get(path)!;
     } else {
       const p = this.handler.getAll(ref).then(snaps => snaps[0]);
+      
       this.cache.set(path, p);
       return p;
     }
   }
 
-  getAll(refs: DocumentReference[]): Promise<Snapshot<any>[]> {
+  getAll(refs: DocumentReference[]): Promise<DocumentSnapshot<any>[]> {
     // Unique documents that haven't already been fetched
     const toGet = _.uniqBy(refs.filter(({ path }) => !this.cache.has(path)), ({ path }) => path);
 
@@ -65,7 +64,7 @@ export class ReadRepository {
     return Promise.all(results);
   }
 
-  async getQuery(query: Queryable<any>): Promise<QuerySnapshot<any>> {
+  async getQuery(query: Query<any>): Promise<QuerySnapshot<any>> {
     const result = await this.handler.getQuery(query);
     for (const d of result.docs) {
       const { path } = d.ref;

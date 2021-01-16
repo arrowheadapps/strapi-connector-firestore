@@ -1,18 +1,20 @@
 import * as _ from 'lodash';
 import * as utils from 'strapi-utils';
-import { QueryableFirestoreCollection } from './utils/queryable-firestore-collection';
-import { QueryableFlatCollection } from './utils/queryable-flat-collection';
-import { QueryableComponentCollection } from './utils/queryable-component-collection';
+import { QueryableFirestoreCollection } from './db/queryable-firestore-collection';
+import { QueryableFlatCollection } from './db/queryable-flat-collection';
+import { QueryableComponentCollection } from './db/queryable-component-collection';
 import type { AttributeKey, ConnectorOptions, FlattenFn, ModelOptions, ModelTestFn, Strapi, StrapiAttribute, StrapiAttributeType, StrapiModel, StrapiModelRecord } from './types';
-import { populateDoc, populateDocs } from './populate';
+import { populateDoc } from './populate';
 import { buildPrefixQuery } from './utils/prefix-query';
-import type{ QueryableCollection, Snapshot } from './utils/queryable-collection';
+import type{ QueryableCollection } from './db/queryable-collection';
 import { DocumentReference, Firestore } from '@google-cloud/firestore';
-import { Transaction, TransactionImpl } from './utils/transaction';
+import { Transaction, TransactionImpl } from './db/transaction';
 import type { RelationHandler } from './utils/relation-handler';
 import { buildRelations } from './relations';
 import { getComponentModel } from './utils/components';
 import { AttributeIndexInfo, buildIndexers, doesComponentRequireMetadata } from './utils/components-indexing';
+import type { Snapshot } from './db/reference';
+import { StatusError } from './utils/status-error';
 
 export const DEFAULT_CREATE_TIME_KEY = 'createdAt';
 export const DEFAULT_UPDATE_TIME_KEY = 'updatedAt';
@@ -202,18 +204,27 @@ function mountModel<T extends object>(mdl: StrapiModel<T>, { strapi, firestore, 
       }
 
       const wrapper = new TransactionImpl(firestore, trans, connectorOptions.logTransactionStats, ++attempt);
-      const path = await fn(wrapper);
+      const result = await fn(wrapper);
       await wrapper.commit();
-      return path;
+      return result;
     });
   };
 
-  const populate = async (data: Snapshot<T>, transaction: Transaction, populate?: AttributeKey<T>[]) => {
-    return await populateDoc(model, data, populate || model.defaultPopulate, transaction);
+  const populate = async (snap: Snapshot<T>, transaction: Transaction, populate?: AttributeKey<T>[]) => {
+    const data = snap.data();
+    if (!data) {
+      throw new StatusError('entry.notFound', 404);
+    }
+    return await populateDoc(model, snap.ref, data, populate || model.defaultPopulate, transaction);
   };
 
-  const populateAll = async (datas: Snapshot<T>[], transaction: Transaction, populate?: AttributeKey<T>[]) => {
-    return await populateDocs(model, datas, populate || model.defaultPopulate, transaction);
+  const populateAll = async (snaps: Snapshot<T>[], transaction: Transaction, populate?: AttributeKey<T>[]) => {
+    return await Promise.all(
+      snaps.map(async snap => {
+        const data = snap.data()!;
+        return await populateDoc(model, snap.ref, data, populate || model.defaultPopulate, transaction);
+      })
+    );
   };
 
   const query = (init: (qb: any) => void) => {
@@ -411,7 +422,7 @@ function defaultSearchAttrOpts<T extends object>(model: StrapiModel<any>, option
 
 
 /**
- * Build the me
+ * Build attributes for the metadata map fields.
  */
 function buildMetadataAttributes<T extends object>(model: StrapiModel<T>, { componentKeys, getMetadataMapKey }: Pick<FirestoreConnectorModel<T>, 'componentKeys'> & Pick<FirestoreConnectorModel<T>, 'getMetadataMapKey'>): { [key: string]: StrapiAttribute } {
   const attributes: { [key: string]: StrapiAttribute } = {};

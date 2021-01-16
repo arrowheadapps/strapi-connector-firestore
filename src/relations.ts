@@ -2,10 +2,14 @@ import * as _ from 'lodash';
 import * as utils from 'strapi-utils';
 import { allModels, FirestoreConnectorModel } from './model';
 import type { StrapiModel, StrapiAttribute } from './types';
-import type { Reference } from './utils/queryable-collection';
-import type { Transaction } from './utils/transaction';
+import type { Transaction } from './db/transaction';
 import { RelationAttrInfo, RelationHandler, RelationInfo } from './utils/relation-handler';
 import { doesComponentRequireMetadata } from './utils/components-indexing';
+import type { Reference, SetOpts } from './db/reference';
+
+export function shouldUpdateRelations(opts: SetOpts | undefined): boolean {
+  return !opts || (opts.updateRelations !== false);
+}
 
 
 /**
