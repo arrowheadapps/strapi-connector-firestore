@@ -1,16 +1,11 @@
-const { startStrapi, stopStrapi } = require('./helpers/strapi');
-const { cleanTestApp } = require('./helpers/app');
-const { purgeFirestore } = require('./helpers/firestore');
+// const { cleanTestApp } = require('./utils/app');
+// const { startFirestore, stopFirestore } = require('./utils/firestore');
 
-beforeAll(async done => {
-  await startStrapi();
-  done();
-}, 70_000);
+// beforeAll(async () => {
+//   await startFirestore();
+// }, 60_000);
 
-afterAll(async done => {
-  await Promise.all([
-    purgeFirestore(),
-    stopStrapi().then(() => cleanTestApp()),
-  ]);
-  done();
-}, 70_000);
+// afterAll(async () => {
+//   await stopFirestore();
+//   await cleanTestApp();
+// }, 60_000);

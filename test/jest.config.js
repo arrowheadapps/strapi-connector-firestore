@@ -13,6 +13,6 @@ module.exports = {
   moduleNameMapper: {
     // Tests are copied from the Strapi module so the relative imports are broken
     // So map them to the correct place
-    '\\.\\.\\/test\\/helpers\/(.*)$': '<rootDir>/helpers/$1',
+    '\\.\\./test/helpers/(.*)$': '<rootDir>/helpers/$1',
   },
 };

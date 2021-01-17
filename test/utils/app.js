@@ -4,7 +4,7 @@ const path = require('path');
 const fs = require('fs-extra');
 
 
-const testsDir = '__tests__';
+const testsDir = 'tests';
 const flattenExcludes = {
   flatten_all: [],
   flatten_none: [],
