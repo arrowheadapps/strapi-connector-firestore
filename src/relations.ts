@@ -16,26 +16,11 @@ export function shouldUpdateRelations(opts: SetOpts | undefined): boolean {
  * Parse relation attributes on this updated model and update the referred-to
  * models accordingly.
  */
-export async function relationsUpdate<T extends object>(model: FirestoreConnectorModel<T>, ref: Reference<T>, prevData: T | undefined, newData: T | undefined, transaction: Transaction) {
+export async function relationsUpdate<T extends object>(model: FirestoreConnectorModel<T>, ref: Reference<T>, prevData: T | undefined, newData: T | undefined, editMode: 'create' | 'update', transaction: Transaction) {
   await Promise.all(
-    model.relations.map(r => r.update(ref, prevData, newData, transaction))
+    model.relations.map(r => r.update(ref, prevData, newData, editMode, transaction))
   );
 }
-
-/**
- * When this model is being deleted, parse and update the referred-to models accordingly.
- */
-export async function relationsDelete<T extends object>(model: FirestoreConnectorModel<T>, ref: Reference<T>, prevData: T, transaction: Transaction) {
-  await relationsUpdate(model, ref, prevData, undefined, transaction); 
-}
-
-/**
- * When this model is being created, parse and update the referred-to models accordingly.
- */
-export async function relationsCreate<T extends object>(model: FirestoreConnectorModel<T>, ref: Reference<T>, newData: T, transaction: Transaction) {
-  await relationsUpdate(model, ref, undefined, newData, transaction); 
-}
-
 
 export function buildRelations<T extends object>(model: FirestoreConnectorModel<T>, strapiInstance = strapi) {
   

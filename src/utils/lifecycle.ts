@@ -28,7 +28,7 @@ export async function runUpdateLifecycle<T extends object>({ ref, data, editMode
       const prevData = editMode === 'update'
         ? await trans.getAtomic(ref).then(snap => snap.data())
         : undefined;
-      await relationsUpdate(db.model, ref, prevData, newData, trans);
+      await relationsUpdate(db.model, ref, prevData, newData, editMode, trans);
       (trans as TransactionImpl).mergeWriteInternal(ref, newData, editMode);
     };
     

@@ -90,11 +90,18 @@ export class RelationHandler<T extends object, R extends object = object> {
   /**
    * Updates the the related models on the given object.
    */
-  async update(ref: Reference<T>, prevData: T | undefined, newData: T | undefined, transaction: Transaction): Promise<void> {
+  async update(ref: Reference<T>, prevData: T | undefined, newData: T | undefined, editMode: 'create' | 'update', transaction: Transaction): Promise<void> {
     const { attr: thisAttr } = this.thisEnd;
     if (thisAttr) {
       // This end is dominant
       // So we know all the other ends directly without querying
+
+      // Update operations will not touch keys that don't exist
+      // If the data doesn't have the key, then don't update the relation because we aren't touching it
+      // If newData is undefined then we are deleting and we do need to update the relation
+      if ((editMode === 'update') && newData && !_.has(newData, thisAttr.alias)) {
+        return;
+      }
 
       const prevValues = this._getRefInfo(prevData, thisAttr, transaction);
       const newValues = this._getRefInfo(newData, thisAttr, transaction);
