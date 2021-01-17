@@ -107,6 +107,13 @@ export function buildRelations<T extends object>(model: FirestoreConnectorModel<
 function findModelsRelatingTo(info: { model: FirestoreConnectorModel<any>, attr: StrapiAttribute, alias: string }, strapiInstance = strapi): RelationInfo<any>[] {
   const related: RelationInfo<any>[] = [];
   for (const model of allModels(strapiInstance)) {
+    if (model.isComponent) {
+      // Dominant relations to components not supported
+      // Quietly ignore this on polymorphic relations because it
+      // isn't specifically directed to this component model
+      continue;
+    }
+    
     for (const alias of Object.keys(model.attributes)) {
       const attr = model.attributes[alias];
       const otherModelName = attr.model || attr.collection;
@@ -115,7 +122,7 @@ function findModelsRelatingTo(info: { model: FirestoreConnectorModel<any>, attr:
         && ((attr.via === info.alias) || (info.attr.via === alias))) {
         const attrInfo = makeAttrInfo(alias, attr);
         related.push({
-          model: model as FirestoreConnectorModel<any>,
+          model: model,
           parentModels: findParentModels(model, attrInfo, strapiInstance),
           attr: attrInfo,
         });

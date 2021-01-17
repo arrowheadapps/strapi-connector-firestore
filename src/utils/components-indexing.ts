@@ -83,7 +83,13 @@ export function generateMetadataForComponent<T extends object>(model: FirestoreC
       }
     }
 
-    return { [metaField]: meta };
+    // Only assign meta if there are any keys
+    if (Object.keys(meta).length) {
+      return { [metaField]: meta };
+    } else {
+      return {};
+    }
+
   }
 
   return undefined;
@@ -127,7 +133,7 @@ export function buildIndexers<T extends object>(model: StrapiModel<T>): Attribut
             if (typeof indexer === 'function') {
               indexers[key] = indexer;
             } else {
-              indexers[key] = value => value;
+              indexers[key] = defaultIndexerFn;
               if (!defaultIndexer) {
                 defaultIndexer = key;
               }
@@ -138,20 +144,27 @@ export function buildIndexers<T extends object>(model: StrapiModel<T>): Attribut
         // Ensure there is a default indexer for relation types
         if (isRelation && !defaultIndexer) {
           defaultIndexer = alias;
-          indexers[alias] = value => value;
+          indexers[alias] = defaultIndexerFn;
         }
 
       } else {
         const key = (typeof attr.index === 'string') ? attr.index : alias;
         defaultIndexer = key;
         indexers = {
-          [key]: value => value,
+          [key]: defaultIndexerFn,
         };
       }
 
       // Delete index info from the original attribute definition
       // no longer needed and it clutters API metadata etc
       delete attr.index;
+
+      // If this indexer is for the primary key and only the indexer is defined
+      // then this is a special case and we remove the attribute once
+      // the indexers have been absorbed
+      if ((alias === model.primaryKey) && !Object.keys(attr).length) {
+        delete model.attributes[alias];
+      }
 
       infos.push({
         alias,
@@ -163,4 +176,8 @@ export function buildIndexers<T extends object>(model: StrapiModel<T>): Attribut
   }
 
   return infos;
+}
+
+function defaultIndexerFn(value: any) {
+  return value;
 }

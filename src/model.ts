@@ -131,6 +131,7 @@ function mountModel<T extends object>(mdl: StrapiModel<T>, { strapi, firestore, 
   mdl.collectionName = flattening?.collectionName || mdl.collectionName;
 
   const options: Required<ModelOptions<T>> = {
+    ...opts,
     timestamps: opts.timestamps || false,
     logQueries: opts.logQueries ?? connectorOptions.logQueries,
     singleId: flattening?.singleId || opts.singleId || connectorOptions.singleId,
@@ -456,16 +457,30 @@ function buildMetadataAttributes<T extends object>(model: StrapiModel<T>, { comp
               writable: false,
             };
 
-            if (attributes[attrPath] && !_.isEqual(attributes[attrPath], attrValue)) {
+            const existingAttrValue = attributes[attrPath];
+            if (existingAttrValue) {
+
+              if (existingAttrValue.collection 
+                && attrValue.collection
+                && (existingAttrValue.collection !== attrValue.collection)) {
+                // Consider different collections as polymorphic
+                existingAttrValue.collection = attrValue.collection = '*';
+              }
+
               // Make sure all overlapping indexed attribute in dynamic-zone components are compatible
               // Required so that we know how to coerce the metadata map back and forth from Firestore
-              throw new Error(
-                `The indexed attribute "${info.alias}" of component "${modelName}" is not compatible with an indexed attribute of another component. ` +
-                `The parent attribute is "${alias}" in model "${model.uid}"`
-              );
+              if (!_.isEqual(attributes[attrPath], attrValue)) {
+                throw new Error(
+                  `The indexed attribute "${info.alias}" of component "${modelName}" is not compatible with an indexed attribute of another component. ` +
+                  `The parent attribute is "${alias}" in model "${model.uid}"`
+                );
+              }
             }
 
             attributes[attrPath] = attrValue;
+
+            // Set layout config on the model so that the attribute is hidden
+            _.set(model, ['config', 'attributes', attrPath], { hidden: true });
           }
         }
       }

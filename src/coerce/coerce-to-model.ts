@@ -342,13 +342,17 @@ function coerceToReference<T extends object = object>(value: any, to: FirestoreC
     }
   }
 
-  if (typeof value === 'string') {
+  const path: string = (typeof value === 'string')
+    ? value
+    : (to ? to.getPK(value) : value.id);
 
-    const lastSep = value.lastIndexOf('/');
+  if (path && (typeof path === 'string')) {
+
+    const lastSep = path.lastIndexOf('/');
     if (lastSep === -1) {
       // No path separators so it is just an ID
       if (to) {
-        return to.db.doc(value);
+        return to.db.doc(path);
       } else {
         return fault(opts, `Polymorphic reference must be fully qualified. Got the ID segment only.`);
       }
@@ -362,16 +366,16 @@ function coerceToReference<T extends object = object>(value: any, to: FirestoreC
 
     // It must be an absolute deep reference path
     // Verify that the path actually refers to the target model
-    const id = value.slice(lastSep + 1);
+    const id = path.slice(lastSep + 1);
     if (id) {
       if (to) {
         const deepRef = to.db.doc(id);
-        if (deepRef.path !== value) {
+        if (deepRef.path !== _.trim(path, '/')) {
           return fault(opts, `Reference is pointing to the wrong model. Expected "${deepRef.path}", got "${id}".`);
         }
         return deepRef;
       } else {
-        const collection = _.trim(value.slice(0, lastSep), '/');
+        const collection = _.trim(path.slice(0, lastSep), '/');
         const model = strapi.db.getModelByCollectionName(collection);
         if (!model) {
           return fault(opts, `The model referred to by "${collection}" doesn't exist`);

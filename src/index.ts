@@ -4,7 +4,7 @@ import * as _ from 'lodash';
 import { Firestore, Settings, DocumentReference, Timestamp } from '@google-cloud/firestore';
 import { allModels, DEFAULT_CREATE_TIME_KEY, DEFAULT_UPDATE_TIME_KEY, mountModels } from './model';
 import { queries } from './queries';
-import type { Strapi, ConnectorOptions, StrapiModel } from './types';
+import type { Strapi, ConnectorOptions } from './types';
 import { QueryableFlatCollection } from './db/queryable-flat-collection';
 
 export type { 
@@ -60,34 +60,6 @@ module.exports = (strapi: Strapi) => {
   // Patch Firestore types to allow JSON serialization
   (DocumentReference.prototype as any).toJSON = function() { return this.id; };
   (Timestamp.prototype as any).toJSON = function() { return this.toDate().toJSON(); };
-
-
-  // HACK: Patch content manager plugin to hide metadata attributes
-  // Current Strapi versions do not support hidden or virtual attributes
-  // A side-effect of hiding these attributes from the admin
-  // is that they are not visible for sorting or filtering
-  // Future versions may add virtual attributes but this patch will still be 
-  // required for old Strapi versions
-  // See: https://github.com/strapi/rfcs/pull/17
-
-  const dataMapperService: any = _.get(strapi.plugins, 'content-manager.services.data-mapper');
-  const { toContentManagerModel: _toContentManagerModel } = dataMapperService || {};
-  if (!dataMapperService || !_toContentManagerModel) {
-    strapi.log.warn(
-      'An update to Strapi has broken the patch applied to strapi-plugin-content-manager. ' +
-      'Please revert to the previous version.'
-    );
-  }
-  dataMapperService.toContentManagerModel = (...params) => {
-    const model: StrapiModel<any> = _toContentManagerModel(...params);
-    for (const key of Object.keys(model.attributes)) {
-      if (model.attributes[key].isMeta) {
-        delete model.attributes[key];
-      }
-    }
-    return model;
-  }
-  
 
   const { connections } = strapi.config;
   const firestoreConnections = Object.keys(connections)

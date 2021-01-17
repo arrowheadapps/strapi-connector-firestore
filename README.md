@@ -287,6 +287,8 @@ The connector automatically does this for all relation attributes. Even if an ob
 
 The metadata map is stored in the document in a field named by appending "$meta" to the name of the field storing the components. The map contains a field for every indexed attribute, and each field is an array of all the unique values of that attribute on all the components, or `null` if there are no values. If the attribute itself is an array (e.g. many-way relations), then the array is flattened.
 
+Indexers can be defined for the component ID (primary key) also, and if only the `index` property is defined, then the attribute will be deleted after the indexers have been collected. This way, you can index the IDs without the attribute being visible in the content manager.
+
 Note: when indexing attributes inside components, the data will be duplicated inside the document, increasing document size and bandwidth costs.
 
 For example, consider a model JSON with the shape below:
@@ -363,6 +365,11 @@ module.exports = {
     metadataField: field => `index$${field}`,
   },
   attributes: {
+    id: {
+      // Index the primary key
+      // This attribute will be removed from existence after the indexer configuration is collected
+      index: true,
+    }
     name: {
       type: 'string',
       // Index and rename the metadata key instead of default "name"
