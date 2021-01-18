@@ -45,6 +45,8 @@ export function coerceToModel<T extends object>(model: FirestoreConnectorModel<T
       _.set(obj, updatedAtKey, now);
       if (opts.editMode === 'create') {
         _.set(obj, createdAtKey, now);
+      } else {
+        _.unset(obj, createdAtKey);
       }
     }
 
