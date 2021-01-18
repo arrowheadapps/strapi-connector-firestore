@@ -4,7 +4,7 @@ import { QueryableFirestoreCollection } from './db/queryable-firestore-collectio
 import { QueryableFlatCollection } from './db/queryable-flat-collection';
 import { QueryableComponentCollection } from './db/queryable-component-collection';
 import type { AttributeKey, ConnectorOptions, FlattenFn, ModelOptions, ModelTestFn, Strapi, StrapiAttribute, StrapiAttributeType, StrapiModel, StrapiModelRecord } from './types';
-import { populateDoc } from './populate';
+import { populateDoc, populateSnapshots } from './populate';
 import { buildPrefixQuery } from './utils/prefix-query';
 import type{ QueryableCollection } from './db/queryable-collection';
 import { DocumentReference, Firestore } from '@google-cloud/firestore';
@@ -79,7 +79,7 @@ export interface FirestoreConnectorModel<T extends object = object> extends Stra
    * Gets the path of the field to store the metadata/index
    * map for the given repeatable component attribute.
    */
-  getMetadataMapKey: (attrKey: AttributeKey<T>) => string
+  getMetadataMapKey(attrKey: AttributeKey<T>): string
   hasPK(obj: any): boolean;
   getPK(obj: any): string;
 
@@ -211,7 +211,7 @@ function mountModel<T extends object>(mdl: StrapiModel<T>, { strapi, firestore, 
     });
   };
 
-  const populate = async (snap: Snapshot<T>, transaction: Transaction, populate?: AttributeKey<T>[]) => {
+  const populate = async (snap: Snapshot<T>, transaction: Transaction, populate = defaultPopulate) => {
     const data = snap.data();
     if (!data) {
       throw new StatusError('entry.notFound', 404);
@@ -219,13 +219,8 @@ function mountModel<T extends object>(mdl: StrapiModel<T>, { strapi, firestore, 
     return await populateDoc(model, snap.ref, data, populate || model.defaultPopulate, transaction);
   };
 
-  const populateAll = async (snaps: Snapshot<T>[], transaction: Transaction, populate?: AttributeKey<T>[]) => {
-    return await Promise.all(
-      snaps.map(async snap => {
-        const data = snap.data()!;
-        return await populateDoc(model, snap.ref, data, populate || model.defaultPopulate, transaction);
-      })
-    );
+  const populateAll = async (snaps: Snapshot<T>[], transaction: Transaction, populate = defaultPopulate) => {
+    return await populateSnapshots(snaps, populate, transaction);
   };
 
   const query = (init: (qb: any) => void) => {

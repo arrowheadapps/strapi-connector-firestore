@@ -1,7 +1,7 @@
 import * as _ from 'lodash';
 import { convertRestQueryParams } from 'strapi-utils';
 import { FieldPath } from '@google-cloud/firestore';
-import { populateDoc } from './populate';
+import { populateDoc, populateSnapshots } from './populate';
 import { buildPrefixQuery } from './utils/prefix-query';
 import { StatusError } from './utils/status-error';
 import type { FirestoreConnectorModel } from './model';
@@ -32,7 +32,7 @@ export function queries<T extends object>({ model, strapi }: StrapiContext<T>): 
       let snaps: Snapshot<T>[];
       if (model.hasPK(params)) {
         const ref = model.db.doc(model.getPK(params));
-        const snap = await trans.getNonAtomic(ref);
+        const snap = await trans.getNonAtomic(ref, { isSingleRequest: true });
         if (!snap.exists) {
           snaps = [];
         } else {
@@ -42,12 +42,7 @@ export function queries<T extends object>({ model, strapi }: StrapiContext<T>): 
         snaps = await runFirestoreQuery(model, params, null, trans);
       }
 
-      return await Promise.all(
-        snaps.map(async snap => {
-          const data = snap.data()!;
-          return await populateDoc(model, snap.ref, data, populate, trans);
-        })
-      );
+      return await populateSnapshots(snaps, populate, trans);
     });
   };
 
@@ -86,15 +81,9 @@ export function queries<T extends object>({ model, strapi }: StrapiContext<T>): 
     log('update', { params, populate });
     
     return await model.runTransaction(async trans => {
-      let snap: Snapshot<T>;
-      if (model.hasPK(params)) {
-        snap = await trans.getAtomic(model.db.doc(model.getPK(params)));
-      } else {
-        const docs = await runFirestoreQuery(model, { ...params, _limit: 1 }, null, trans);
-        snap = docs[0];
-      }
+      const [snap] = await runFirestoreQuery(model, { ...params, _limit: 1 }, null, trans);
 
-      const prevData = snap.data();
+      const prevData = snap && snap.data();
       if (!prevData) {
         throw new StatusError('entry.notFound', 404);
       }
@@ -103,7 +92,10 @@ export function queries<T extends object>({ model, strapi }: StrapiContext<T>): 
       const data = await trans.update(snap.ref, values);
 
       // Populate relations
-      return await populateDoc(model, snap.ref, data, populate, trans);
+      return {
+        ...snap.data(),
+        ...await populateDoc(model, snap.ref, data, populate, trans),
+      };
     });
   };
 
@@ -111,15 +103,10 @@ export function queries<T extends object>({ model, strapi }: StrapiContext<T>): 
     log('delete', { params, populate });
 
     return await model.runTransaction(async trans => {
-      if (model.hasPK(params)) {
-        const ref = model.db.doc(model.getPK(params));
-        const snap = await trans.getNonAtomic(ref);
-        const result = await deleteOne(snap, populate, trans);
-        return [result];
-      } else {
-        const snaps = await runFirestoreQuery(model, params, null, trans);
-        return Promise.all(snaps.map(snap => deleteOne(snap, populate, trans)));
-      }
+      const snaps = await runFirestoreQuery(model, params, null, trans);
+      return Promise.all(
+        snaps.map(snap => deleteOne(snap, populate, trans))
+      );
     });
   };
 
@@ -140,26 +127,8 @@ export function queries<T extends object>({ model, strapi }: StrapiContext<T>): 
     log('search', { params, populate });
 
     return await model.runTransaction(async trans => {
-      let snaps: Snapshot<T>[];
-      if (model.hasPK(params)) {
-        const ref = model.db.doc(model.getPK(params));
-        const snap = await trans.getNonAtomic(ref);
-        if (!snap.exists) {
-          snaps = [];
-        } else {
-          snaps = [snap];
-        }
-      } else {
-        snaps = await runFirestoreQuery(model, params, params._q, trans);
-      }
-
-      
-      return await Promise.all(
-        snaps.map(async snap => {
-          const data = snap.data()!;
-          return await populateDoc(model, snap.ref, data, populate, trans);
-        })
-      );
+      const snaps = await runFirestoreQuery(model, params, params._q, trans);
+      return await populateSnapshots(snaps, populate, trans);
     });
   };
 
@@ -329,46 +298,47 @@ function buildFirestoreQuery<T extends object>(model: FirestoreConnectorModel<T>
   if (searchQuery) {
     query = buildSearchQuery(model, searchQuery, query);
   } else {
-    // Check for special case where the only filter is id_in
-    // In this case it is more effective to fetch the documents
-    // by id, because the "in" operator only supports ten arguments
-    if (where && (where.length === 1)
-      && (where[0].field === model.primaryKey)
-      && (where[0].operator === 'in')) {
-      
-      return _.castArray(where[0].value || [])
-        .slice(start || 0, (limit || -1) < 1 ? undefined : limit)
-        .map(value => {
-          if (!value || (typeof value !== 'string')) {
-            throw new StatusError(`Argument for "${model.primaryKey}_in" must be an array of strings`, 400);
-          }
-          return model.db.doc(value);
-        });
-
-    } else {
-      for (let { field, operator, value } of (where || [])) {
-        if (operator === 'in') {
-          if (Array.isArray(value) && (value.length === 0)) {
-            // Special case: empty query
-            return null;
-          }
-          value = _.castArray(value);
-        }
-        if (operator === 'nin') {
-          if (Array.isArray(value) && (value.length === 0)) {
-            // Special case: no effect
-            continue;
-          }
-          value = _.castArray(value);
+    // Check for special case where querying for document IDs
+    // In this case it is more effective to fetch the documents by id
+    // because the "in" operator only supports ten arguments
+    if (where && (where.length === 1)) {
+      const [{ field, operator, value }] = where;
+      if (field === model.primaryKey) {
+        if (!value || (typeof value !== 'string')) {
+          throw new StatusError(`Argument for "${model.primaryKey}" must be an array of strings`, 400);
         }
 
-        // Prevent querying passwords
-        if (model.attributes[field]?.type === 'password') {
-          throw new Error('Not allowed to query password fields');
+        if ((operator === 'eq') || (operator === 'in')) {
+          return _.castArray(value || [])
+            .slice(start || 0, (limit || -1) < 1 ? undefined : limit)
+            .map(v =>  model.db.doc(v));
         }
-
-        query = query.where(field, operator, value);
       }
+    }
+
+    // Otherwise continue building normal query
+    for (let { field, operator, value } of (where || [])) {
+      if (operator === 'in') {
+        if (Array.isArray(value) && (value.length === 0)) {
+          // Special case: empty query
+          return null;
+        }
+        value = _.castArray(value);
+      }
+      if (operator === 'nin') {
+        if (Array.isArray(value) && (value.length === 0)) {
+          // Special case: no effect
+          continue;
+        }
+        value = _.castArray(value);
+      }
+
+      // Prevent querying passwords
+      if (model.attributes[field]?.type === 'password') {
+        throw new Error('Not allowed to query password fields');
+      }
+
+      query = query.where(field, operator, value);
     }
   }
 
@@ -406,9 +376,9 @@ async function runFirestoreQuery<T extends object>(model: FirestoreConnectorMode
     return [];
   }
   if (Array.isArray(queryOrIds)) {
-    return await transaction.getNonAtomic(queryOrIds);
+    return await transaction.getNonAtomic(queryOrIds, { isSingleRequest: true });
   } else {
     const result = await transaction.getNonAtomic(queryOrIds);
-    return result.docs
+    return result.docs;
   }
 }

@@ -8,13 +8,25 @@ import { MorphReference } from './morph-reference';
 import { makeNormalSnap, NormalReference } from './normal-reference';
 import { runUpdateLifecycle } from '../utils/lifecycle';
 
-export interface WriteOp {
-  ref: DocumentReference
-  data: DocumentData | null
-  create: boolean
-  converter: FirestoreDataConverter<any>
+export interface GetOpts {
+  /**
+   * Relevant in flattened collections only (when getting a `DeepReference`),
+   * ignored for normal collections.
+   * 
+   * If `true`, field masks will be applied so that only the requested entries in the flattened collection
+   * are returned, saving bandwidth and processing, but defeating the cache if other entries are
+   * to be fetched from this collection later in the same transaction.
+   * 
+   * If `false`, the entire flattened collection (stored in a single document) will be
+   * fetched and cached in the transaction, meaning to only a single read operation
+   * is used even when multiple entries are fetched (in the same transaction).
+   * 
+   * **Caution:** Use this only when you know that this is the request that will
+   * be fetched from this collection within the scope of the transaction. Otherwise you
+   * may be defeating the purpose of flattened collections.
+   */
+  isSingleRequest?: boolean
 }
-
 
 /**
  * Acts as a conduit for all read and write operations, with the
@@ -41,8 +53,8 @@ export interface Transaction {
    * Does not return a cached response from `getNonAtomic(...)` because
    * that would not establish a lock.
    */
-  getAtomic<T extends object>(ref: Reference<T>): Promise<Snapshot<T>>
-  getAtomic<T extends object>(refs: Reference<T>[]): Promise<Snapshot<T>[]>
+  getAtomic<T extends object>(ref: Reference<T>, opts?: GetOpts): Promise<Snapshot<T>>
+  getAtomic<T extends object>(refs: Reference<T>[], opts?: GetOpts): Promise<Snapshot<T>[]>
   getAtomic<T extends object>(query: Queryable<T>): Promise<QuerySnapshot<T>>
 
   /**
@@ -50,8 +62,8 @@ export interface Transaction {
    * has been read *(with `getNonAtomic(...)` or `getAtomic(...)`)* within
    * this transaction.
    */
-  getNonAtomic<T extends object>(ref: Reference<T>): Promise<Snapshot<T>>
-  getNonAtomic<T extends object>(refs: Reference<T>[]): Promise<Snapshot<T>[]>
+  getNonAtomic<T extends object>(ref: Reference<T>, opts?: GetOpts): Promise<Snapshot<T>>
+  getNonAtomic<T extends object>(refs: Reference<T>[], opts?: GetOpts): Promise<Snapshot<T>[]>
   getNonAtomic<T extends object>(query: Queryable<T>): Promise<QuerySnapshot<T>>
 
   /**
@@ -119,15 +131,15 @@ export class TransactionImpl implements Transaction {
   }
 
 
-  private async _getAll(refs: Reference<any>[], repo: ReadRepository): Promise<Snapshot<any>[]> {
+  private async _getAll(refs: Reference<any>[], repo: ReadRepository, opts: GetOpts | undefined): Promise<Snapshot<any>[]> {
     const results = await repo.getAll(refs.map(r => getDocRef(r).ref));
     return refs.map((ref, i) => makeSnap(ref, results[i]));
   }
   
-  getAtomic<T extends object>(ref: Reference<T>): Promise<Snapshot<T>>
-  getAtomic<T extends object>(refs: Reference<T>[]): Promise<Snapshot<T>[]>
+  getAtomic<T extends object>(ref: Reference<T>, opts?: GetOpts): Promise<Snapshot<T>>
+  getAtomic<T extends object>(refs: Reference<T>[], opts?: GetOpts): Promise<Snapshot<T>[]>
   getAtomic<T extends object>(query: Queryable<T>): Promise<QuerySnapshot<T>>
-  getAtomic<T extends object>(refOrQuery: Reference<T> | Reference<T>[] | Queryable<T>): Promise<Snapshot<T> | Snapshot<T>[] | QuerySnapshot<T>> {
+  getAtomic<T extends object>(refOrQuery: Reference<T> | Reference<T>[] | Queryable<T>, opts?: GetOpts): Promise<Snapshot<T> | Snapshot<T>[] | QuerySnapshot<T>> {
     if (Array.isArray(refOrQuery)) {
       return this._getAll(refOrQuery, this.atomicReads);
     }  else {
@@ -135,10 +147,10 @@ export class TransactionImpl implements Transaction {
     }
   }
   
-  getNonAtomic<T extends object>(ref: Reference<T>): Promise<Snapshot<T>>
-  getNonAtomic<T extends object>(refs: Reference<T>[]): Promise<Snapshot<T>[]>
+  getNonAtomic<T extends object>(ref: Reference<T>, opts?: GetOpts): Promise<Snapshot<T>>
+  getNonAtomic<T extends object>(refs: Reference<T>[], opts?: GetOpts): Promise<Snapshot<T>[]>
   getNonAtomic<T extends object>(query: Queryable<T>): Promise<QuerySnapshot<T>>
-  getNonAtomic<T extends object>(refOrQuery: Reference<T> | Reference<T>[] | Queryable<T>): Promise<Snapshot<T> | Snapshot<T>[] | QuerySnapshot<T>> {
+  getNonAtomic<T extends object>(refOrQuery: Reference<T> | Reference<T>[] | Queryable<T>, opts?: GetOpts): Promise<Snapshot<T> | Snapshot<T>[] | QuerySnapshot<T>> {
     if (Array.isArray(refOrQuery)) {
       return this._getAll(refOrQuery, this.nonAtomicReads);
     } else {
@@ -261,6 +273,14 @@ export class TransactionImpl implements Transaction {
       }
     }
   }
+}
+
+
+interface WriteOp {
+  ref: DocumentReference
+  data: DocumentData | null
+  create: boolean
+  converter: FirestoreDataConverter<any>
 }
 
 interface RefInfo {

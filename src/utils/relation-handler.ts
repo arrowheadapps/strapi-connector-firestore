@@ -99,7 +99,7 @@ export class RelationHandler<T extends object, R extends object = object> {
       // Update operations will not touch keys that don't exist
       // If the data doesn't have the key, then don't update the relation because we aren't touching it
       // If newData is undefined then we are deleting and we do need to update the relation
-      if ((editMode === 'update') && newData && !_.has(newData, thisAttr.alias)) {
+      if ((editMode === 'update') && newData && (_.get(newData, thisAttr.alias) === undefined)) {
         return;
       }
 
@@ -286,13 +286,14 @@ export class RelationHandler<T extends object, R extends object = object> {
     return (await Promise.all(snaps)).flat();
   }
 
-  private _getRefInfo(data: T | undefined, thisAttr: RelationAttrInfo, transaction: Transaction): InternalAsyncSnapshot<T, R>[] {
-    return _.castArray(_.get(data, thisAttr.alias) || [])
-      .map(v => this._getSingleRefInfo(v, transaction)!)
+  private _getRefInfo(data: T | undefined, thisAttr: RelationAttrInfo, transaction: Transaction) {
+    // TODO: Optimise requests with batch get
+   return _.castArray(_.get(data, thisAttr.alias) || [])
+      .map(v => this._getSingleRefInfo(v)!)
       .filter(v => v != null);
   }
 
-  private _getSingleRefInfo(ref: any, transaction: Transaction): InternalAsyncSnapshot<T, R> | null {
+  private _getSingleRefInfo(ref: any) {
     let other = this._singleOtherEnd;
     if (ref) {
       if (!(ref instanceof Reference)) {
@@ -311,7 +312,7 @@ export class RelationHandler<T extends object, R extends object = object> {
         }
       }
 
-      return asyncFromRef(other, ref, transaction);
+      return { other, ref };
     }
     return null;
   }
