@@ -24,8 +24,7 @@
     "build": "rimraf lib && tsc",
     "build:test": "rimraf lib && tsc -p tsconfig.test.json",
     "prepare": "tsc --skipLibCheck",
-    "test": "npm run build:test && npm test --prefix test",
-    "combine": "cd input && istanbul-combine -d ../coverage -p detail -r json **/*.json"
+    "test": "npm run build:test && npm test --prefix test"
   },
   "dependencies": {
     "@google-cloud/firestore": "^4.8.1",

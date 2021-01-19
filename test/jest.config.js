@@ -2,7 +2,7 @@ module.exports = {
   name: 'API integration tests',
   rootDir: '../',
   testEnvironment: 'node',
-  verbose: !process.env.SILENT,
+  verbose: true,
   transform: { },
   testMatch: ['<rootDir>/test/**/*.test*.js'],
   setupFilesAfterEnv: ['<rootDir>/test/utils/setup-test.js'],
@@ -11,7 +11,7 @@ module.exports = {
   collectCoverage: true,
   coverageReporters: ['json', 'text-summary'],
   collectCoverageFrom: [
-    '<rootDir>/lib/**',
+    '<rootDir>/lib/**/*.js',
   ],
 
   moduleNameMapper: {

@@ -57,6 +57,7 @@ const copyTests = async () => {
   await fs.copy(path.join(strapiDir, testsDir), dest);
 
   // Remove excluded tests
+  console.log(`Collection flattening: "${process.env.FLATTENING || 'flatten_none'}"`)
   const excludes = flattenExcludes[process.env.FLATTENING] || [];
   for (const p of await fs.readdir(dest)) {
     if (excludes.some(e => e.test(p))) {
@@ -73,14 +74,6 @@ const setupTestApp = async () => {
   // Jest seems to fail to write the JSON results otherwise
   await Promise.all([
     fs.emptyDir(path.resolve('../coverage')),
-    fs.emptyDir(path.resolve('../.nyc_output')),
-  ]);
-};
-
-const teardownTestApp = async () => {
-  await Promise.all([
-    cleanTestApp(),
-    cleanTests(),
   ]);
 };
 
@@ -90,5 +83,4 @@ module.exports = {
   copyTests,
   cleanTests,
   setupTestApp,
-  teardownTestApp,
 };
