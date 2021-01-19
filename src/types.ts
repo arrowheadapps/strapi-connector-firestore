@@ -222,7 +222,7 @@ export interface StrapiQuery<T extends object = DocumentData> {
   findOne(params?: any, populate?: AttributeKey<T>[]): Promise<T | null>
   create(values: T, populate?: AttributeKey<T>[]): Promise<T>
   update(params: any, values: T, populate?: AttributeKey<T>[]): Promise<T>
-  delete(params: any, populate?: AttributeKey<T>[]): Promise<T[]>
+  delete(params: any, populate?: AttributeKey<T>[]): Promise<(T | null) | (T | null)[]>
   count(params?: any): Promise<number>
   search(params: any, populate?: AttributeKey<T>[]): Promise<T[]>
   countSearch(params: any): Promise<number>

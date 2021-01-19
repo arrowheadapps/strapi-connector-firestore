@@ -1,26 +1,18 @@
 import * as _ from 'lodash';
-import type { DocumentReference, DocumentSnapshot, Query, QuerySnapshot } from '@google-cloud/firestore';
+import type { DocumentReference, DocumentSnapshot, FieldPath, Query, QuerySnapshot } from '@google-cloud/firestore';
 
 
 export interface ReadRepositoryHandler {
-  getAll(refs: DocumentReference<any>[], fieldMask: string | undefined): Promise<DocumentSnapshot<any>[]>
+  getAll(refs: DocumentReference<any>[], fieldMasks?: (string | FieldPath)[]): Promise<DocumentSnapshot<any>[]>
   getQuery(query: Query<any>): Promise<QuerySnapshot<any>>
 }
-
-interface CacheEntry {
-  nonMasked?: Promise<DocumentSnapshot>
-  masked?: {
-    [mask: string]:  Promise<DocumentSnapshot> | undefined
-  }
-}
-
 
 /**
  * Utility class for transactions that acts as a caching proxy for read operations.
  */
 export class ReadRepository {
 
-  private readonly cache = new Map<string, CacheEntry>();
+  private readonly cache = new Map<string, Promise<DocumentSnapshot<any>>>();
 
   constructor( 
     private readonly handler: ReadRepositoryHandler,
@@ -31,48 +23,25 @@ export class ReadRepository {
     return this.cache.size;
   }
 
-  getAll(refs: DocumentReference[], fieldMasks?: string[]): Promise<DocumentSnapshot<any>[]> {
+  getAll(refs: DocumentReference[], fieldMasks?: (string | FieldPath)[]): Promise<DocumentSnapshot<any>[]> {
 
-    const readOperations: { ref: DocumentReference, cb: (() => void) }[] = [];
-
-    const entries = refs.map(ref => {
-      // Try entries in this cache
-      let entry = this.cache.get(ref.path);
-      if (entry) {
-        if (entry.nonMasked) {
-          return entry.nonMasked;
-        }
-      }
-
-      // Try entries in the delegate cache
-      entry = this.delegate && this.delegate.cache.get(ref.path);
-      if (entry) {
-        if (entry.nonMasked) {
-          return entry.nonMasked;
-        }
-      }
-
-      // Create new entry new data
-      entry = { };
-      this.cache.set(ref.path, entry);
-
-    });
-
+    // No caching if there are any masks defined
+    if (fieldMasks && fieldMasks.length) {
+      return this.handler.getAll(refs, fieldMasks);
+    }
+    
 
     // Unique documents that haven't already been fetched
-    const toGet = _.uniqBy(
-      refs.filter(({ path }) => !this.cache.has(path)),
-      ({ path }) => path,
-    );
+    const toGet = _.uniqBy(refs.filter(({ path }) => !this.cache.has(path)), ({ path }) => path);
 
     // Defer any that exist in the delegate repository
     const toRead = this.delegate
-      ? toGet.filter(({ path }) => !this.delegate!.cache.has(path + maskPath) && !this.delegate!.cache.has(path))
+      ? toGet.filter(({ path }) => !this.delegate!.cache.has(path))
       : toGet;
 
     // Memoise a promise for each document
     const toReadAsync = toRead.length 
-      ? this.handler.getAll(toGet, fieldMask) 
+      ? this.handler.getAll(toGet) 
       : Promise.resolve([]);
     
     toRead.forEach(({ path }, i) => {

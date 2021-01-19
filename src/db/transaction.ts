@@ -14,8 +14,7 @@ export interface GetOpts {
    * ignored for normal collections.
    * 
    * If `true`, field masks will be applied so that only the requested entries in the flattened collection
-   * are returned, saving bandwidth and processing, but defeating the cache if other entries are
-   * to be fetched from this collection later in the same transaction.
+   * are returned, saving bandwidth and processing, but the entries will not be cached in the transaction.
    * 
    * If `false`, the entire flattened collection (stored in a single document) will be
    * fetched and cached in the transaction, meaning to only a single read operation
@@ -43,6 +42,11 @@ export interface GetOpts {
  *    duration of the transaction.
  */
 export interface Transaction {
+
+  /**
+   * The underlying Firestore `Transaction`.
+   */
+  readonly nativeTransaction: FirestoreTransaction;
   
   /**
    * Reads the given document and holds lock on it
@@ -104,25 +108,25 @@ export class TransactionImpl implements Transaction {
 
   constructor(
     readonly firestore: Firestore,
-    readonly transaction: FirestoreTransaction,
+    readonly nativeTransaction: FirestoreTransaction,
     private readonly logStats: boolean,
     private readonly attempt: number,
   ) {
     
-    this.atomicReads = new ReadRepository(null, {
-      getAll: (...refs) => this.transaction.getAll(...refs),
-      getQuery: query => this.transaction.get(query),
+    this.atomicReads = new ReadRepository({
+      getAll: (refs, fieldMask) => this.nativeTransaction.getAll(...refs, { fieldMask }),
+      getQuery: query => this.nativeTransaction.get(query),
     });
 
-    this.nonAtomicReads = new ReadRepository(this.atomicReads, {
-      getAll: (...refs) => firestore.getAll(...refs),
+    this.nonAtomicReads = new ReadRepository({
+      getAll: (refs, fieldMask) => firestore.getAll(...refs, { fieldMask }),
       getQuery: query => query.get(),
-    });
+    }, this.atomicReads);
   }
 
-  private async _get(refOrQuery: Reference<any> | Queryable<any>, repo: ReadRepository): Promise<Snapshot<any> | QuerySnapshot<any>> {
+  private async _get(refOrQuery: Reference<any> | Queryable<any>, repo: ReadRepository, opts: GetOpts | undefined): Promise<Snapshot<any> | QuerySnapshot<any>> {
     if (refOrQuery instanceof Reference) {
-      return (await this._getAll([refOrQuery], repo))[0];
+      return (await this._getAll([refOrQuery], repo, opts))[0];
     } else {
       // Queryable
       return await refOrQuery.get(repo);
@@ -132,7 +136,14 @@ export class TransactionImpl implements Transaction {
 
 
   private async _getAll(refs: Reference<any>[], repo: ReadRepository, opts: GetOpts | undefined): Promise<Snapshot<any>[]> {
-    const results = await repo.getAll(refs.map(r => getDocRef(r).ref));
+
+    const [] = _.partition(refs, )
+
+
+    const results = await repo.getAll(refs.map(r => {
+      const { ref, deepRef } = getDocRef(r);
+      return ref;
+    }), opts?.isSingleRequest);
     return refs.map((ref, i) => makeSnap(ref, results[i]));
   }
   
@@ -141,9 +152,9 @@ export class TransactionImpl implements Transaction {
   getAtomic<T extends object>(query: Queryable<T>): Promise<QuerySnapshot<T>>
   getAtomic<T extends object>(refOrQuery: Reference<T> | Reference<T>[] | Queryable<T>, opts?: GetOpts): Promise<Snapshot<T> | Snapshot<T>[] | QuerySnapshot<T>> {
     if (Array.isArray(refOrQuery)) {
-      return this._getAll(refOrQuery, this.atomicReads);
+      return this._getAll(refOrQuery, this.atomicReads, opts);
     }  else {
-      return this._get(refOrQuery, this.atomicReads);
+      return this._get(refOrQuery, this.atomicReads, opts);
     }
   }
   
@@ -152,9 +163,9 @@ export class TransactionImpl implements Transaction {
   getNonAtomic<T extends object>(query: Queryable<T>): Promise<QuerySnapshot<T>>
   getNonAtomic<T extends object>(refOrQuery: Reference<T> | Reference<T>[] | Queryable<T>, opts?: GetOpts): Promise<Snapshot<T> | Snapshot<T>[] | QuerySnapshot<T>> {
     if (Array.isArray(refOrQuery)) {
-      return this._getAll(refOrQuery, this.nonAtomicReads);
+      return this._getAll(refOrQuery, this.nonAtomicReads, opts);
     } else {
-      return this._get(refOrQuery, this.nonAtomicReads);
+      return this._get(refOrQuery, this.nonAtomicReads, opts);
     }
   }
 
@@ -174,14 +185,14 @@ export class TransactionImpl implements Transaction {
 
     for (const op of this.writes.values()) {
       if (op.data === null) {
-        this.transaction.delete(op.ref)
+        this.nativeTransaction.delete(op.ref)
       } else {
         if (op.create) {
-          this.transaction.create(op.ref, op.data);
+          this.nativeTransaction.create(op.ref, op.data);
         } else {
           // Firestore does not run the converter on update operations
           op.data = op.converter.toFirestore(op.data);
-          this.transaction.update(op.ref, op.data);
+          this.nativeTransaction.update(op.ref, op.data);
         }
       }
     }
