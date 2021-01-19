@@ -1,86 +1,48 @@
 'use-strict';
 
-const execa = require('execa');
-const { log } = require('./log');
+const { FirestoreEmulator  } = require('firebase-tools/lib/emulator/firestoreEmulator');
 
-/**
- * @type {{ proc: execa.ExecaChildProcess, started: Promise<void> } | null}
- */
-let firestore = null;
 
-/**
- * Starts the Firestore emulator if it isn't started already.
- */
 const startFirestore = async () => {
-  if (firestore) {
-    log('Firestore already started/starting!');
-    return await firestore.started;
-  }
-
-  log('\nStarting Firestore...\n');
-  const proc = execa.command('firebase emulators:start --only firestore', {
-    preferLocal: true,
-    cleanup: true,
-    stdio: 'pipe',
+  const firestore = new FirestoreEmulator({
+    host: '127.0.0.1',
+    port: '8080',
+    projectId: 'test-project-id'
   });
-
-  // Pipe Firestore output to the parent
-  proc.stderr.pipe(process.stderr);
-  if (!process.env.SILENT) {
-    proc.stdout.pipe(process.stdout);
-  }
-
-  proc.finally(() => {
-    firestore = null;
-    log('Firestore stopped!\n');
-  });
-
-  const started = new Promise((resolve, reject) => {
-    proc.stdout.on('data', data => {
-      if (data.includes('All emulators ready')) {
-        resolve();
-      }
-      if (data.includes('Could not start')) {
-        reject(new Error('Firestore failed to start!'));
-      }
-    });
-    proc.once('exit', () => {
-      reject(new Error('Firestore failed to start!'));
-    });
-  });
-
-  firestore = {
-    proc,
-    started,
+  const stop = async () => {
+    process.stdout.write('Stopping Firestore because process is exiting....');
+    await firestore.stop();
+    process.exit();
   };
+  
+  process.once('SIGINT', stop);
+  process.once('SIGTERM', stop);
+  process.once('SIGABRT', stop);
+  process.once('beforeExit', stop);
 
-  await started;
-  log('Firestore started!\n');
-
-  // firestore.app = firebase.initializeAdminApp({
-  //   projectId: "test-project-id",
-  // });
+  try {
+    await firestore.start();
+    process.stdout.write('Firestore online.\r\n');
+    return firestore;
+  } catch (err) {
+    process.stdout.write('Firestore failed to start.\r\n');
+    console.error(err);
+    throw err;
+  }
 };
 
-const stopFirestore = async () => {
-  if (firestore) {
-    try {
-      log('Killing Firestore... ');
-      firestore.proc.kill('SIGINT');
-
-      // Wait for process to end or timeout
-      await Promise.race([
-        firestore.proc,
-        new Promise((_, reject) => setTimeout(reject, 5000)),
-      ]);
-
-      // Wait for the next event loop so that the firestore
-      // variable is set to null by the completion handler
-      await new Promise(resolve => setImmediate(resolve));
-
-    } catch {
-      process.stderr.write('Failed to kill Firestore!\n');
-    }
+/**
+ * 
+ * @param {FirestoreEmulator} firestore 
+ */
+const stopFirestore = async (firestore) => {
+  try {
+    await firestore.stop();
+    process.stdout.write('Firestore stopped.\r\n');
+  } catch (err) {
+    process.stdout.write('Firestore failed to stop.\r\n');
+    console.error(err);
+    throw err;
   }
 };
 

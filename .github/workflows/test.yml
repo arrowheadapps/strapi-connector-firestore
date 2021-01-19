@@ -55,9 +55,6 @@ jobs:
         env: 
           FLATTENING: ${{ matrix.flattening }}
           SILENT: true
-      - name: Remap
-        if: ${{ always() }}
-        run: npm run coverage-remap -s --prefix test
       - name: Upload coverage
         uses: actions/upload-artifact@v2
         if: ${{ always() }}
@@ -106,7 +103,7 @@ jobs:
             const report = require(`${process.env.GITHUB_WORKSPACE}/test/report.js`);
             return await report({ github, context, core, io });
 
-      # Combine coverate
+      # Combine coverage
       - name: Combine coverage
         run: npm run coverage-combine -s --prefix test
       
