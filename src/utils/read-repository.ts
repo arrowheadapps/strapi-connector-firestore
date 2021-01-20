@@ -23,36 +23,49 @@ export class ReadRepository {
     return this.cache.size;
   }
 
-  getAll(refs: DocumentReference[], fieldMasks?: (string | FieldPath)[]): Promise<DocumentSnapshot<any>[]> {
+  /**
+   * Gets the given documents, first from this repository's cache, then
+   * from the delegate repository's cache, or finally from the database.
+   * Documents fetched from the database are stored in the cache.
+   * 
+   * If field masks are provided, then results can be fulfilled from non-masked
+   * cache entries, but masked requests from the database will not be stored in the cache.
+   */
+  async getAll(refs: DocumentReference[], fieldMasks?: (string | FieldPath)[]): Promise<DocumentSnapshot<any>[]> {
+    if (fieldMasks && !fieldMasks.length) {
+      fieldMasks = undefined;
+    }
 
-    // No caching if there are any masks defined
-    if (fieldMasks && fieldMasks.length) {
-      return this.handler.getAll(refs, fieldMasks);
+    const toRead: { ref: DocumentReference, resolve: ((r: DocumentSnapshot) => void), reject: ((reason: any) => void) }[] = [];
+    const results: Promise<DocumentSnapshot>[] = new Array(refs.length);
+    for (let i = 0; i++; i < refs.length) {
+      const ref = refs[i];
+      let result = this.cache.get(ref.path)
+        || (this.delegate && this.delegate.cache.get(ref.path));
+
+      if (!result) {
+        result = new Promise((resolve, reject) => toRead.push({ ref, resolve, reject }));
+        if (!fieldMasks) {
+          this.cache.set(ref.path, result);
+        }
+      }
+
+      results[i] = result;
+    }
+
+    if (toRead.length) {
+      try {
+        const snaps = await this.handler.getAll(toRead.map(({ ref }) => ref), fieldMasks);
+        toRead.forEach(({ resolve }, i) => {
+          resolve(snaps[i]);
+        });
+      } catch (err) {
+        toRead.forEach(({ reject }, i) => {
+          reject(err);
+        });
+      }
     }
     
-
-    // Unique documents that haven't already been fetched
-    const toGet = _.uniqBy(refs.filter(({ path }) => !this.cache.has(path)), ({ path }) => path);
-
-    // Defer any that exist in the delegate repository
-    const toRead = this.delegate
-      ? toGet.filter(({ path }) => !this.delegate!.cache.has(path))
-      : toGet;
-
-    // Memoise a promise for each document
-    const toReadAsync = toRead.length 
-      ? this.handler.getAll(toGet) 
-      : Promise.resolve([]);
-    
-    toRead.forEach(({ path }, i) => {
-      const p = toReadAsync.then(snaps => snaps[i]);
-      this.cache.set(path, p);
-    });
-
-    // Arrange all the memoised promises as results
-    const results = refs.map(({ path }) => {
-      return this.cache.get(path) || this.delegate!.cache.get(path)!;
-    });
     return Promise.all(results);
   }
 

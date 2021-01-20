@@ -37,8 +37,8 @@ export function queries<T extends object>({ model, strapi }: StrapiContext<T>): 
   };
 
   const findOne = async (params: any, populate = model.defaultPopulate) => {
-    const entries = await find({ ...params, _limit: 1 }, populate);
-    return entries[0] || null;
+    const [entry] = await find({ ...params, _limit: 1 }, populate);
+    return entry || null;
   };
 
   const count = async (params: any) => {
