@@ -6,5 +6,5 @@ extensions/
 public/
 build/
 node_modules/
-__tests__/
+tests/
 .strapi-updater.json
