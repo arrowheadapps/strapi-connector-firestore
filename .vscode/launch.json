@@ -8,7 +8,7 @@
       "cwd": "${workspaceRoot}/test",
       "runtimeArgs": [
         "--inspect-brk",
-        "${workspaceRoot}/test/node_modules/.bin/jest",
+        "${workspaceRoot}/test/node_modules/jest/bin/jest",
         "--runInBand",
         "--forceExit",
         "--detectOpenHandles"
@@ -22,7 +22,7 @@
       "request": "launch",
       "name": "Debug example",
       "cwd": "${workspaceFolder}/examples/cloud-run-and-hosting",
-      "program": "${workspaceFolder}/examples/cloud-run-and-hosting/node_modules/.bin/strapi",
+      "program": "${workspaceFolder}/examples/cloud-run-and-hosting/node_modules/strapi/bin/strapi",
       "args": [
         "develop"
       ],

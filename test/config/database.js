@@ -31,9 +31,11 @@ module.exports = ({ env }) => ({
       options: {
         useEmulator: true,
         maxQuerySize: 0,
+        // logQueries: true,
+        // logTransactionStats: true,
 
-        // TODO: Allow on all EXCEPT internal Strapi models
-        allowNonNativeQueries: true,///^(?!strapi::).*/,
+        // TODO: Disable if test requirements allow
+        allowNonNativeQueries: true,
         
         // Use flattening config from env variable
         // Default to no flattening
