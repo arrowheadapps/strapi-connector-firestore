@@ -8,8 +8,15 @@ const { loadCoverage, remap, writeReport } = require('remap-istanbul');
 module.exports = async () => {
 
   // Remap coverage
-  process.chdir('../');
-  const coverage = await loadCoverage('coverage/coverage-final.json');
-  const remapped = await remap(coverage);
-  await writeReport(remapped, 'json', {}, 'coverage/coverage.json');
+  // The implementation only sorts out the relative paths correctly if
+  // the working directory is the root directory
+  const cwd = process.cwd();
+  try {
+    process.chdir('../');
+    const coverage = await loadCoverage('coverage/coverage-final.json');
+    const remapped = await remap(coverage);
+    await writeReport(remapped, 'json', {}, 'coverage/coverage.json');
+  } finally {
+    process.chdir(cwd);
+  }
 };
