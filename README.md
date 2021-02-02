@@ -112,6 +112,7 @@ In addition to the normal model options, you can provide the following to custom
 | `options.converter` | `{ toFirestore?: (data: Object) => Object, fromFirestore?: (data: Object) => Object }` | `undefined` | An object with functions used to convert objects going in and out of Firestore. The `toFirestore` function will be called to convert an object immediately before writing to Firestore. The `fromFirestore` function will be called to convert an object immediately after it is read from Firestore. You can config this parameter in a Javascript file called `./api/{model-name}/models/{model-name}.config.js`, which must export an object with the `converter` property. |
 | `options.metadataField` | `string \| ((attrKey: string) => string) \| undefined` | `undefined` | If defined, overrides the connector's global `metadataField` setting (see above) for this model. |
 | `attributes.*.index` | `true \| string \| { [key: string]: true \| IndexerFn }`<br/><br/>Where `IndexerFn` is `(value: any, component: object) => any`. | `undefined` | Only relevant for attributes in component models. When the component is embedded as a repeatable or dynamic-zone component, this indicates that the containing parent document should maintain an index for this attribute (see [Indexing fields in repeatable and dynamic-zone components](#indexing-fields-in-repeatable-and-dynamic-zone-components)).<br/><br/>If `true`, the attribute will be indexed with the attribute name used as the key. If `string`, the attribute will be indexed with this string used as the key. If an object, then the attribute will be indexed with each key in the object. The value in the object can be `true` directing an index aliased with that key, or a function which can map and filter values in the index. The function takes the value to be indexed, and the containing component object, and returns the value to be stored in the index, or `undefined` for the value to be omitted. |
+| `attributes.*.populate` | `{ [key: string]: string \| string[] }` | `undefined` | Applies to relation attributes only. Defines attributes from the related model that should be pre-populated and stored alongside the reference. When accessing Firestore natively (e.g. with mobile or web SDKs), key data from the relation can be immediately available without need to separately fetch the target document. See [Pre-populating references](#pre-populating-references).<br/><br/>If defined, must be a map, where the keys are the key under which the populated attribute is stored, and the value is a the name of the attribute on the target model. The value can be an array, where each element is the name of an attribute for deep populating. |
 
 
 ### Minimal example
@@ -438,6 +439,60 @@ Which would result in a database output like below:
     "relationsInactive": [
       null
     ]
+  }
+}
+```
+
+### Pre-populating references
+
+Relations are stored as references in Firestore database. In some situations (when accessing the database natively, via mobile or web SDKs, not the Strapi API) it may be convenient to have certain values from the target document stored alongside the entry.
+
+In such a way, key data from the relation would be immediately available without need to fetch the target document.
+
+The populated values are kept in sync when the values on the target document changes, so long as the updates are made via Strapi. If documents are updated using native SDKs, then the values will not be kept in sync.
+
+The following keys are illegal and will result in an error: `"ref"`, `"id"`, `"filter"`.
+
+For example:
+
+```JSON
+// car.settings.json
+{
+  "attributes": {
+    "owner": {
+      "model": "owner",
+      "populate": {
+        "name": "name",
+        "photoUrl": ["photo", "url"]
+      }
+    }
+  }
+}
+```
+
+```JSON
+// owner.settings.json
+{
+  "attributes": {
+    "name": {
+      "type": "string"
+    },
+    "photo": {
+      "model": "file",
+      "plugin": "upload"
+    }
+  }
+}
+```
+
+When an entity of such a model is stored, it may look like:
+
+```JavaScript
+{
+  owner: {
+    ref: '/owners/abcd1234', // Original DocumentReference
+    name: "John Doe",
+    photoUrl: "https://www.gravatar.com/avatar"
   }
 }
 ```

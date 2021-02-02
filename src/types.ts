@@ -278,8 +278,31 @@ export interface StrapiAttribute {
   configurable?: boolean
   writable?: boolean
 
+  /**
+   * Controls how this attribute should be indexed. Applies to component
+   * models only, and only when embedded as a repeatable or dynamic-zone component.
+   * 
+   * Non-standard API, Firestore connector only.
+   */
   index?: true | string | { [key: string]: true | IndexerFn }
+
+  
+  /**
+   * Controls how this relation should be pre-populated in the Firestore database.
+   * Applies to relation attributes only.
+   * 
+   * Non-standard API, Firestore connector only.
+   */
+  populate?: AttributePopulate
+
+  /**
+   * @private Internal Firestore connector use only.
+   */
   isMeta?: boolean
+}
+
+export interface AttributePopulate {
+  [key: string]: string | string[]
 }
 
 export interface IndexerFn {
