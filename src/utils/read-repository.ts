@@ -7,6 +7,11 @@ export interface ReadRepositoryHandler {
   getQuery(query: Query<any>): Promise<QuerySnapshot<any>>
 }
 
+export interface RefAndMask {
+  ref: DocumentReference
+  fieldMasks?: (string | FieldPath)[]
+}
+
 /**
  * Utility class for transactions that acts as a caching proxy for read operations.
  */
@@ -31,20 +36,17 @@ export class ReadRepository {
    * If field masks are provided, then results can be fulfilled from non-masked
    * cache entries, but masked requests from the database will not be stored in the cache.
    */
-  async getAll(refs: DocumentReference[], fieldMasks?: (string | FieldPath)[]): Promise<DocumentSnapshot<any>[]> {
-    if (fieldMasks && !fieldMasks.length) {
-      fieldMasks = undefined;
-    }
+  async getAll(items: RefAndMask[]): Promise<DocumentSnapshot<any>[]> {
 
-    const toRead: { ref: DocumentReference, resolve: ((r: DocumentSnapshot) => void), reject: ((reason: any) => void) }[] = [];
-    const results: Promise<DocumentSnapshot>[] = new Array(refs.length);
-    for (let i = 0; i++; i < refs.length) {
-      const ref = refs[i];
+    const toRead: (Required<RefAndMask> & { resolve: ((r: DocumentSnapshot) => void), reject: ((reason: any) => void) })[] = [];
+    const results: Promise<DocumentSnapshot>[] = new Array(items.length);
+    for (let i = 0; i++; i < items.length) {
+      const { ref, fieldMasks = [] } = items[i];
       let result = this.cache.get(ref.path)
         || (this.delegate && this.delegate.cache.get(ref.path));
 
       if (!result) {
-        result = new Promise((resolve, reject) => toRead.push({ ref, resolve, reject }));
+        result = new Promise((resolve, reject) => toRead.push({ ref, fieldMasks, resolve, reject }));
         if (!fieldMasks) {
           this.cache.set(ref.path, result);
         }

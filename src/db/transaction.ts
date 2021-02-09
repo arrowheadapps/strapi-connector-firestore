@@ -136,41 +136,23 @@ export class TransactionImpl implements Transaction {
 
 
   private async _getAll(refs: Reference<any>[], repo: ReadRepository, opts: GetOpts | undefined): Promise<Snapshot<any>[]> {
+    const isSingleRequest = opts && opts.isSingleRequest;
 
-    if (opts && opts.isSingleRequest) {
-
-      // Collect the masks for each native document
-      const map = new Map<string, { ref: DocumentReference, fieldMasks: string[] }>();
-      for (const r of refs) {
-        const { ref, deepRef } = getDocRef(r);
-        let entry = map.get(ref.path);
-        if (!entry) {
-          entry = { ref, fieldMasks: [] };
-          map.set(ref.path, entry);
-        }
-        if (deepRef) {
-          entry.fieldMasks.push(deepRef.id);
-        }
+    // Collect the masks for each native document
+    const map = new Map<string, { ref: DocumentReference, fieldMasks: string[] }>();
+    for (const r of refs) {
+      const { ref, deepRef } = getDocRef(r);
+      let entry = map.get(ref.path);
+      if (!entry) {
+        entry = { ref, fieldMasks: [] };
+        map.set(ref.path, entry);
       }
-
-      
-      const [masked, nonMasked] = _.partition([...map.values()], ({ fieldMasks }) => fieldMasks.length);
-      
-      map.forEach(({ ref, fieldMasks }) => {
-
-      });
-
-    } else {
-
+      if (isSingleRequest && deepRef && !entry.fieldMasks.includes(deepRef.id)) {
+        entry.fieldMasks.push(deepRef.id);
+      }
     }
 
-    const [] = _.partition(refs, )
-
-
-    const results = await repo.getAll(refs.map(r => {
-      const { ref, deepRef } = getDocRef(r);
-      return ref;
-    }), opts?.isSingleRequest);
+    const results = await repo.getAll(Array.from(map.values()));
     return refs.map((ref, i) => makeSnap(ref, results[i]));
   }
   
