@@ -9,6 +9,7 @@ import type { StrapiQuery, StrapiAttributeType, StrapiFilter, AttributeKey, Stra
 import type { Queryable } from './db/queryable-collection';
 import type { Transaction } from './db/transaction';
 import type { Reference, Snapshot } from './db/reference';
+import { EmptyQueryError } from './utils/convert-where';
 
 
 /**
@@ -94,17 +95,26 @@ export function queries<T extends object>({ model, strapi }: StrapiContext<T>): 
     log('delete', { params, populate });
 
     return await model.runTransaction(async trans => {
-      const query = buildQuery(model.db, { model, params });
-      const snaps = await fetchQuery(query, trans);
+      try {
+        const query = buildQuery(model.db, { model, params });
+        const snaps = await fetchQuery(query, trans);
 
-      // The defined behaviour is unusual
-      // Official connectors return a single item if queried by primary key or an array otherwise
-      if (Array.isArray(query) && (query.length === 1)) {
-        return await deleteOne(snaps[0], populate, trans);
-      } else {
-        return Promise.all(
-          snaps.map(snap => deleteOne(snap, populate, trans))
-        );
+        // The defined behaviour is unusual
+        // Official connectors return a single item if queried by primary key or an array otherwise
+        if (Array.isArray(query) && (query.length === 1)) {
+          return await deleteOne(snaps[0], populate, trans);
+        } else {
+          return Promise.all(
+            snaps.map(snap => deleteOne(snap, populate, trans))
+          );
+        }
+
+      } catch (err) {
+        if (err instanceof EmptyQueryError) {
+          return [];
+        } else {
+          throw err;
+        }
       }
     });
   };
@@ -142,7 +152,7 @@ export function queries<T extends object>({ model, strapi }: StrapiContext<T>): 
 
     const relation = model.relations.find(a => a.alias === attribute);
     if (!relation) {
-      throw new Error(`Could not find relation "${attribute}" in model "${model.globalId}".`);
+      throw new StatusError(`Could not find relation "${attribute}" in model "${model.globalId}".`, 404);
     }
 
     if (!entitiesIds.length) {
@@ -214,18 +224,15 @@ function buildSearchQuery<T extends object>(model: FirestoreConnectorModel<T>, v
       case 'email':
       case 'enumeration':
       case 'uid':
+      case 'password':
         // Use prefix operator
         const { gte, lt } = buildPrefixQuery(value);
         return query
           .where(field, 'gte', gte)
           .where(field, 'lt', lt);
-
-      case 'password':
-        // Explicitly don't search in password fields
-        throw new Error('Not allowed to query password fields');
         
       default:
-        throw new Error(`Search attribute "${field}" is an of an unsupported type`);
+        throw new StatusError(`Search attribute "${field}" is an of an unsupported type`, 404);
     }
 
   } else {
@@ -314,24 +321,13 @@ function buildQuery<T extends object>(query: Queryable<T>, { model, params, allo
 
   // Apply filters
   for (let { field, operator, value } of (where || [])) {
-    if (operator === 'in') {
-      if (Array.isArray(value) && (value.length === 0)) {
-        // Special case: empty query
-        return [];
-      }
-      value = _.castArray(value);
-    }
-    if (operator === 'nin') {
-      if (Array.isArray(value) && (value.length === 0)) {
-        // Special case: no effect
-        continue;
-      }
-      value = _.castArray(value);
+    if (operator === 'or') {
+      query = query.whereAny(_.castArray(value || []));
+      continue;
     }
 
-    // Prevent querying passwords
-    if (model.attributes[field]?.type === 'password') {
-      throw new Error('Not allowed to query password fields');
+    if (!field) {
+      throw new StatusError(`Query field must not be empty, received: ${JSON.stringify(field)}.`, 404);
     }
 
     query = query.where(field, operator, value);
@@ -366,24 +362,39 @@ function buildQuery<T extends object>(query: Queryable<T>, { model, params, allo
 }
 
 async function buildAndCountQuery<T extends object>(args: QueryArgs<T>, transaction?: Transaction): Promise<number> {
-  const queryOrIds = buildQuery(args.model.db, args);
-  if (!queryOrIds) {
-    return 0;
-  }
-  if (Array.isArray(queryOrIds)) {
-    // Don't do any read operations if we already know the count
-    return queryOrIds.length;
-  } else {
-    const result = transaction
-      ? await transaction.getNonAtomic(queryOrIds)
-      : await queryOrIds.get();
-    return result.docs.length;
+  try {
+    const queryOrIds = buildQuery(args.model.db, args);
+    
+    if (Array.isArray(queryOrIds)) {
+      // Don't do any read operations if we already know the count
+      return queryOrIds.length;
+    } else {
+      const result = transaction
+        ? await transaction.getNonAtomic(queryOrIds)
+        : await queryOrIds.get();
+      return result.docs.length;
+    }
+
+  } catch (err) {
+    if (err instanceof EmptyQueryError) {
+      return 0;
+    } else {
+      throw err;
+    }
   }
 }
 
 async function buildAndFetchQuery<T extends object>(args: QueryArgs<T>, transaction: Transaction): Promise<Snapshot<T>[]> {
-  const queryOrRefs = buildQuery(args.model.db, args);
-  return await fetchQuery(queryOrRefs, transaction);
+  try {
+    const queryOrRefs = buildQuery(args.model.db, args);
+    return await fetchQuery(queryOrRefs, transaction);
+  } catch (err) {
+    if (err instanceof EmptyQueryError) {
+      return [];
+    } else {
+      throw err;
+    }
+  }
 }
 
 async function fetchQuery<T extends object>(queryOrRefs: Queryable<T> | Reference<T>[], transaction: Transaction): Promise<Snapshot<T>[]> {

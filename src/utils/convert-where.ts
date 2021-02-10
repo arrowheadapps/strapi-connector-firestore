@@ -4,9 +4,15 @@ import type { StrapiAttribute, StrapiWhereOperator } from '../types';
 import type { FirestoreConnectorModel } from '../model';
 import { coerceAttrToModel } from '../coerce/coerce-to-model';
 import { isEqualHandlingRef, Snapshot } from '../db/reference';
+import { StatusError } from './status-error';
 
 const FIRESTORE_MAX_ARRAY_ELEMENTS = 10;
 
+export class EmptyQueryError extends Error {
+  constructor() {
+    super('Query parameters will result in empty response');
+  }
+}
 
 export type PartialSnapshot<T extends object> =
   Pick<Snapshot<T>, 'data'> &
@@ -49,10 +55,10 @@ export function getAtFieldPath(model: FirestoreConnectorModel<any>, path: string
  * Convert a Strapi or Firestore query operator to a Firestore operator
  * or a manual function.
  */
-export function convertWhere(model: FirestoreConnectorModel<any>, field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator, value: any, mode: 'manualOnly'): ManualFilter
-export function convertWhere(model: FirestoreConnectorModel<any>, field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator, value: any, mode: 'nativeOnly'): WhereFilter
-export function convertWhere(model: FirestoreConnectorModel<any>, field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator, value: any, mode: 'manualOnly' | 'nativeOnly' | 'preferNative'): WhereFilter | ManualFilter
-export function convertWhere(model: FirestoreConnectorModel<any>, field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator, value: any, mode: 'manualOnly' | 'nativeOnly' | 'preferNative'): WhereFilter | ManualFilter {
+export function convertWhere(model: FirestoreConnectorModel<any>, field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator, value: any, mode: 'manualOnly'): ManualFilter | null
+export function convertWhere(model: FirestoreConnectorModel<any>, field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator, value: any, mode: 'nativeOnly'): WhereFilter | null
+export function convertWhere(model: FirestoreConnectorModel<any>, field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator, value: any, mode: 'manualOnly' | 'nativeOnly' | 'preferNative'): WhereFilter | ManualFilter | null
+export function convertWhere(model: FirestoreConnectorModel<any>, field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator, value: any, mode: 'manualOnly' | 'nativeOnly' | 'preferNative'): WhereFilter | ManualFilter | null {
   
   let op: WhereFilterOp | ((filterValue: any, fieldValue: any) => boolean);
   switch (operator) {
@@ -84,6 +90,9 @@ export function convertWhere(model: FirestoreConnectorModel<any>, field: string 
       // Included in an array of values
       // `value` must be an array
       value = _.castArray(value);
+      if ((value as any[]).length === 0) {
+        throw new EmptyQueryError();
+      }
       op = ((value as any[]).length > FIRESTORE_MAX_ARRAY_ELEMENTS) 
         ? fsOps.in 
         : 'in';
@@ -94,6 +103,9 @@ export function convertWhere(model: FirestoreConnectorModel<any>, field: string 
       // Not included in an array of values
       // `value` must be an array
       value = _.castArray(value);
+      if ((value as any[]).length === 0) {
+        return null;
+      }
       op = ((value as any[]).length > FIRESTORE_MAX_ARRAY_ELEMENTS)
         ? fsOps['not-in'] 
         : 'not-in';
@@ -206,6 +218,10 @@ export function convertWhere(model: FirestoreConnectorModel<any>, field: string 
 
   const path = fieldPathToPath(model, field);
   const attr: StrapiAttribute = (path === model.primaryKey) ? { type: 'string' } : model.attributes[path];
+
+  if (attr.type === 'password') {
+    throw new StatusError('Not allowed to query password fields', 404);
+  }
 
   // Coerce the attribute into the correct type
   value = coerceAttribute(attr, value);

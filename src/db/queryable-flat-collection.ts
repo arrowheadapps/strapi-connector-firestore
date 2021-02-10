@@ -10,6 +10,7 @@ import { coerceModelToFirestore, coerceToFirestore } from '../coerce/coerce-to-f
 import { coerceToModel } from '../coerce/coerce-to-model';
 import type { Snapshot } from './reference';
 import type { ReadRepository } from '../utils/read-repository';
+import { mapNotNull } from '../utils/map-not-null';
 
 
 export class QueryableFlatCollection<T extends object = DocumentData> implements QueryableCollection<T> {
@@ -155,6 +156,9 @@ export class QueryableFlatCollection<T extends object = DocumentData> implements
     if ((typeof fieldOrFilter === 'string') || (fieldOrFilter instanceof FieldPath)) {
       const other = new QueryableFlatCollection(this);
       const filter = convertWhere(this.model, fieldOrFilter, operator!, value, 'manualOnly');
+      if (!filter) {
+        return this;
+      }
       other._filters.push(filter);
       return other;
     } else {
@@ -164,9 +168,12 @@ export class QueryableFlatCollection<T extends object = DocumentData> implements
 
   whereAny(filters: (StrapiWhereFilter | WhereFilter)[]): QueryableFlatCollection<T> {
     const other = new QueryableFlatCollection(this);
-    const filterFns = filters.map(({ field, operator, value }) => {
-      return convertWhere(this.model, field, operator, value, 'manualOnly');
-    });
+    const filterFns = mapNotNull(
+      filters,
+      ({ field, operator, value }) => {
+        return convertWhere(this.model, field, operator, value, 'manualOnly');
+      }
+    );
     other._filters.push(data => filterFns.some(f => f(data)));
     return other;
   }

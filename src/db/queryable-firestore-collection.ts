@@ -8,6 +8,7 @@ import { coerceModelToFirestore, coerceToFirestore } from '../coerce/coerce-to-f
 import { coerceToModel } from '../coerce/coerce-to-model';
 import { makeNormalSnap, NormalReference } from './normal-reference';
 import type { ReadRepository } from '../utils/read-repository';
+import { mapNotNull } from '../utils/map-not-null';
 
 
 export class QueryableFirestoreCollection<T extends object = DocumentData> implements QueryableCollection<T> {
@@ -131,6 +132,9 @@ export class QueryableFirestoreCollection<T extends object = DocumentData> imple
   where(fieldOrFilter: string | FieldPath | StrapiWhereFilter | WhereFilter, operator?: WhereFilterOp | StrapiWhereOperator, value?: any): QueryableFirestoreCollection<T> {
     if ((typeof fieldOrFilter === 'string') || (fieldOrFilter instanceof FieldPath)) {
       const filter = convertWhere(this.model, fieldOrFilter, operator!, value, this.allowNonNativeQueries ? 'preferNative' : 'nativeOnly');
+      if (!filter) {
+        return this;
+      }
       const other = new QueryableFirestoreCollection(this);
       if (typeof filter === 'function') {
         other.manualFilters.push(filter);
@@ -150,9 +154,12 @@ export class QueryableFirestoreCollection<T extends object = DocumentData> imple
       throw new Error('OR filters and search are not natively supported by Firestore. Use the `allowNonNativeQueries` option to enable manual search, or `searchAttribute` to enable primitive search.');
     }
     const other = new QueryableFirestoreCollection(this);
-    const filterFns = filters.map(({ field, operator, value }) => {
-      return convertWhere(this.model, field, operator, value, 'manualOnly');
-    });
+    const filterFns = mapNotNull(
+      filters,
+      ({ field, operator, value }) => {
+        return convertWhere(this.model, field, operator, value, 'manualOnly');
+      }
+    );
     other.manualFilters.push(data => filterFns.some(f => f(data)));
     return other;
   }

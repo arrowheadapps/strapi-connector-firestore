@@ -319,7 +319,7 @@ export interface StrapiFilter {
   sort?: { field: string, order: 'asc' | 'desc'  }[]
   start?: number,
   limit?: number,
-  where?: StrapiWhereFilter[]
+  where?: (StrapiWhereFilter | StrapiOrFilter)[]
 }
 
 export type StrapiWhereOperator = 'eq' | 'ne' | 'in' | 'nin' | 'contains' | 'ncontains' | 'containss' | 'ncontainss' | 'lt' | 'lte' | 'gt' | 'gte' | 'null';
@@ -328,4 +328,10 @@ export interface StrapiWhereFilter {
   field: string
   operator: StrapiWhereOperator
   value: any
+}
+
+export interface StrapiOrFilter {
+  field: null
+  operator: 'or'
+  value: StrapiWhereFilter[]
 }
