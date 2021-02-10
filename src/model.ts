@@ -8,13 +8,14 @@ import { populateDoc, populateSnapshots } from './populate';
 import { buildPrefixQuery } from './utils/prefix-query';
 import type{ QueryableCollection } from './db/queryable-collection';
 import { DocumentReference, Firestore } from '@google-cloud/firestore';
-import { Transaction, TransactionImpl } from './db/transaction';
+import type { Transaction } from './db/transaction';
 import type { RelationHandler } from './utils/relation-handler';
 import { buildRelations } from './relations';
 import { getComponentModel } from './utils/components';
 import { AttributeIndexInfo, buildIndexers, doesComponentRequireMetadata } from './utils/components-indexing';
 import type { Snapshot } from './db/reference';
 import { StatusError } from './utils/status-error';
+import { makeTransactionRunner } from './utils/transaction-runner';
 
 export const DEFAULT_CREATE_TIME_KEY = 'createdAt';
 export const DEFAULT_UPDATE_TIME_KEY = 'updatedAt';
@@ -191,26 +192,6 @@ function mountModel<T extends object>(mdl: StrapiModel<T>, { strapi, firestore, 
     return ((_.has(obj, mdl.primaryKey) ? obj[mdl.primaryKey] : obj.id));
   }
 
-  const runTransaction = async (fn: (transaction: Transaction) => PromiseLike<any>) => {
-    let attempt = 0;
-    return await firestore.runTransaction(async (trans) => {
-      if ((attempt > 0) && connectorOptions.useEmulator) {
-        // Random backoff for contested transactions only when running on the emulator
-        // The production server has deadlock avoidance but the emulator currently doesn't
-        // See https://github.com/firebase/firebase-tools/issues/1629#issuecomment-525464351
-        // See https://github.com/firebase/firebase-tools/issues/2452
-        const ms = Math.random() * 5000;
-        strapi.log.warn(`There is contention on a document and the Firestore emulator is getting deadlocked. Waiting ${ms.toFixed(0)}ms.`);
-        await new Promise(resolve => setTimeout(resolve, ms));
-      }
-
-      const wrapper = new TransactionImpl(firestore, trans, connectorOptions.logTransactionStats, ++attempt);
-      const result = await fn(wrapper);
-      await wrapper.commit();
-      return result;
-    });
-  };
-
   const populate = async (snap: Snapshot<T>, transaction: Transaction, populate = defaultPopulate) => {
     const data = snap.data();
     if (!data) {
@@ -282,7 +263,7 @@ function mountModel<T extends object>(mdl: StrapiModel<T>, { strapi, firestore, 
 
     hasPK,
     getPK,
-    runTransaction,
+    runTransaction: makeTransactionRunner(firestore, options, connectorOptions),
     populate,
     populateAll,
 

@@ -1,5 +1,5 @@
-const { startFirestore } = require('./helpers/firestore');
+'use-strict';
 
-module.exports = async () => {
-  await startFirestore();
-};
+const { setupTestApp } = require('./utils/app');
+
+setupTestApp();

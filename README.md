@@ -101,6 +101,7 @@ In addition to the normal model options, you can provide the following to custom
 
 | Name                    | Type        | Default     | Description                     |
 |-------------------------|-------------|-------------|---------------------------------|
+| `collectionName`        | `string \| undefined` | `globalId` | Controls the Firestore collection name used for the model. Defaults to the model's `globalId` if not provided. |
 | `options.singleId`      | `string \| undefined` | `undefined` | If defined, overrides the connector's global `singleId` setting (see above) for this model. Note: this is overridden by the result of the connector's `flattenModels` option if a function is provided there. |
 | `options.flatten`       | `boolean \| undefined` | `undefined` | If defined, overrides the connector's global `flattenModels` setting (see above) for this model. |
 | `options.allowNonNativeQueries` | `boolean \| undefined` | `undefined` | If defined, overrides the connector's global `allowNonNativeQueries` setting (see above) for this model. If this model is flattened, this setting is ignored and non-native queries including search are supported. |

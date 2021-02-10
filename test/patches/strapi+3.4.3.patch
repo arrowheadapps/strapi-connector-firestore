@@ -1,8 +1,8 @@
-diff --git a/node_modules/strapi/__tests__/filtering.test.e2e.js b/node_modules/strapi/__tests__/filtering.test.e2e.js
-index 84d5980..a19c12b 100644
---- a/node_modules/strapi/__tests__/filtering.test.e2e.js
-+++ b/node_modules/strapi/__tests__/filtering.test.e2e.js
-@@ -79,7 +79,7 @@ const productFixtures = [
+diff --git a/node_modules/strapi/tests/filtering.test.e2e.js b/node_modules/strapi/tests/filtering.test.e2e.js
+index 68564ff..625709f 100644
+--- a/node_modules/strapi/tests/filtering.test.e2e.js
++++ b/node_modules/strapi/tests/filtering.test.e2e.js
+@@ -78,7 +78,7 @@ const productFixtures = [
      price: null,
      decimal_field: 142.43,
      rank: 142,
@@ -11,11 +11,11 @@ index 84d5980..a19c12b 100644
    },
  ];
  
-diff --git a/node_modules/strapi/__tests__/search.test.e2e.js b/node_modules/strapi/__tests__/search.test.e2e.js
-index 551a60b..4651a0a 100644
---- a/node_modules/strapi/__tests__/search.test.e2e.js
-+++ b/node_modules/strapi/__tests__/search.test.e2e.js
-@@ -59,7 +59,7 @@ const bedFixtures = [
+diff --git a/node_modules/strapi/tests/search.test.e2e.js b/node_modules/strapi/tests/search.test.e2e.js
+index f44c86e..b494ba5 100644
+--- a/node_modules/strapi/tests/search.test.e2e.js
++++ b/node_modules/strapi/tests/search.test.e2e.js
+@@ -60,7 +60,7 @@ const bedFixtures = [
      sku: 'sleepybed_0152',
      savEmail: 'sav@bed.fr',
      type: 'foam',
@@ -24,7 +24,7 @@ index 551a60b..4651a0a 100644
      peopleNumber: 6,
      fabricThickness: 1.14157,
    },
-@@ -72,7 +72,7 @@ const bedFixtures = [
+@@ -73,7 +73,7 @@ const bedFixtures = [
      sku: 'tiredbed_0001',
      savEmail: 'sav@sleep.fr',
      type: 'feather',
