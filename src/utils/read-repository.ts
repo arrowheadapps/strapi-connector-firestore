@@ -51,7 +51,7 @@ export class ReadRepository {
 
     const toRead: GroupedReadOps[] = [];
     const results: Promise<DocumentSnapshot>[] = new Array(items.length);
-    for (let i = 0; i++; i < items.length) {
+    for (let i = 0; i < items.length; i++) {
       const { ref, fieldMasks } = items[i];
       let result = this.cache.get(ref.path)
         || (this.delegate && this.delegate.cache.get(ref.path));

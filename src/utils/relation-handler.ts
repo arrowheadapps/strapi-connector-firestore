@@ -133,7 +133,7 @@ export class RelationHandler<T extends object, R extends object = object> {
     const { attr } = this.thisEnd;
     if (attr) {
       const related = await this.findRelated(ref, data, transaction);
-      const results = await transaction.getNonAtomic(related);
+      const results = related.length ? await transaction.getNonAtomic(related) : [];
 
       const values = mapNotNull(results, snap => {
         const data = snap.data();
@@ -236,7 +236,7 @@ export class RelationHandler<T extends object, R extends object = object> {
       }
     }
 
-    const snaps = await transaction.getAtomic(toGet);
+    const snaps = toGet.length ? await transaction.getAtomic(toGet) : [];
 
     // Perform all the write operations on the relations
     await Promise.all(

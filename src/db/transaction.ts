@@ -139,13 +139,14 @@ export class TransactionImpl implements Transaction {
     const isSingleRequest = opts && opts.isSingleRequest;
 
     // Collect the masks for each native document
-    const map = new Map<string, RefAndMask>();
-    for (const r of refs) {
-      const { ref, deepRef } = getRefInfo(r);
-      let entry = map.get(ref.path);
+    const mapping = new Array(refs.length);
+    const docRefs = new Map<string, RefAndMask & { i: number }>();
+    for (let i = 0; i < refs.length; i++) {
+      const { docRef, deepRef } = getRefInfo(refs[i]);
+      let entry = docRefs.get(docRef.path);
       if (!entry) {
-        entry = { ref };
-        map.set(ref.path, entry);
+        entry = { ref: docRef, i: docRefs.size };
+        docRefs.set(docRef.path, entry);
       }
       if (isSingleRequest && deepRef) {
         if (!entry.fieldMasks) {
@@ -154,12 +155,14 @@ export class TransactionImpl implements Transaction {
           entry.fieldMasks.push(deepRef.id);
         }
       }
+
+      mapping[i] = entry.i;
     }
 
-    const results = await repo.getAll(Array.from(map.values()));
+    const refsWithMasks = Array.from(docRefs.values());
+    const results = await repo.getAll(refsWithMasks);
     
-    // FIXME
-    //return refs.map((ref, i) => makeSnap(ref, results[i]));
+    return refs.map((ref, i) => makeSnap(ref, results[mapping[i]]));
   }
   
   getAtomic<T extends object>(ref: Reference<T>, opts?: GetOpts): Promise<Snapshot<T>>
@@ -258,15 +261,15 @@ export class TransactionImpl implements Transaction {
    */
   mergeWriteInternal<T extends object>(ref: Reference<T>, data: Partial<T> | undefined, editMode: 'create' | 'update') {
 
-    const { ref: rootRef, deepRef } = getRefInfo(ref);
-    const { path } = rootRef;
+    const { docRef, deepRef } = getRefInfo(ref);
+    const { path } = docRef;
 
     let op: WriteOp;
     if (this.writes.has(path)) {
       op = this.writes.get(path)!;
     } else {
       op = {
-        ref: rootRef,
+        ref: docRef,
         data: {},
         create: false,
         converter: ref.parent.converter,
@@ -310,17 +313,17 @@ interface WriteOp {
 }
 
 interface RefInfo {
-  ref: DocumentReference<any>,
+  docRef: DocumentReference<any>,
   deepRef?: DeepReference<any>,
   morphRef?: MorphReference<any>,
 }
 
 function getRefInfo(ref: Reference<any>): RefInfo {
   if (ref instanceof NormalReference) {
-    return { ref: ref.ref };
+    return { docRef: ref.ref };
   }
   if (ref instanceof DeepReference) {
-    return { ref: ref.doc, deepRef: ref };
+    return { docRef: ref.doc, deepRef: ref };
   }
   if (ref instanceof MorphReference) {
     return {

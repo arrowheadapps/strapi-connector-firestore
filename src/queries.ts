@@ -300,16 +300,15 @@ function buildQuery<T extends object>(query: Queryable<T>, { model, params, allo
   // because the "in" operator only supports ten arguments
   if (where && (where.length === 1)) {
     const [{ field, operator, value }] = where;
-    if (field === model.primaryKey) {
-      if (!value || (typeof value !== 'string')) {
-        throw new StatusError(`Argument for "${model.primaryKey}" must be an array of strings`, 400);
-      }
-
-      if ((operator === 'eq') || (operator === 'in')) {
-        return _.castArray(value || [])
-          .slice(start || 0, (limit || -1) < 1 ? undefined : limit)
-          .map(v =>  model.db.doc(v));
-      }
+    if ((field === model.primaryKey) && ((operator === 'eq') || (operator === 'in'))) {
+      return _.castArray(value || [])
+        .slice(start || 0, (limit || -1) < 1 ? undefined : limit)
+        .map(v => {
+          if (!v || (typeof v !== 'string')) {
+            throw new StatusError(`Argument for "${model.primaryKey}" must be an array of strings`, 400);
+          }
+          return model.db.doc(v)
+        });
     }
   }
 
