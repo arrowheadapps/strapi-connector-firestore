@@ -217,7 +217,7 @@ export class RelationHandler<T extends object, R extends object = object> {
     // Batch-get all the references that we need to fetch
     // I.e. the ones inside component arrays that required manual manipulation
     const toGet: Reference<R>[] = [];
-    const infos = new Array<{ attr: RelationAttrInfo, ref: Reference<R>, set: boolean, thisRefValue: Reference<T> | undefined, snapIndex: number } | undefined>(refs.length);
+    const infos = new Array<{ attr: RelationAttrInfo, ref: Reference<R>, set: boolean, thisRefValue: Reference<T> | undefined, snapIndex?: number } | undefined>(refs.length);
     for (let i = 0; i < refs.length; i++) {
       const { info, set } = refs[i];
       // Filter to those that have a dominant other end
@@ -227,10 +227,10 @@ export class RelationHandler<T extends object, R extends object = object> {
           ref: info.ref,
           thisRefValue: info.thisRefValue,
           set,
-          snapIndex: toGet.length,
         };
         // Set aside to fetch this relation
         if (info.attr.isMeta) {
+          infos[i]!.snapIndex = toGet.length;
           toGet.push(info.ref);
         }
       }
@@ -242,22 +242,25 @@ export class RelationHandler<T extends object, R extends object = object> {
     await Promise.all(
       infos.map(async info => {
         if (info) {
-          const data = snaps[info.snapIndex].data();
-          if (data) {
-            const thisRefValue = info.thisRefValue || this._makeRefToThis(thisRef, info.attr);
-            await this._setRelated(info.ref, info.attr, data, thisRefValue, info.set, transaction)
-          }
+          const data = info.snapIndex !== undefined ? snaps[info.snapIndex].data() : undefined;
+          const thisRefValue = info.thisRefValue || this._makeRefToThis(thisRef, info.attr);
+          await this._setRelated(info.ref, info.attr, data, thisRefValue, info.set, transaction)
         }
       })
     );
   }
 
-  private async _setRelated(ref: Reference<R>, attr: RelationAttrInfo, prevData: R, thisRefValue: Reference<T>, set: boolean, transaction: Transaction) {
+  private async _setRelated(ref: Reference<R>, attr: RelationAttrInfo, prevData: R | undefined, thisRefValue: Reference<T>, set: boolean, transaction: Transaction) {
     const value = set
       ? (attr.isArray ? FieldOperation.arrayUnion(thisRefValue) : thisRefValue)
       : (attr.isArray ? FieldOperation.arrayRemove(thisRefValue) : null);
     
     if (attr.isMeta) {
+      if (!prevData) {
+        // Relation no longer exists, do not update
+        return;
+      }
+
       const { componentAlias, parentAlias } = attr.actualAlias!;
       // The attribute is a metadata map for an array of components
       // This requires special handling
@@ -274,6 +277,7 @@ export class RelationHandler<T extends object, R extends object = object> {
 
       await transaction.update(ref, newData, { updateRelations: false });
     } else {
+      // TODO: Safely handle relations that no longer exist
       await transaction.update(ref, { [attr.alias]: value } as object, { updateRelations: false });
     }
   }

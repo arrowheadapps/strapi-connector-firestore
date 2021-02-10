@@ -157,7 +157,9 @@ export class TransactionImpl implements Transaction {
     }
 
     const results = await repo.getAll(Array.from(map.values()));
-    return refs.map((ref, i) => makeSnap(ref, results[i]));
+    
+    // FIXME
+    //return refs.map((ref, i) => makeSnap(ref, results[i]));
   }
   
   getAtomic<T extends object>(ref: Reference<T>, opts?: GetOpts): Promise<Snapshot<T>>
