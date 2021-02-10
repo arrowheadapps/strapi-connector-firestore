@@ -82,7 +82,9 @@ export class DeepReference<T extends object> extends Reference<T> {
 
 
   async get(): Promise<Snapshot<T>> {
-    const snap = await this.doc.get();
+    // Apply a field mask so only the specific entry in flattened document is returned
+    // This saves bandwidth from the database
+    const [snap] = await this.doc.firestore.getAll(this.doc, { fieldMask: [this.id] });
     return makeDeepSnap(this, snap);
   }
 

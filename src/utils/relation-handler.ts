@@ -4,21 +4,10 @@ import type { Transaction } from '../db/transaction';
 import { StatusError } from './status-error';
 import { MorphReference } from '../db/morph-reference';
 import { FieldOperation } from '../db/field-operation';
-import { isEqualHandlingRef, Reference, Snapshot } from '../db/reference';
+import { isEqualHandlingRef, Reference } from '../db/reference';
 import { NormalReference } from '../db/normal-reference';
 import { DeepReference } from '../db/deep-reference';
-
-
-export interface AsyncSnapshot<R extends object> {
-  ref: Reference<R>
-
-  /**
-   * Returns a `Promise` that resolves with the document data
-   * or rejects if the document referred to by `ref` doesn't exist.
-   */
-  data(atomic?: boolean): Promise<R>
-}
-
+import { mapNotNull } from './map-not-null';
 
 export interface RelationInfo<T extends object> {
   model: FirestoreConnectorModel<T>
@@ -55,7 +44,7 @@ export class RelationHandler<T extends object, R extends object = object> {
     private readonly thisEnd: RelationInfo<T>,
     private readonly otherEnds: RelationInfo<R>[],
   ) {
-    if (!thisEnd.attr && !otherEnds.filter(e => e.attr).length) {
+    if (!thisEnd.attr && !otherEnds.some(e => e.attr)) {
       throw new Error('Relation does not have any dominant ends defined');
     }
 
@@ -77,13 +66,12 @@ export class RelationHandler<T extends object, R extends object = object> {
    * Finds references to the related models on the given object.
    * The related models are not necessarily fetched.
    */
-  async findRelated(ref: Reference<T>, data: T, transaction: Transaction): Promise<AsyncSnapshot<R>[]> {
+  async findRelated(ref: Reference<T>, data: T, transaction: Transaction): Promise<Reference<R>[]> {
     const { attr } = this.thisEnd;
-    if (attr) {
-      return this._getRefInfo(data, attr, transaction);
-    } else {
-      return await this._queryRelated(ref, transaction, false);
-    }
+    const related = attr
+      ? this._getRefInfo(data, attr)
+      : await this._queryRelated(ref, transaction, false);
+    return related.map(r => r.ref);
   }
 
 
@@ -99,12 +87,12 @@ export class RelationHandler<T extends object, R extends object = object> {
       // Update operations will not touch keys that don't exist
       // If the data doesn't have the key, then don't update the relation because we aren't touching it
       // If newData is undefined then we are deleting and we do need to update the relation
-      if ((editMode === 'update') && newData && !_.has(newData, thisAttr.alias)) {
+      if ((editMode === 'update') && newData && (_.get(newData, thisAttr.alias) === undefined)) {
         return;
       }
 
-      const prevValues = this._getRefInfo(prevData, thisAttr, transaction);
-      const newValues = this._getRefInfo(newData, thisAttr, transaction);
+      const prevValues = this._getRefInfo(prevData, thisAttr);
+      const newValues = this._getRefInfo(newData, thisAttr);
 
       // Set the value stored in this document appropriately
       this._setThis(newData, thisAttr, newValues.map(v => this._makeRefToOther(v.ref, thisAttr)));
@@ -112,10 +100,13 @@ export class RelationHandler<T extends object, R extends object = object> {
       // Set the value stored in the references documents appropriately
       const removed = _.differenceWith(prevValues, newValues, (a, b) => isEqualHandlingRef(a.ref, b.ref));
       const added = _.differenceWith(newValues, prevValues, (a, b) => isEqualHandlingRef(a.ref, b.ref));
-      await Promise.all([
-        Promise.all(added.map(r => this._setRelated(r, ref, true, transaction))),
-        Promise.all(removed.map(r => this._setRelated(r, ref, false, transaction)))
-      ]);
+
+      const related = [
+        ...removed.map(info => ({ info, set: false })),
+        ...added.map(info => ({ info, set: true })),
+      ];
+
+      await this._setAllRelated(related, ref, transaction);
 
     } else {
       // I.e. thisAttr == null (meaning this end isn't dominant)
@@ -124,9 +115,7 @@ export class RelationHandler<T extends object, R extends object = object> {
         // This end is being deleted and it is not dominant
         // so we need to search for the dangling references existing on other models
         const related = await this._queryRelated(ref, transaction, true);
-        await Promise.all(
-          related.map(r => this._setRelated(r, ref, false, transaction))
-        );
+        await this._setAllRelated(related.map(info => ({ info, set: false })), ref, transaction);
 
       } else {
         // This end isn't dominant
@@ -138,31 +127,27 @@ export class RelationHandler<T extends object, R extends object = object> {
 
 
   /**
-   * Populates the related models onto the given object 
-   * for this relation.
+   * Populates the related models onto the given object for this relation.
    */
   async populateRelated(ref: Reference<T>, data: T, transaction: Transaction): Promise<void> {
     const { attr } = this.thisEnd;
     if (attr) {
       const related = await this.findRelated(ref, data, transaction);
-      const values = await Promise.all(
-        related.map(async snap => {
-          try {
-            return await snap.data();
-          } catch {
-            // TODO:
-            // Should we through an error if the reference can't be found
-            // or just silently omit it?
-            // For now we log a warning
-            strapi.log.warn(`The document referenced by "${snap.ref.path}" no longer exists`);
-            return null!;
-          }
-        })
-      );
+      const results = related.length ? await transaction.getNonAtomic(related) : [];
+
+      const values = mapNotNull(results, snap => {
+        const data = snap.data();
+        if (!data) {
+          // TODO:
+          // Should we throw an error if the reference can't be found or just silently omit it?
+          strapi.log.warn(`Could not populate the reference "${snap.ref.path}" because it no longer exists`);
+        }
+        return data;
+      });
 
       // The values will be correctly coerced
       // into and array or single value by the method below
-      this._setThis(data, attr, values.filter(v => v != null));
+      this._setThis(data, attr, values);
     }
   }
 
@@ -226,37 +211,78 @@ export class RelationHandler<T extends object, R extends object = object> {
     }
   }
 
-  private async _setRelated({ ref, attr, data, refValue }: InternalAsyncSnapshot<T, R>, thisRef: Reference<T>, set: boolean, transaction: Transaction) {
-    if (attr) {
-      refValue = refValue || this._makeRefToThis(thisRef, attr);
-      const value = set
-        ? (attr.isArray ? FieldOperation.arrayUnion(refValue) : refValue)
-        : (attr.isArray ? FieldOperation.arrayRemove(refValue) : null);
-      
-      if (attr.isMeta && attr.actualAlias) {
-        const { componentAlias, parentAlias } = attr.actualAlias;
-        // The attribute is a metadata map for an array of components
-        // This requires special handling
-        // We need to atomically fetch and process the data then update
-        // Extract a new object with only the fields that are being updated
-        const prevData = await data(true);
-        const newData: any = {};
-        const components = _.get(prevData, parentAlias);
-        _.set(newData, parentAlias, components);
-        for (const component of _.castArray(components)) {
-          if (component) {
-            FieldOperation.apply(component, componentAlias, value);
-          }
-        }
+  private async _setAllRelated(refs: { info: RefInfo<T, R>, set: boolean }[], thisRef: Reference<T>, transaction: Transaction) {
+    refs = refs.filter(r => r.info.attr);
 
-        await transaction.update(ref, newData, { updateRelations: false });
-      } else {
-        await transaction.update(ref, { [attr.alias]: value } as object, { updateRelations: false });
+    // Batch-get all the references that we need to fetch
+    // I.e. the ones inside component arrays that required manual manipulation
+    const toGet: Reference<R>[] = [];
+    const infos = new Array<{ attr: RelationAttrInfo, ref: Reference<R>, set: boolean, thisRefValue: Reference<T> | undefined, snapIndex?: number } | undefined>(refs.length);
+    for (let i = 0; i < refs.length; i++) {
+      const { info, set } = refs[i];
+      // Filter to those that have a dominant other end
+      if (info.attr) {
+        infos[i] = {
+          attr: info.attr,
+          ref: info.ref,
+          thisRefValue: info.thisRefValue,
+          set,
+        };
+        // Set aside to fetch this relation
+        if (info.attr.isMeta) {
+          infos[i]!.snapIndex = toGet.length;
+          toGet.push(info.ref);
+        }
       }
+    }
+
+    const snaps = toGet.length ? await transaction.getAtomic(toGet) : [];
+
+    // Perform all the write operations on the relations
+    await Promise.all(
+      infos.map(async info => {
+        if (info) {
+          const data = info.snapIndex !== undefined ? snaps[info.snapIndex].data() : undefined;
+          const thisRefValue = info.thisRefValue || this._makeRefToThis(thisRef, info.attr);
+          await this._setRelated(info.ref, info.attr, data, thisRefValue, info.set, transaction)
+        }
+      })
+    );
+  }
+
+  private async _setRelated(ref: Reference<R>, attr: RelationAttrInfo, prevData: R | undefined, thisRefValue: Reference<T>, set: boolean, transaction: Transaction) {
+    const value = set
+      ? (attr.isArray ? FieldOperation.arrayUnion(thisRefValue) : thisRefValue)
+      : (attr.isArray ? FieldOperation.arrayRemove(thisRefValue) : null);
+    
+    if (attr.isMeta) {
+      if (!prevData) {
+        // Relation no longer exists, do not update
+        return;
+      }
+
+      const { componentAlias, parentAlias } = attr.actualAlias!;
+      // The attribute is a metadata map for an array of components
+      // This requires special handling
+      // We need to atomically fetch and process the data then update
+      // Extract a new object with only the fields that are being updated
+      const newData: any = {};
+      const components = _.get(prevData, parentAlias);
+      _.set(newData, parentAlias, components);
+      for (const component of _.castArray(components)) {
+        if (component) {
+          FieldOperation.apply(component, componentAlias, value);
+        }
+      }
+
+      await transaction.update(ref, newData, { updateRelations: false });
+    } else {
+      // TODO: Safely handle relations that no longer exist
+      await transaction.update(ref, { [attr.alias]: value } as object, { updateRelations: false });
     }
   }
 
-  private async _queryRelated(ref: Reference<T>, transaction: Transaction, atomic: boolean, otherEnds = this.otherEnds): Promise<InternalAsyncSnapshot<T, R>[]> {
+  private async _queryRelated(ref: Reference<T>, transaction: Transaction, atomic: boolean, otherEnds = this.otherEnds): Promise<RefInfo<T, R>[]> {
     const snaps = otherEnds.map(async otherEnd => {
       const { model, attr, parentModels } = otherEnd;
       if (parentModels && parentModels.length) {
@@ -278,7 +304,7 @@ export class RelationHandler<T extends object, R extends object = object> {
         const snap = atomic
           ? await transaction.getAtomic(q)
           : await transaction.getNonAtomic(q);
-        return snap.docs.map(d => asyncFromSnap(otherEnd, d, atomic, refValue, transaction));
+        return snap.docs.map(d => makeRefInfo(otherEnd, d.ref, refValue));
       } else {
         return [];
       }
@@ -286,13 +312,14 @@ export class RelationHandler<T extends object, R extends object = object> {
     return (await Promise.all(snaps)).flat();
   }
 
-  private _getRefInfo(data: T | undefined, thisAttr: RelationAttrInfo, transaction: Transaction): InternalAsyncSnapshot<T, R>[] {
-    return _.castArray(_.get(data, thisAttr.alias) || [])
-      .map(v => this._getSingleRefInfo(v, transaction)!)
-      .filter(v => v != null);
+  private _getRefInfo(data: T | undefined, thisAttr: RelationAttrInfo) {
+   return mapNotNull(
+      _.castArray(_.get(data, thisAttr.alias) || []),
+      v => this._getSingleRefInfo(v)
+    );
   }
 
-  private _getSingleRefInfo(ref: any, transaction: Transaction): InternalAsyncSnapshot<T, R> | null {
+  private _getSingleRefInfo(ref: any): RefInfo<T, R> | null {
     let other = this._singleOtherEnd;
     if (ref) {
       if (!(ref instanceof Reference)) {
@@ -311,7 +338,7 @@ export class RelationHandler<T extends object, R extends object = object> {
         }
       }
 
-      return asyncFromRef(other, ref, transaction);
+      return makeRefInfo(other, ref, undefined);
     }
     return null;
   }
@@ -319,14 +346,15 @@ export class RelationHandler<T extends object, R extends object = object> {
 
 
 
-interface InternalAsyncSnapshot<T extends object, R extends object> extends AsyncSnapshot<R> {
+interface RefInfo<T extends object, R extends object> {
+  ref: Reference<R>
   model: FirestoreConnectorModel<R>
 
   /**
    * If the snapshot was found by querying, then this is the
    * reference value that was used in the query.
    */
-  refValue: Reference<T> | undefined
+  thisRefValue: Reference<T> | undefined
 
   /**
    * The attribute info of the other end (referred to by `ref`).
@@ -334,36 +362,10 @@ interface InternalAsyncSnapshot<T extends object, R extends object> extends Asyn
   attr: RelationAttrInfo | undefined
 }
 
-function asyncFromSnap<T extends object, R extends object>(info: RelationInfo<R>, snap: Snapshot<R>, wasAtomic: boolean, refValue: Reference<T> | undefined, transaction: Transaction): InternalAsyncSnapshot<T, R> {
-  return {
-    ...info,
-    ref: snap.ref,
-    refValue,
-    data: async (atomic = false) => {
-      const s = (atomic && !wasAtomic)
-        ? await transaction.getAtomic(snap.ref)
-        : snap;
-      const d = s.data();
-      if (!d) {
-        throw new StatusError(`The document referred to by "${snap.ref.path}" doesn't exist`, 404);
-      }
-      return d;
-    }
-  };
-}
-
-function asyncFromRef<T extends object, R extends object>(info: RelationInfo<R>, ref: Reference<R>, transaction: Transaction): InternalAsyncSnapshot<T, R> {
+function makeRefInfo<T extends object, R extends object>(info: RelationInfo<R>, ref: Reference<R>, thisRefValue: Reference<T> | undefined): RefInfo<T, R> {
   return {
     ...info,
     ref,
-    refValue: undefined,
-    data: async (atomic = false) => {
-      const snap = await (atomic ? transaction.getAtomic(ref) : transaction.getNonAtomic(ref));
-      const data = snap.data();
-      if (!data) {
-        throw new StatusError(`The document referred to by "${ref.path}" doesn't exist`, 404);
-      }
-      return data;
-    },
+    thisRefValue,
   };
 }

@@ -109,8 +109,10 @@ export class QueryableFlatCollection<T extends object = DocumentData> implements
     return this._ensureDocument;
   }
 
-  async get(trans?: ReadRepository): Promise<QuerySnapshot<T>> {
-    const snap = await (trans ? trans.get(this.flatDoc) : this.flatDoc.get());
+  async get(repo?: ReadRepository): Promise<QuerySnapshot<T>> {
+    const snap = repo
+      ? (await repo.getAll([{ ref: this.flatDoc }]))[0]
+      : await this.flatDoc.get();
 
     let docs: Snapshot<T>[] = [];
     for (const [id, data] of Object.entries<any>(snap.data() || {})) {

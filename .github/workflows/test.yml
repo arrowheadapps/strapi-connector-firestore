@@ -18,7 +18,7 @@ jobs:
       - name: Checkout project
         uses: actions/checkout@v2
       - name: Setup Node.js
-        uses: actions/setup-node@v1
+        uses: actions/setup-node@v2
         with:
           node-version: '12'
       - name: Cache NPM packages
@@ -28,6 +28,11 @@ jobs:
           key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-node-
+
+      # FIXME:
+      # Lockfile version 2 with npm@7 broke compatibility with installation
+      - name: Upgrade npm
+        run: npm i -g npm
       
       # Install the package
       - name: Install root package
@@ -71,7 +76,7 @@ jobs:
       - name: Checkout project
         uses: actions/checkout@v2
       - name: Setup Node.js
-        uses: actions/setup-node@v1
+        uses: actions/setup-node@v2
       - name: Cache NPM packages
         uses: actions/cache@v2
         with:
@@ -79,6 +84,11 @@ jobs:
           key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-node-
+
+      # FIXME:
+      # Lockfile version 2 with npm@7 broke compatibility with installation
+      - name: Upgrade npm
+        run: sudo npm i -g npm
         
       # Install the package
       - name: Install root package
