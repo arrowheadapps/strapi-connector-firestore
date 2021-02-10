@@ -245,9 +245,9 @@ module.exports = {
 
 ### Collection flattening
 
-You can choose to "flatten" a collection of Firestore documents down to fields within a single Firestore document. Considering that Firestore charges for document read and write operations, you may choose to flatten a collection to reduce usage costs and/or improve performance, however it may increase bandwidth costs as the collection will always be retrieved in it's entirety. 
+You can choose to "flatten" a collection of Firestore documents down to fields within a single Firestore document. Considering that Firestore charges for document read and write operations, you may choose to flatten a collection to reduce usage costs, however it imposes collection size limits and may introduce contention. 
 
-Flattening may be especially beneficial for collections that are often counted or queried in their entirety anyway. It will cost a single read to retrieve the entire flattened collection, but with increased bandwidth usage. If a collection is normally only queried one document at a time, then that would only have resulted in a single in the first place.
+Flattening may be especially beneficial for collections that are often counted or queried in their entirety anyway. It will cost a single read to retrieve the entire flattened collection. If a collection is normally only queried one document at a time, then that would only have resulted in a single in the first place.
 
 Flattening also enables search and other query types that are not natively supported in Firestore.
 
@@ -255,8 +255,10 @@ Before choosing to flatten a collection, consider the following:
 
 - The collection should be bounded (i.e. you can guarantee that there will only be a finite number of entries). For example, a collection of users would be unbounded, but Strapi configurations and permissions/roles would be bounded.
 - The number of entries and size of the entries must fit within a single Firestore document. The size limit for a Firestore document is 1MiB ([see limits](https://firebase.google.com/docs/firestore/quotas#limits)).
-- The benefits of flattening will be diminished if the collection is most commonly queried one document at a time (flattening would increase bandwidth usage with same amount of read operations).
-- If entries in the collection are written to at a high frequency, then flattening would cause contention, because all of those writes would be targetting the same document.
+- The benefits of flattening will be diminished if the collection is most commonly queried one document at a time (in such a case, flattening could increase bandwidth usage with same amount of read operations, although the connector minimises bandwidth using field masks where possible).
+- The collection should not me modified often. If entries in the collection are written to at a high frequency, or by different users/clients, then flattening could cause contention, because all of those writes would be targetting the same document.
+- Firestore document change listeners will be triggered for all changes to any entry in the collection (because the entire collection is stored within the single document).
+- Firestore security rules will apply at the collection-level (because the entire collection is stored within the single document).
 
 ### Search and non-native queries
 
