@@ -32,7 +32,7 @@ jobs:
       # FIXME:
       # Lockfile version 2 with npm@7 broke compatibility with installation
       - name: Upgrade npm
-        run: sudo npm i -g npm
+        run: npm i -g npm
       
       # Install the package
       - name: Install root package
