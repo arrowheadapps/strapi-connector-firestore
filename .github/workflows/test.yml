@@ -28,6 +28,10 @@ jobs:
           key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-node-
+      
+      # Install the package
+      - name: Install root package
+        run: npm ci
 
       # FIXME:
       # Lockfile version 2 with npm@7 broke compatibility with installation
@@ -80,6 +84,10 @@ jobs:
           key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-node-
+        
+      # Install the package
+      - name: Install root package
+        run: npm ci
   
       # Download individual coverage reports
       - uses: actions/download-artifact@v2
