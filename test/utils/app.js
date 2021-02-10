@@ -2,6 +2,7 @@
 
 const path = require('path');
 const fs = require('fs-extra');
+const degit = require('degit');
 
 
 const testsDir = 'tests';
@@ -49,19 +50,19 @@ const cleanTests = async () => {
  * so we copy Strapi's tests out into our test dir.
  */
 const copyTests = async () => {
-  const strapiDir = path.dirname(require.resolve('strapi/package.json'));
-  const rootDir = path.resolve();
-  const dest = path.join(rootDir, testsDir);
+  // Determine installed Strapi version
+  const { version } = require('strapi/package.json');
 
-  await fs.emptyDir(dest);
-  await fs.copy(path.join(strapiDir, testsDir), dest);
+  // Download the tests from GitHub
+  await fs.emptyDir(testsDir);
+  await degit(`strapi/strapi/packages/strapi/${testsDir}`).clone(testsDir)
 
   // Remove excluded tests
   console.log(`Collection flattening: "${process.env.FLATTENING || 'flatten_none'}"`)
   const excludes = flattenExcludes[process.env.FLATTENING] || [];
-  for (const p of await fs.readdir(dest)) {
+  for (const p of await fs.readdir(testsDir)) {
     if (excludes.some(e => e.test(p))) {
-      await fs.remove(path.join(dest, p));
+      await fs.remove(path.join(testsDir, p));
     }
   }
 };
