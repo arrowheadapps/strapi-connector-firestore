@@ -28,15 +28,15 @@ jobs:
           key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-node-
-      
-      # Install the package
-      - name: Install root package
-        run: npm ci
 
       # FIXME:
       # Lockfile version 2 with npm@7 broke compatibility with installation
       - name: Upgrade npm
         run: npm i -g npm
+      
+      # Install the package
+      - name: Install root package
+        run: npm ci
 
       # Setup and install the test environment
       - name: Setup Java JDK
@@ -84,6 +84,11 @@ jobs:
           key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-node-
+
+      # FIXME:
+      # Lockfile version 2 with npm@7 broke compatibility with installation
+      - name: Upgrade npm
+        run: npm i -g npm
         
       # Install the package
       - name: Install root package
@@ -93,11 +98,6 @@ jobs:
       - uses: actions/download-artifact@v2
         with:
           path: coverage
-
-      # FIXME:
-      # Lockfile version 2 with npm@7 broke compatibility with installation
-      - name: Upgrade npm
-        run: npm i -g npm
 
       # Install the test package
       - name: Install test package
