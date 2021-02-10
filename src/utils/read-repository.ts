@@ -1,5 +1,5 @@
 import * as _ from 'lodash';
-import type { DocumentReference, DocumentSnapshot, FieldPath, Query, QuerySnapshot } from '@google-cloud/firestore';
+import { DocumentReference, DocumentSnapshot, FieldPath, Query, QuerySnapshot } from '@google-cloud/firestore';
 
 
 export interface ReadRepositoryHandler {
@@ -10,6 +10,17 @@ export interface ReadRepositoryHandler {
 export interface RefAndMask {
   ref: DocumentReference
   fieldMasks?: (string | FieldPath)[]
+}
+
+interface GroupedReadOps {
+  fieldMasks: (string | FieldPath)[] | undefined
+  ops: ReadOp[]
+}
+
+interface ReadOp {
+  ref: DocumentReference
+  resolve: ((r: DocumentSnapshot) => void)
+  reject: ((reason: any) => void)
 }
 
 /**
@@ -38,15 +49,30 @@ export class ReadRepository {
    */
   async getAll(items: RefAndMask[]): Promise<DocumentSnapshot<any>[]> {
 
-    const toRead: (Required<RefAndMask> & { resolve: ((r: DocumentSnapshot) => void), reject: ((reason: any) => void) })[] = [];
+    const toRead: GroupedReadOps[] = [];
     const results: Promise<DocumentSnapshot>[] = new Array(items.length);
     for (let i = 0; i++; i < items.length) {
-      const { ref, fieldMasks = [] } = items[i];
+      const { ref, fieldMasks } = items[i];
       let result = this.cache.get(ref.path)
         || (this.delegate && this.delegate.cache.get(ref.path));
 
       if (!result) {
-        result = new Promise((resolve, reject) => toRead.push({ ref, fieldMasks, resolve, reject }));
+        // Create a new read operation grouped by field masks
+        result = new Promise((resolve, reject) => {
+          const op: ReadOp = { ref, resolve, reject };
+          for (const entry of toRead) {
+            if (isFieldPathsEqual(entry.fieldMasks, fieldMasks)) {
+              entry.ops.push(op);
+              return;
+            }
+          }
+          toRead.push({
+            fieldMasks,
+            ops: [op],
+          });
+        });
+
+        // Only cache the new read operation if there is no field mask
         if (!fieldMasks) {
           this.cache.set(ref.path, result);
         }
@@ -55,18 +81,8 @@ export class ReadRepository {
       results[i] = result;
     }
 
-    if (toRead.length) {
-      try {
-        const snaps = await this.handler.getAll(toRead.map(({ ref }) => ref), fieldMasks);
-        toRead.forEach(({ resolve }, i) => {
-          resolve(snaps[i]);
-        });
-      } catch (err) {
-        toRead.forEach(({ reject }, i) => {
-          reject(err);
-        });
-      }
-    }
+    // Fetch and resolve all of the newly required read operations
+    await Promise.all(toRead.map(ops => fetchGroupedReadOp(ops, this.handler)));
     
     return Promise.all(results);
   }
@@ -81,4 +97,27 @@ export class ReadRepository {
     }
     return result;
   }
+}
+
+async function fetchGroupedReadOp({ fieldMasks, ops }: GroupedReadOps, handler: ReadRepositoryHandler) {
+  try {
+    const snaps = await handler.getAll(ops.map(({ ref }) => ref), fieldMasks);
+    let i = ops.length;
+    while (i--) {
+      ops[i].resolve(snaps[i]);
+    }
+  } catch (err) {
+    for (const { reject } of ops) {
+      reject(err);
+    }
+  }
+}
+
+function isFieldPathsEqual(a: (string | FieldPath)[] | undefined, b: (string | FieldPath)[] | undefined) {
+  return _.isEqualWith(a, b, (aVal, bVal) => {
+    if (aVal instanceof FieldPath) {
+      return aVal.isEqual(bVal);
+    }
+    return undefined;
+  });
 }

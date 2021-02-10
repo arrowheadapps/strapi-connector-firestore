@@ -1,7 +1,7 @@
 import * as _ from 'lodash';
 import { DocumentReference, Transaction as FirestoreTransaction, DocumentData, Firestore, DocumentSnapshot, FirestoreDataConverter } from '@google-cloud/firestore';
 import { DeepReference, makeDeepSnap, mapToFlattenedDoc } from './deep-reference';
-import { ReadRepository } from '../utils/read-repository';
+import { ReadRepository, RefAndMask } from '../utils/read-repository';
 import type { Queryable, QuerySnapshot } from './queryable-collection';
 import { Reference, SetOpts, Snapshot } from './reference';
 import { MorphReference } from './morph-reference';
@@ -139,16 +139,20 @@ export class TransactionImpl implements Transaction {
     const isSingleRequest = opts && opts.isSingleRequest;
 
     // Collect the masks for each native document
-    const map = new Map<string, { ref: DocumentReference, fieldMasks: string[] }>();
+    const map = new Map<string, RefAndMask>();
     for (const r of refs) {
-      const { ref, deepRef } = getDocRef(r);
+      const { ref, deepRef } = getRefInfo(r);
       let entry = map.get(ref.path);
       if (!entry) {
-        entry = { ref, fieldMasks: [] };
+        entry = { ref };
         map.set(ref.path, entry);
       }
-      if (isSingleRequest && deepRef && !entry.fieldMasks.includes(deepRef.id)) {
-        entry.fieldMasks.push(deepRef.id);
+      if (isSingleRequest && deepRef) {
+        if (!entry.fieldMasks) {
+          entry.fieldMasks = [deepRef.id];
+        } else if (!entry.fieldMasks.includes(deepRef.id)) {
+          entry.fieldMasks.push(deepRef.id);
+        }
       }
     }
 
@@ -252,7 +256,7 @@ export class TransactionImpl implements Transaction {
    */
   mergeWriteInternal<T extends object>(ref: Reference<T>, data: Partial<T> | undefined, editMode: 'create' | 'update') {
 
-    const { ref: rootRef, deepRef } = getDocRef(ref);
+    const { ref: rootRef, deepRef } = getRefInfo(ref);
     const { path } = rootRef;
 
     let op: WriteOp;
@@ -309,7 +313,7 @@ interface RefInfo {
   morphRef?: MorphReference<any>,
 }
 
-function getDocRef(ref: Reference<any>): RefInfo {
+function getRefInfo(ref: Reference<any>): RefInfo {
   if (ref instanceof NormalReference) {
     return { ref: ref.ref };
   }
@@ -318,7 +322,7 @@ function getDocRef(ref: Reference<any>): RefInfo {
   }
   if (ref instanceof MorphReference) {
     return {
-      ...getDocRef(ref.ref),
+      ...getRefInfo(ref.ref),
       morphRef: ref,
     };
   }
