@@ -37,6 +37,7 @@ export class DeepReference<T extends object> extends Reference<T> {
       ref: this,
       data: undefined,
       opts,
+      timestamp: new Date(),
     });
   };
 
@@ -48,6 +49,7 @@ export class DeepReference<T extends object> extends Reference<T> {
       ref: this,
       data,
       opts,
+      timestamp: new Date(),
     });
   };
 
@@ -59,6 +61,7 @@ export class DeepReference<T extends object> extends Reference<T> {
       ref: this,
       data,
       opts,
+      timestamp: new Date(),
     });
   }
   

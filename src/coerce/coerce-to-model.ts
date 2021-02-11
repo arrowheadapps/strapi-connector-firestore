@@ -20,6 +20,7 @@ export class CoercionError extends StatusError {
 
 export interface CoerceOpts {
   editMode?: 'create' | 'update'
+  timestamp?: Date
 }
 
 /**
@@ -44,7 +45,7 @@ export function coerceToModel<T extends object>(model: FirestoreConnectorModel<T
 
     // Assign timestamps
     if (model.timestamps && opts.editMode) {
-      const now = new Date();
+      const now = opts.timestamp || new Date();
       const [createdAtKey, updatedAtKey] = model.timestamps;
       _.set(obj, updatedAtKey, now);
       if (opts.editMode === 'create') {
