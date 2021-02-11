@@ -231,12 +231,11 @@ async function queryWithManualFilters<T extends object>(query: Query<T>, filters
   const q = query.offset(offset);
 
   const docs: QueryDocumentSnapshot<T>[] = [];
-  let skipped = 0;
 
   for await (const doc of queryChunked(q, chunkSize, transaction)) {
     if (filters.every(op => op(doc))) {
-      if (limit > skipped) {
-        skipped++;
+      if (offset) {
+        offset--;
       } else {
         docs.push(doc);
         if (docs.length >= limit) {

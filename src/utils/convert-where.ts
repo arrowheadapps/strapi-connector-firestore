@@ -60,6 +60,7 @@ export function convertWhere(model: FirestoreConnectorModel<any>, field: string 
 export function convertWhere(model: FirestoreConnectorModel<any>, field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator, value: any, mode: 'manualOnly' | 'nativeOnly' | 'preferNative'): WhereFilter | ManualFilter | null
 export function convertWhere(model: FirestoreConnectorModel<any>, field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator, value: any, mode: 'manualOnly' | 'nativeOnly' | 'preferNative'): WhereFilter | ManualFilter | null {
   
+  let expectArray = false;
   let op: WhereFilterOp | ((filterValue: any, fieldValue: any) => boolean);
   switch (operator) {
     case '==':
@@ -90,6 +91,7 @@ export function convertWhere(model: FirestoreConnectorModel<any>, field: string 
       // Included in an array of values
       // `value` must be an array
       value = _.castArray(value);
+      expectArray = true;
       if ((value as any[]).length === 0) {
         throw new EmptyQueryError();
       }
@@ -103,6 +105,7 @@ export function convertWhere(model: FirestoreConnectorModel<any>, field: string 
       // Not included in an array of values
       // `value` must be an array
       value = _.castArray(value);
+      expectArray = true;
       if ((value as any[]).length === 0) {
         return null;
       }
@@ -114,32 +117,24 @@ export function convertWhere(model: FirestoreConnectorModel<any>, field: string 
     case 'contains':
       // NO NATIVE SUPPORT
       // String includes value case insensitive
-      // Inherently handle 'OR' case (when value is an array)
-      value = _.castArray(value).map(v => _.toLower(v));
       op = contains;
       break;
 
     case 'ncontains':
       // NO NATIVE SUPPORT
       // String doesn't value case insensitive
-      // Inherently handle 'OR' case (when value is an array)
-      value = _.castArray(value).map(v => _.toLower(v));
       op = ncontains;
       break;
 
     case 'containss':
       // NO NATIVE SUPPORT
       // String includes value
-      // Inherently handle 'OR' case (when value is an array)
-      value = _.castArray(value);
       op = containss;
       break;
 
     case 'ncontainss':
       // NO NATIVE SUPPORT
       // String doesn't include value
-      // Inherently handle 'OR' case (when value is an array)
-      value = _.castArray(value);
       op = ncontainss;
       break;
 
@@ -224,7 +219,7 @@ export function convertWhere(model: FirestoreConnectorModel<any>, field: string 
   }
 
   // Coerce the attribute into the correct type
-  value = coerceAttribute(attr, value);
+  value = coerceAttribute(attr, value, expectArray);
   
   if (typeof op === 'function') {
     const fn = op;
@@ -246,11 +241,12 @@ export function convertWhere(model: FirestoreConnectorModel<any>, field: string 
 
 
 
-function coerceAttribute(attr: StrapiAttribute | undefined, value: unknown): unknown {
-  if (Array.isArray(value)) {
-    value = value.map(v => coerceAttrToModel(attr, v, {}));
+function coerceAttribute(attr: StrapiAttribute | undefined, value: unknown, isArray: boolean): unknown {
+  // Use editMode == 'update' so that strict coercion rules will be applied rather than silently ignoring
+  if (isArray) {
+    value = (value as any[]).map(v => coerceAttrToModel(attr, v, { editMode: 'update' }));
   } else {
-    value = coerceAttrToModel(attr, value, {});
+    value = coerceAttrToModel(attr, value, { editMode: 'update' });
   }
   return value;
 }
@@ -288,20 +284,18 @@ const fsOps: { [op in WhereFilterOp]: TestFn } = {
   }
 };
 
-const contains: TestFn = (fieldValue, filterValue: any[]) => {
-  const lv = _.toLower(fieldValue);
-  return filterValue.some(v => _.includes(lv, v));
+const contains: TestFn<string, string> = (fieldValue, filterValue) => {
+  return _.includes(_.toUpper(fieldValue), _.toUpper(filterValue));
 };
 
-const ncontains: TestFn = (fieldValue, filterValue: any[]) => {
-  const lv = _.toLower(fieldValue);
-  return filterValue.every(v => !_.includes(lv, v));
+const ncontains: TestFn<string, string> = (fieldValue, filterValue) => {
+  return !contains(fieldValue, filterValue);
 };
 
-const containss: TestFn = (fieldValue, filterValue: any[]) => {
-  return filterValue.some(v => _.includes(fieldValue, v));
+const containss: TestFn<string, string> = (fieldValue, filterValue) => {
+  return _.includes(fieldValue, filterValue);
 };
 
-const ncontainss: TestFn = (fieldValue, filterValue: any[]) => {
-  return filterValue.every(v => !_.includes(fieldValue, v));
+const ncontainss: TestFn<string, string> = (fieldValue, filterValue) => {
+  return !containss(fieldValue, filterValue);
 };
