@@ -67,12 +67,12 @@ export function buildQuery<T extends object>(query: Queryable<T>, { model, param
       }
     };
 
-    if (start && (start > 0)) {
-      query = query.offset(start);
+    if (start! > 0) {
+      query = query.offset(start!);
     }
 
-    if (limit && (limit > 1)) {
-      query = query.limit(limit);
+    if (limit! > 0) {
+      query = query.limit(limit!);
     }
 
     return query;
