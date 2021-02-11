@@ -1,10 +1,11 @@
 import * as _ from 'lodash';
 import { WhereFilterOp, FieldPath } from '@google-cloud/firestore';
-import type { StrapiAttribute, StrapiWhereOperator } from '../types';
+import type { FirestoreFilter, StrapiAttribute, StrapiOrFilter, StrapiWhereFilter } from '../types';
 import type { FirestoreConnectorModel } from '../model';
 import { coerceAttrToModel } from '../coerce/coerce-to-model';
 import { isEqualHandlingRef, Snapshot } from '../db/reference';
 import { StatusError } from './status-error';
+import { filterNotNull } from './map-not-null';
 
 const FIRESTORE_MAX_ARRAY_ELEMENTS = 10;
 
@@ -20,12 +21,6 @@ export type PartialSnapshot<T extends object> =
 
 export interface ManualFilter {
   (data: PartialSnapshot<any>): boolean
-}
-
-export interface WhereFilter {
-  field: string | FieldPath
-  operator: WhereFilterOp
-  value: any
 }
 
 export function fieldPathToPath(model: FirestoreConnectorModel<any>, field: string | FieldPath): string {
@@ -55,11 +50,35 @@ export function getAtFieldPath(model: FirestoreConnectorModel<any>, path: string
  * Convert a Strapi or Firestore query operator to a Firestore operator
  * or a manual function.
  */
-export function convertWhere(model: FirestoreConnectorModel<any>, field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator, value: any, mode: 'manualOnly'): ManualFilter | null
-export function convertWhere(model: FirestoreConnectorModel<any>, field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator, value: any, mode: 'nativeOnly'): WhereFilter | null
-export function convertWhere(model: FirestoreConnectorModel<any>, field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator, value: any, mode: 'manualOnly' | 'nativeOnly' | 'preferNative'): WhereFilter | ManualFilter | null
-export function convertWhere(model: FirestoreConnectorModel<any>, field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator, value: any, mode: 'manualOnly' | 'nativeOnly' | 'preferNative'): WhereFilter | ManualFilter | null {
+export function convertWhere(model: FirestoreConnectorModel<any>, { field, operator, value }:  StrapiWhereFilter | StrapiOrFilter | FirestoreFilter, mode: 'manualOnly'): ManualFilter | ManualFilter[] | null
+export function convertWhere(model: FirestoreConnectorModel<any>, { field, operator, value }:  StrapiWhereFilter | StrapiOrFilter | FirestoreFilter, mode: 'nativeOnly'): FirestoreFilter | null
+export function convertWhere(model: FirestoreConnectorModel<any>, { field, operator, value }:  StrapiWhereFilter | StrapiOrFilter | FirestoreFilter, mode: 'manualOnly' | 'nativeOnly' | 'preferNative'): FirestoreFilter | ManualFilter | ManualFilter[] | null
+export function convertWhere(model: FirestoreConnectorModel<any>, { field, operator, value }:  StrapiWhereFilter | StrapiOrFilter | FirestoreFilter, mode: 'manualOnly' | 'nativeOnly' | 'preferNative'): FirestoreFilter | ManualFilter | ManualFilter[] | null {
   
+  if (operator === 'or') {
+    if (mode === 'nativeOnly') {
+      throw new Error(`OR filters are not supported natively by Firestore. Use the \`allowNonNativeQueries\` option to enable a manual version of this query.`);  
+    }
+
+    const filters: StrapiWhereFilter[] = _.castArray(value || []);
+    if (!filters.length) {
+      throw new EmptyQueryError();
+    }
+
+    // TODO: Optimise OR filters where possible with native versions (e.g. 'in' and 'not-in')
+    return filterNotNull(filters.map(filter => {
+      const f = convertWhere(model, filter, 'manualOnly');
+      if (Array.isArray(f)) {
+        throw new StatusError('Nested OR filters are not supported.', 404);
+      }
+      return f;
+    }));
+  }
+
+  if (!field) {
+    throw new StatusError(`Query field must not be empty, received: ${JSON.stringify(field)}.`, 404);
+  }
+
   let expectArray = false;
   let op: WhereFilterOp | ((filterValue: any, fieldValue: any) => boolean);
   switch (operator) {
@@ -68,7 +87,7 @@ export function convertWhere(model: FirestoreConnectorModel<any>, field: string 
       if (Array.isArray(value)) {
         // Equals any (OR)
         // I.e. "in"
-        return convertWhere(model, field, 'in', value, mode);
+        return convertWhere(model, { field, operator: 'in', value }, mode);
       } else {
         // Equals
         op = '==';
@@ -80,7 +99,7 @@ export function convertWhere(model: FirestoreConnectorModel<any>, field: string 
       if (Array.isArray(value)) {
         // Not equals any (OR)
         // I.e. "nin"
-        return convertWhere(model, field, 'nin', value, mode);
+        return convertWhere(model, { field, operator: 'not-in', value }, mode);
       } else {
         // Not equal
         op = '!=';
@@ -183,12 +202,12 @@ export function convertWhere(model: FirestoreConnectorModel<any>, field: string 
       break;
 
     case 'null':
-      if (_.toLower(value) === 'true') {
+      if ((value === true) || _.toLower(value) === 'true') {
         // Equal to null
-        return convertWhere(model, field, 'eq', null, mode);
+        return convertWhere(model, { field, operator: '==', value: null }, mode);
       } else {
         // Not equal to null
-        return convertWhere(model, field, 'ne', null, mode);
+        return convertWhere(model, { field, operator: '!=', value: null }, mode);
       }
 
     default:

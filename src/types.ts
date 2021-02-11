@@ -1,4 +1,4 @@
-import type { DocumentData, DocumentReference, Settings } from '@google-cloud/firestore';
+import type { DocumentData, DocumentReference, FieldPath, Settings, WhereFilterOp } from '@google-cloud/firestore';
 import type { Logger } from 'pino';
 import type { FirestoreConnectorModel } from './model';
 
@@ -331,7 +331,13 @@ export interface StrapiWhereFilter {
 }
 
 export interface StrapiOrFilter {
-  field: null
+  field?: null
   operator: 'or'
   value: StrapiWhereFilter[]
+}
+
+export interface FirestoreFilter {
+  field: string | FieldPath
+  operator: WhereFilterOp
+  value: any
 }

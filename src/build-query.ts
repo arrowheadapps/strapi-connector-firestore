@@ -42,17 +42,8 @@ export function buildQuery<T extends object>(query: Queryable<T>, { model, param
     }
 
     // Apply filters
-    for (let { field, operator, value } of (where || [])) {
-      if (operator === 'or') {
-        query = query.whereAny(_.castArray(value || []));
-        continue;
-      }
-
-      if (!field) {
-        throw new StatusError(`Query field must not be empty, received: ${JSON.stringify(field)}.`, 404);
-      }
-
-      query = query.where(field, operator, value);
+    for (const clause of (where || [])) {
+      query = query.where(clause);
     }
 
     for (const { field, order } of (sort || [])) {
@@ -110,7 +101,7 @@ function buildSearchQuery<T extends object>(model: FirestoreConnectorModel<T>, v
       case 'json':
       case 'boolean':
         // Use equality operator 
-        return query.where(field, 'eq', value);
+        return query.where({ field, operator: 'eq', value });
 
       case 'string':
       case 'text':
@@ -122,8 +113,8 @@ function buildSearchQuery<T extends object>(model: FirestoreConnectorModel<T>, v
         // Use prefix operator
         const { gte, lt } = buildPrefixQuery(value);
         return query
-          .where(field, 'gte', gte)
-          .where(field, 'lt', lt);
+          .where({ field, operator: 'gte', value: gte })
+          .where({ field, operator: 'lt', value: lt });
         
       default:
         throw new StatusError(`Search attribute "${field}" is an of an unsupported type`, 404);
@@ -184,6 +175,7 @@ function buildSearchQuery<T extends object>(model: FirestoreConnectorModel<T>, v
       }
     }
 
-    return query.whereAny(filters);
+    // Apply OR filter
+    return query.where({ operator: 'or', value: filters });
   }
 };

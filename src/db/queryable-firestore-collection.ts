@@ -1,14 +1,13 @@
 import * as _ from 'lodash';
-import { ManualFilter, convertWhere, WhereFilter } from '../utils/convert-where';
-import { Query, QueryDocumentSnapshot, FieldPath, WhereFilterOp, DocumentData, CollectionReference, FirestoreDataConverter } from '@google-cloud/firestore';
+import { ManualFilter, convertWhere } from '../utils/convert-where';
+import { Query, QueryDocumentSnapshot, FieldPath, DocumentData, CollectionReference, FirestoreDataConverter } from '@google-cloud/firestore';
 import type { QueryableCollection, QuerySnapshot } from './queryable-collection';
-import type { StrapiWhereFilter, StrapiWhereOperator } from '../types';
+import type { FirestoreFilter, StrapiOrFilter, StrapiWhereFilter } from '../types';
 import type { FirestoreConnectorModel } from '../model';
 import { coerceModelToFirestore, coerceToFirestore } from '../coerce/coerce-to-firestore';
 import { coerceToModel } from '../coerce/coerce-to-model';
 import { makeNormalSnap, NormalReference } from './normal-reference';
 import type { ReadRepository } from '../utils/read-repository';
-import { mapNotNull } from '../utils/map-not-null';
 
 
 export class QueryableFirestoreCollection<T extends object = DocumentData> implements QueryableCollection<T> {
@@ -127,15 +126,15 @@ export class QueryableFirestoreCollection<T extends object = DocumentData> imple
     };
   }
 
-  where(filter: StrapiWhereFilter | WhereFilter): QueryableFirestoreCollection<T>
-  where(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator, value: any): QueryableFirestoreCollection<T>
-  where(fieldOrFilter: string | FieldPath | StrapiWhereFilter | WhereFilter, operator?: WhereFilterOp | StrapiWhereOperator, value?: any): QueryableFirestoreCollection<T> {
-    if ((typeof fieldOrFilter === 'string') || (fieldOrFilter instanceof FieldPath)) {
-      const filter = convertWhere(this.model, fieldOrFilter, operator!, value, this.allowNonNativeQueries ? 'preferNative' : 'nativeOnly');
-      if (!filter) {
-        return this;
-      }
-      const other = new QueryableFirestoreCollection(this);
+  where(clause: StrapiWhereFilter | StrapiOrFilter | FirestoreFilter): QueryableFirestoreCollection<T> {
+    const filter = convertWhere(this.model, clause, this.allowNonNativeQueries ? 'preferNative' : 'nativeOnly');
+    if (!filter) {
+      return this;
+    }
+    const other = new QueryableFirestoreCollection(this);
+    if (Array.isArray(filter)) {
+      other.manualFilters.push(data => filter.some(f => f(data)))
+    } else {
       if (typeof filter === 'function') {
         other.manualFilters.push(filter);
       } else {
@@ -143,24 +142,7 @@ export class QueryableFirestoreCollection<T extends object = DocumentData> imple
         const value = coerceToFirestore(filter.value);
         other.query = this.query.where(filter.field, filter.operator, value);
       }
-      return other;
-    } else {
-      return this.where(fieldOrFilter.field, fieldOrFilter.operator, fieldOrFilter.value);
     }
-  }
-
-  whereAny(filters: (StrapiWhereFilter | WhereFilter)[]): QueryableFirestoreCollection<T> {
-    if (!this.allowNonNativeQueries) {
-      throw new Error('OR filters and search are not natively supported by Firestore. Use the `allowNonNativeQueries` option to enable manual search, or `searchAttribute` to enable primitive search.');
-    }
-    const other = new QueryableFirestoreCollection(this);
-    const filterFns = mapNotNull(
-      filters,
-      ({ field, operator, value }) => {
-        return convertWhere(this.model, field, operator, value, 'manualOnly');
-      }
-    );
-    other.manualFilters.push(data => filterFns.some(f => f(data)));
     return other;
   }
 

@@ -295,9 +295,8 @@ export class RelationHandler<T extends object, R extends object = object> {
         // The refValue will be coerced appropriately
         // by the model that is performing the query
         const refValue = this._makeRefToThis(ref, attr);
-        let q = attr.isArray
-          ? model.db.where(attr.alias, 'array-contains', refValue)
-          : model.db.where(attr.alias, '==', refValue);
+        const operator = attr.isArray ? 'array-contains' : '==';
+        let q = model.db.where({ field: attr.alias, operator, value: refValue });
         if (model.options.maxQuerySize) {
           q = q.limit(model.options.maxQuerySize);
         }

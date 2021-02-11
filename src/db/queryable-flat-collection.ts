@@ -1,16 +1,15 @@
 import * as _ from 'lodash';
 import * as path from 'path';
-import { convertWhere, ManualFilter, WhereFilter, getAtFieldPath } from '../utils/convert-where';
-import { DocumentReference, OrderByDirection, FieldPath, WhereFilterOp, DocumentData, FirestoreDataConverter } from '@google-cloud/firestore';
+import { convertWhere, ManualFilter, getAtFieldPath } from '../utils/convert-where';
+import { DocumentReference, OrderByDirection, FieldPath, DocumentData, FirestoreDataConverter } from '@google-cloud/firestore';
 import type { QueryableCollection, QuerySnapshot } from './queryable-collection';
-import type { StrapiWhereFilter, StrapiWhereOperator } from '../types';
+import type { FirestoreFilter, StrapiOrFilter, StrapiWhereFilter } from '../types';
 import { DeepReference } from './deep-reference';
 import type { FirestoreConnectorModel } from '../model';
 import { coerceModelToFirestore, coerceToFirestore } from '../coerce/coerce-to-firestore';
 import { coerceToModel } from '../coerce/coerce-to-model';
 import type { Snapshot } from './reference';
 import type { ReadRepository } from '../utils/read-repository';
-import { mapNotNull } from '../utils/map-not-null';
 
 
 export class QueryableFlatCollection<T extends object = DocumentData> implements QueryableCollection<T> {
@@ -19,8 +18,8 @@ export class QueryableFlatCollection<T extends object = DocumentData> implements
   readonly flatDoc: DocumentReference<{ [id: string]: T }>;
   readonly converter: FirestoreDataConverter<{ [id: string]: T }>;
 
-  private _filters: ManualFilter[] = [];
-  private _orderBy: { field: string | FieldPath, directionStr: OrderByDirection }[] = [];
+  private readonly manualFilters: ManualFilter[] = [];
+  private readonly _orderBy: { field: string | FieldPath, directionStr: OrderByDirection }[] = [];
   private _limit?: number
   private _offset?: number
 
@@ -36,7 +35,7 @@ export class QueryableFlatCollection<T extends object = DocumentData> implements
       this.flatDoc = modelOrOther.flatDoc;
       this.converter = modelOrOther.converter;
       this._ensureDocument = modelOrOther._ensureDocument;
-      this._filters = modelOrOther._filters.slice();
+      this.manualFilters = modelOrOther.manualFilters.slice();
       this._orderBy = modelOrOther._orderBy.slice();
       this._limit = modelOrOther._limit;
       this._offset = modelOrOther._offset;
@@ -125,7 +124,7 @@ export class QueryableFlatCollection<T extends object = DocumentData> implements
         exists: data != null,
         data: () => data,
       };
-      if (this._filters.every(f => f(snap))) {
+      if (this.manualFilters.every(f => f(snap))) {
         docs.push(snap);
       }
     }
@@ -150,31 +149,17 @@ export class QueryableFlatCollection<T extends object = DocumentData> implements
     };
   }
 
-  where(filter: StrapiWhereFilter | WhereFilter): QueryableFlatCollection<T>
-  where(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator, value: any): QueryableFlatCollection<T>
-  where(fieldOrFilter: string | FieldPath | StrapiWhereFilter | WhereFilter, operator?: WhereFilterOp | StrapiWhereOperator, value?: any): QueryableFlatCollection<T> {
-    if ((typeof fieldOrFilter === 'string') || (fieldOrFilter instanceof FieldPath)) {
-      const other = new QueryableFlatCollection(this);
-      const filter = convertWhere(this.model, fieldOrFilter, operator!, value, 'manualOnly');
-      if (!filter) {
-        return this;
-      }
-      other._filters.push(filter);
-      return other;
-    } else {
-      return this.where(fieldOrFilter.field, fieldOrFilter.operator, fieldOrFilter.value);
+  where(clause: StrapiWhereFilter | StrapiOrFilter | FirestoreFilter): QueryableFlatCollection<T> {
+    const filter = convertWhere(this.model, clause, 'manualOnly');
+    if (!filter) {
+      return this;
     }
-  }
-
-  whereAny(filters: (StrapiWhereFilter | WhereFilter)[]): QueryableFlatCollection<T> {
     const other = new QueryableFlatCollection(this);
-    const filterFns = mapNotNull(
-      filters,
-      ({ field, operator, value }) => {
-        return convertWhere(this.model, field, operator, value, 'manualOnly');
-      }
-    );
-    other._filters.push(data => filterFns.some(f => f(data)));
+    if (Array.isArray(filter)) {
+      other.manualFilters.push(data => filter.some(f => f(data)));
+    } else {
+      other.manualFilters.push(filter);
+    }
     return other;
   }
 

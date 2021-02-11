@@ -42,10 +42,6 @@ export class QueryableComponentCollection<T extends object = never> implements Q
     return this.throw();
   }
 
-  whereAny() {
-    return this.throw();
-  }
-
   orderBy() {
     return this.throw();
   }
