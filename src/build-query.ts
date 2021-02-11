@@ -5,7 +5,7 @@ import { EmptyQueryError } from './utils/convert-where';
 import { StatusError } from './utils/status-error';
 import { buildPrefixQuery } from './utils/prefix-query';
 import type { Queryable } from './db/queryable-collection';
-import type { StrapiAttributeType, StrapiFilter, StrapiWhereFilter } from './types';
+import type { StrapiAttributeType, StrapiFilter, StrapiOrFilter } from './types';
 import type { FirestoreConnectorModel } from './model';
 import type { Reference } from './db/reference';
 
@@ -16,12 +16,16 @@ export interface QueryArgs<T extends object> {
 }
 
 export function buildQuery<T extends object>(query: Queryable<T>, { model, params, allowSearch }: QueryArgs<T>): Queryable<T> | Reference<T>[] | null {
-  const isSearch = allowSearch && params._q;
+
+  // Capture the search term and remove it so it doesn't appear as filter
+  const searchTerm = allowSearch ? params._q : undefined;
+  delete params._q;
+
   const { where, limit, sort, start }: StrapiFilter = convertRestQueryParams(params);
 
   try {
-    if (isSearch) {
-      query = buildSearchQuery(model, params._q, query);
+    if (searchTerm !== undefined) {
+      query = buildSearchQuery(model, searchTerm, query);
     }
 
     // Check for special case where querying for document IDs
@@ -48,7 +52,7 @@ export function buildQuery<T extends object>(query: Queryable<T>, { model, param
 
     for (const { field, order } of (sort || [])) {
       if (field === model.primaryKey) {
-        if (isSearch || 
+        if ((searchTerm !== undefined) || 
           (where || []).some(w => w.field !== model.primaryKey)) {
           // Ignore sort by document ID when there are other filers
           // on fields other than the document ID
@@ -117,16 +121,16 @@ function buildSearchQuery<T extends object>(model: FirestoreConnectorModel<T>, v
           .where({ field, operator: 'lt', value: lt });
         
       default:
-        throw new StatusError(`Search attribute "${field}" is an of an unsupported type`, 404);
+        throw new StatusError(`Search attribute "${field}" is an of an unsupported type`, 400);
     }
 
   } else {
 
     // Build a manual implementation of fully-featured search
-    const filters: StrapiWhereFilter[] = [];
+    const filters: StrapiOrFilter['value'] = [];
 
     if (value != null) {
-      filters.push({ field: model.primaryKey, operator: 'containss', value });
+      filters.push([{ field: model.primaryKey, operator: 'containss', value }]);
     }
 
     for (const field of Object.keys(model.attributes)) {
@@ -138,7 +142,7 @@ function buildSearchQuery<T extends object>(model: FirestoreConnectorModel<T>, v
         case 'biginteger':
           try {
             // Use equality operator for numbers
-            filters.push({ field, operator: 'eq', value });
+            filters.push([{ field, operator: 'eq', value }]);
           } catch {
             // Ignore if the query can't be coerced to this type
           }
@@ -152,7 +156,7 @@ function buildSearchQuery<T extends object>(model: FirestoreConnectorModel<T>, v
         case 'uid':
           try {
             // User contains operator for strings
-            filters.push({ field, operator: 'contains', value });
+            filters.push([{ field, operator: 'contains', value }]);
           } catch {
             // Ignore if the query can't be coerced to this type
           }

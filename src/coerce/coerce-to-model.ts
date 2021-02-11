@@ -12,7 +12,11 @@ import { updateComponentsMetadata } from '../utils/components-indexing';
 import { NormalReference } from '../db/normal-reference';
 import { FieldOperation } from '../db/field-operation';
 
-
+export class CoercionError extends StatusError {
+  constructor(message: string) {
+    super(message, 400);
+  }
+}
 
 export interface CoerceOpts {
   editMode?: 'create' | 'update'
@@ -423,7 +427,7 @@ function getIdOrAuto(model: FirestoreConnectorModel, value: any): string | undef
 
 function fault({ editMode }: CoerceOpts, message: string): null {
   if (editMode) {
-    throw new StatusError(message, 400);
+    throw new CoercionError(message);
   } else {
     strapi.log.warn(message);
     return null;

@@ -5,7 +5,6 @@ import type { FirestoreConnectorModel } from '../model';
 import { coerceAttrToModel } from '../coerce/coerce-to-model';
 import { isEqualHandlingRef, Snapshot } from '../db/reference';
 import { StatusError } from './status-error';
-import { filterNotNull } from './map-not-null';
 
 const FIRESTORE_MAX_ARRAY_ELEMENTS = 10;
 
@@ -25,11 +24,10 @@ export interface ManualFilter {
 
 export function fieldPathToPath(model: FirestoreConnectorModel<any>, field: string | FieldPath): string {
   if (field instanceof FieldPath) {
-    const path = field.toString();
-    if (path === FieldPath.documentId().toString()) {
+    if (FieldPath.documentId().isEqual(field)) {
       return model.primaryKey;
     }
-    return path;
+    return field.toString();
   }
   return field;
 }
@@ -50,36 +48,55 @@ export function getAtFieldPath(model: FirestoreConnectorModel<any>, path: string
  * Convert a Strapi or Firestore query operator to a Firestore operator
  * or a manual function.
  */
-export function convertWhere(model: FirestoreConnectorModel<any>, { field, operator, value }:  StrapiWhereFilter | StrapiOrFilter | FirestoreFilter, mode: 'manualOnly'): ManualFilter | ManualFilter[] | null
+export function convertWhere(model: FirestoreConnectorModel<any>, { field, operator, value }:  StrapiWhereFilter | StrapiOrFilter | FirestoreFilter, mode: 'manualOnly'): ManualFilter | null
 export function convertWhere(model: FirestoreConnectorModel<any>, { field, operator, value }:  StrapiWhereFilter | StrapiOrFilter | FirestoreFilter, mode: 'nativeOnly'): FirestoreFilter | null
-export function convertWhere(model: FirestoreConnectorModel<any>, { field, operator, value }:  StrapiWhereFilter | StrapiOrFilter | FirestoreFilter, mode: 'manualOnly' | 'nativeOnly' | 'preferNative'): FirestoreFilter | ManualFilter | ManualFilter[] | null
-export function convertWhere(model: FirestoreConnectorModel<any>, { field, operator, value }:  StrapiWhereFilter | StrapiOrFilter | FirestoreFilter, mode: 'manualOnly' | 'nativeOnly' | 'preferNative'): FirestoreFilter | ManualFilter | ManualFilter[] | null {
+export function convertWhere(model: FirestoreConnectorModel<any>, { field, operator, value }:  StrapiWhereFilter | StrapiOrFilter | FirestoreFilter, mode: 'manualOnly' | 'nativeOnly' | 'preferNative'): FirestoreFilter | ManualFilter | null
+export function convertWhere(model: FirestoreConnectorModel<any>, { field, operator, value }:  StrapiWhereFilter | StrapiOrFilter | FirestoreFilter, mode: 'manualOnly' | 'nativeOnly' | 'preferNative'): FirestoreFilter | ManualFilter | null {
   
   if (operator === 'or') {
-    if (mode === 'nativeOnly') {
-      throw new Error(`OR filters are not supported natively by Firestore. Use the \`allowNonNativeQueries\` option to enable a manual version of this query.`);  
-    }
-
-    const filters: StrapiWhereFilter[] = _.castArray(value || []);
+    const filters: StrapiOrFilter['value'] = _.castArray(value || []);
     if (!filters.length) {
       throw new EmptyQueryError();
     }
 
-    // TODO: Optimise OR filters where possible with native versions (e.g. 'in' and 'not-in')
-    return filterNotNull(filters.map(filter => {
-      const f = convertWhere(model, filter, 'manualOnly');
-      if (Array.isArray(f)) {
-        throw new StatusError('Nested OR filters are not supported.', 404);
+    // Optimise OR filters where possible with native versions (e.g. 'in' and 'not-in')
+    const consolidated = consolidateOrFilters(filters);
+    if (consolidated) {
+      field = consolidated.field;
+      operator = consolidated.operator;
+      value = consolidated.value;
+    } else {
+      if (mode === 'nativeOnly') {
+        throw new StatusError(`OR filters are not supported natively by Firestore. Use the \`allowNonNativeQueries\` option to enable a manual version of this query.`, 400);  
       }
-      return f;
-    }));
+      
+      const orFilters: ManualFilter[] = filters.map(andFilters => {
+        const convertedAndFilters = andFilters.map(filter => convertWhere(model, filter, 'manualOnly'));
+
+        // Combine the AND filters within this OR filter
+        return snap => {
+          for (const f of convertedAndFilters) {
+            if (f && !f(snap))
+              return false;
+          }
+          return true;
+        }
+      });
+
+      return snap => {
+        for (const f of orFilters) {
+          if (f(snap))
+            return true;
+        }
+        return false;
+      }
+    }
   }
 
   if (!field) {
-    throw new StatusError(`Query field must not be empty, received: ${JSON.stringify(field)}.`, 404);
+    throw new StatusError(`Query field must not be empty, received: ${JSON.stringify(field)}.`, 400);
   }
 
-  let expectArray = false;
   let op: WhereFilterOp | ((filterValue: any, fieldValue: any) => boolean);
   switch (operator) {
     case '==':
@@ -110,7 +127,6 @@ export function convertWhere(model: FirestoreConnectorModel<any>, { field, opera
       // Included in an array of values
       // `value` must be an array
       value = _.castArray(value);
-      expectArray = true;
       if ((value as any[]).length === 0) {
         throw new EmptyQueryError();
       }
@@ -124,7 +140,6 @@ export function convertWhere(model: FirestoreConnectorModel<any>, { field, opera
       // Not included in an array of values
       // `value` must be an array
       value = _.castArray(value);
-      expectArray = true;
       if ((value as any[]).length === 0) {
         return null;
       }
@@ -136,24 +151,32 @@ export function convertWhere(model: FirestoreConnectorModel<any>, { field, opera
     case 'contains':
       // NO NATIVE SUPPORT
       // String includes value case insensitive
+      // Implicitly handle OR case by casting array
+      value = _.castArray(value);
       op = contains;
       break;
 
     case 'ncontains':
       // NO NATIVE SUPPORT
-      // String doesn't value case insensitive
+      // String doesn't contain value case insensitive
+      // Implicitly handle OR case by casting array
+      value = _.castArray(value);
       op = ncontains;
       break;
 
     case 'containss':
       // NO NATIVE SUPPORT
       // String includes value
+      // Implicitly handle OR case by casting array
+      value = _.castArray(value);
       op = containss;
       break;
 
     case 'ncontainss':
       // NO NATIVE SUPPORT
       // String doesn't include value
+      // Implicitly handle OR case by casting array
+      value = _.castArray(value);
       op = ncontainss;
       break;
 
@@ -227,24 +250,23 @@ export function convertWhere(model: FirestoreConnectorModel<any>, { field, opera
   }
 
   if ((mode === 'nativeOnly') && (typeof op === 'function')) {
-    throw new Error(`Operator "${operator}" is not supported natively by Firestore. Use the \`allowNonNativeQueries\` option to enable a manual version of this query.`);  
+    throw new StatusError(`Operator "${operator}" is not supported natively by Firestore. Use the \`allowNonNativeQueries\` option to enable a manual version of this query.`, 400);  
   }
 
   const path = fieldPathToPath(model, field);
-  const attr: StrapiAttribute = (path === model.primaryKey) ? { type: 'string' } : model.attributes[path];
-
-  if (attr.type === 'password') {
-    throw new StatusError('Not allowed to query password fields', 404);
+  const attr: StrapiAttribute | undefined = (path === model.primaryKey) ? { type: 'string' } : model.attributes[path];
+  if (attr?.type === 'password') {
+    throw new StatusError('Not allowed to query password fields', 400);
   }
 
   // Coerce the attribute into the correct type
-  value = coerceAttribute(attr, value, expectArray);
+  value = coerceAttribute(attr, value);
   
   if (typeof op === 'function') {
-    const fn = op;
-    return(snap: PartialSnapshot<any>) => {
+    const testFn = op;
+    return snap => {
       const fieldValue = getAtPath(model, path, snap);
-      return fn(fieldValue, value);
+      return testFn(fieldValue, value);
     };
   } else {
     if (field === model.primaryKey) {
@@ -258,16 +280,51 @@ export function convertWhere(model: FirestoreConnectorModel<any>, { field, opera
   }
 }
 
-
-
-function coerceAttribute(attr: StrapiAttribute | undefined, value: unknown, isArray: boolean): unknown {
-  // Use editMode == 'update' so that strict coercion rules will be applied rather than silently ignoring
-  if (isArray) {
-    value = (value as any[]).map(v => coerceAttrToModel(attr, v, { editMode: 'update' }));
+function coerceAttribute(attr: StrapiAttribute | undefined, value: unknown): unknown {
+  if (Array.isArray(value)) {
+    value = value.map(v => coerceAttrToModel(attr, v, {}));
   } else {
-    value = coerceAttrToModel(attr, value, { editMode: 'update' });
+    value = coerceAttrToModel(attr, value, {});
   }
   return value;
+}
+
+/**
+ * Returns the field, operator, and corresponding values if an only if
+ * the all fields and operators are the same, and the operator is one of `'eq'` or `'ne'`,
+ * otherwise returns `null`.
+ */
+function consolidateOrFilters(filters: StrapiOrFilter['value']): StrapiWhereFilter | null {
+  let opAndField: { field: string, operator: 'eq' | 'ne' } | undefined;
+  let values: any[] = [];
+
+  for (const andFilters of filters) {
+    if (andFilters.length !== 1) {
+      return null;
+    }
+    const [{ field, operator, value }] = andFilters;
+    if (opAndField) {
+      if ((operator === opAndField.operator) && (field == opAndField.field)) {
+        values = values.concat(value);
+      } else {
+        return null;
+      }
+    } else if ((operator === 'eq') || (operator === 'ne')) {
+      opAndField = { field, operator };
+      values  = values.concat(value);
+    }
+    return null;
+  }
+
+  if (!opAndField) {
+    return null;
+  }
+
+  return {
+    field: opAndField.field,
+    operator: opAndField.operator === 'eq' ? 'in' : 'nin',
+    value: values,
+  };
 }
 
 
@@ -275,46 +332,104 @@ interface TestFn<A = any, B = any> {
   (fieldValue: A, filterValue: B): boolean
 }
 
+const inFn: TestFn<any, any[]> = (fieldValue, filterValue) => {
+  for (const v of filterValue) {
+    if (isEqualHandlingRef(fieldValue, v))
+      return true;
+  }
+  return false;
+};
+
 /**
  * Defines a manual equivalent for every native Firestore operator.
  */
 const fsOps: { [op in WhereFilterOp]: TestFn } = {
   '==': isEqualHandlingRef,
-  '!=': (fieldValue, filterValue) => !isEqualHandlingRef(fieldValue, filterValue),
-  '<': _.lt,
-  '<=': _.lte,
-  '>': _.gt,
-  '>=': _.gte,
-  'in': (fieldValue, filterValue: any[]) => filterValue.some(v => isEqualHandlingRef(v, fieldValue)),
-  'not-in': (fieldValue, filterValue: any[]) => filterValue.every(v => !isEqualHandlingRef(v, fieldValue)),
+  '!=': _.negate(isEqualHandlingRef),
+  '<': (a, b) => a < b,
+  '<=': (a, b) => a <= b,
+  '>': (a, b) => a > b,
+  '>=': (a, b) => a >= b,
+  'in': inFn,
+  'not-in': _.negate(inFn),
   'array-contains': (fieldValue, filterValue) => {
     if (Array.isArray(fieldValue)) {
-      return _.some(fieldValue, v => isEqualHandlingRef(filterValue, v));
-    } else {
-      return false;
+      for (const v of fieldValue) {
+        if (isEqualHandlingRef(v, filterValue))
+          return true;
+      }
     }
+    return false;
   },
-  'array-contains-any': (fieldValue, filterValue) => {
+  'array-contains-any': (fieldValue, filterValue: any[]) => {
     if (Array.isArray(fieldValue)) {
-      return _.some(fieldValue, val => _.some(filterValue, v => isEqualHandlingRef(val, v)));
-    } else {
-      return false;
+      for (const val of fieldValue) {
+        for (const v of filterValue) {
+          if (isEqualHandlingRef(v, val))
+            return true;
+        }
+      }
     }
+    return false;
   }
 };
 
-const contains: TestFn<string, string> = (fieldValue, filterValue) => {
-  return _.includes(_.toUpper(fieldValue), _.toUpper(filterValue));
+/**
+ * Any of filterValue's are contained in field value, case insensitive.
+ */
+const contains: TestFn<any, string[]> = (fieldValue, filterValue) => {
+  if (typeof fieldValue === 'string') {
+    const uprFieldValue = fieldValue.toUpperCase();
+    for (const v of filterValue) {
+      const uprV = (typeof v === 'string') ? v.toUpperCase() : v;
+      if (uprFieldValue.includes(uprV))
+        return true;
+    }
+  }
+  return false;
 };
 
-const ncontains: TestFn<string, string> = (fieldValue, filterValue) => {
-  return !contains(fieldValue, filterValue);
+/**
+ * Any of filterValue's are not contained in field value, case insensitive.
+ * This is not the same as the negation of `contains` (that would mean:
+ * *all* of filterValue's are not contains in field value)
+ */
+const ncontains: TestFn<any, string[]> = (fieldValue, filterValue) => {
+  if (typeof fieldValue === 'string') {
+    const uprFieldValue = fieldValue.toUpperCase();
+    for (const v of filterValue) {
+      const uprV = (typeof v === 'string') ? v.toUpperCase() : v;
+      if (!uprFieldValue.includes(uprV))
+        return true;
+    }
+  }
+  return false;
 };
 
-const containss: TestFn<string, string> = (fieldValue, filterValue) => {
-  return _.includes(fieldValue, filterValue);
+/**
+ * Any of filterValue's are contained in field value.
+ */
+const containss: TestFn<any, string[]> = (fieldValue, filterValue) => {
+  if (typeof fieldValue === 'string') {
+    for (const v of filterValue) {
+      if (fieldValue.includes(v))
+        return true;
+    }
+  }
+  return false;
 };
 
-const ncontainss: TestFn<string, string> = (fieldValue, filterValue) => {
-  return !containss(fieldValue, filterValue);
+/**
+ * Any of filterValue's are not contained in field value.
+ * This is not the same as the negation of `contains` (that would mean:
+ * *all* of filterValue's are not contains in field value)
+ */
+const ncontainss: TestFn<any, string[]> = (fieldValue, filterValue) => {
+  if (typeof fieldValue === 'string') {
+    for (const v of filterValue) {
+      if (!fieldValue.includes(v))
+        return true;
+    }
+  }
+  return false;
 };

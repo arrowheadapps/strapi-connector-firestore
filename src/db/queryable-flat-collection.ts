@@ -11,6 +11,10 @@ import { coerceToModel } from '../coerce/coerce-to-model';
 import type { Snapshot } from './reference';
 import type { ReadRepository } from '../utils/read-repository';
 
+interface OrderSpec {
+  field: string | FieldPath
+  directionStr: OrderByDirection
+}
 
 export class QueryableFlatCollection<T extends object = DocumentData> implements QueryableCollection<T> {
 
@@ -19,9 +23,9 @@ export class QueryableFlatCollection<T extends object = DocumentData> implements
   readonly converter: FirestoreDataConverter<{ [id: string]: T }>;
 
   private readonly manualFilters: ManualFilter[] = [];
-  private readonly _orderBy: { field: string | FieldPath, directionStr: OrderByDirection }[] = [];
-  private _limit?: number
-  private _offset?: number
+  private readonly _orderBy: OrderSpec[] = [];
+  private _limit?: number;
+  private _offset?: number;
 
   private _ensureDocument: Promise<any> | null;
 
@@ -50,7 +54,7 @@ export class QueryableFlatCollection<T extends object = DocumentData> implements
         toFirestore: data => {
           return _.mapValues(data, (d, path) => {
             // Remove the document ID component from the field path
-            const { fieldPath } = spitId(path);
+            const { fieldPath } = splitId(path);
             if (fieldPath === modelOrOther.primaryKey) {
               return undefined;
             }
@@ -62,7 +66,7 @@ export class QueryableFlatCollection<T extends object = DocumentData> implements
         },
         fromFirestore: data => {
           return _.mapValues(data.data(), (d, path) => {
-            const { id, fieldPath } = spitId(path);
+            const { id, fieldPath } = splitId(path);
             return coerceToModel(modelOrOther, id, fromFirestore(d), fieldPath, {});
           });
         },
@@ -110,6 +114,13 @@ export class QueryableFlatCollection<T extends object = DocumentData> implements
   }
 
   async get(repo?: ReadRepository): Promise<QuerySnapshot<T>> {
+    // FIXME: Is this desirable?
+    // Ensure consistent ordering
+    // const orderings: OrderSpec[] = this._orderBy.length
+    //   ? this._orderBy
+    //   : [{ field: FieldPath.documentId(), directionStr: 'asc' }];
+    const orderings = this._orderBy;
+
     const snap = repo
       ? (await repo.getAll([{ ref: this.flatDoc }]))[0]
       : await this.flatDoc.get();
@@ -129,13 +140,8 @@ export class QueryableFlatCollection<T extends object = DocumentData> implements
       }
     }
 
-    if (this._orderBy.length) {
-      for (const { field, directionStr } of this._orderBy) {
-        docs = _.sortBy(docs, d => getAtFieldPath(this.model, field, d));
-        if (directionStr === 'desc') {
-          docs = _.reverse(docs);
-        }
-      }
+    for (const { field, directionStr } of orderings) {
+      docs = _.orderBy(docs, d => getAtFieldPath(this.model, field, d), directionStr);
     }
     
     // Offset and limit after sorting
@@ -155,11 +161,7 @@ export class QueryableFlatCollection<T extends object = DocumentData> implements
       return this;
     }
     const other = new QueryableFlatCollection(this);
-    if (Array.isArray(filter)) {
-      other.manualFilters.push(data => filter.some(f => f(data)));
-    } else {
-      other.manualFilters.push(filter);
-    }
+    other.manualFilters.push(filter);
     return other;
   }
 
@@ -182,7 +184,7 @@ export class QueryableFlatCollection<T extends object = DocumentData> implements
   }
 }
 
-function spitId(path: string): { id: string, fieldPath: string | null } {
+function splitId(path: string): { id: string, fieldPath: string | null } {
   const i = path.indexOf('.');
   if (i === -1) {
     return {

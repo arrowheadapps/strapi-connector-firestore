@@ -139,7 +139,7 @@ export function queries<T extends object>({ model, strapi }: StrapiContext<T>): 
 
     const relation = model.relations.find(a => a.alias === attribute);
     if (!relation) {
-      throw new StatusError(`Could not find relation "${attribute}" in model "${model.globalId}".`, 404);
+      throw new StatusError(`Could not find relation "${attribute}" in model "${model.globalId}".`, 400);
     }
 
     if (!entitiesIds.length) {

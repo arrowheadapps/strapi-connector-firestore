@@ -333,7 +333,7 @@ export interface StrapiWhereFilter {
 export interface StrapiOrFilter {
   field?: null
   operator: 'or'
-  value: StrapiWhereFilter[]
+  value: StrapiWhereFilter[][]
 }
 
 export interface FirestoreFilter {
