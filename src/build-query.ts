@@ -15,7 +15,7 @@ export interface QueryArgs<T extends object> {
   allowSearch?: boolean
 }
 
-export function buildQuery<T extends object>(query: Queryable<T>, { model, params, allowSearch }: QueryArgs<T>): Queryable<T> | Reference<T>[] | null {
+export function buildQuery<T extends object>(query: Queryable<T>, { model, params, allowSearch }: QueryArgs<T>): Queryable<T> | Reference<T>[] {
 
   // Capture the search term and remove it so it doesn't appear as filter
   const searchTerm = allowSearch ? params._q : undefined;
@@ -78,13 +78,18 @@ export function buildQuery<T extends object>(query: Queryable<T>, { model, param
     return query;
   } catch (err) {
     if (err instanceof EmptyQueryError)
-      return null;
+      return [];
     else
       throw err;
   }
 }
 
 function buildSearchQuery<T extends object>(model: FirestoreConnectorModel<T>, value: any, query: Queryable<T>) {
+
+  // Special case: empty query will match all entries
+  if (value === '') {
+    return query;
+  }
 
   if (model.options.searchAttribute) {
     const field = model.options.searchAttribute;
@@ -130,7 +135,7 @@ function buildSearchQuery<T extends object>(model: FirestoreConnectorModel<T>, v
     const filters: StrapiOrFilter['value'] = [];
 
     if (value != null) {
-      filters.push([{ field: model.primaryKey, operator: 'containss', value }]);
+      filters.push([{ field: model.primaryKey, operator: 'eq', value }]);
     }
 
     for (const field of Object.keys(model.attributes)) {

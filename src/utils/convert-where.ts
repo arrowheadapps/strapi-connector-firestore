@@ -2,15 +2,16 @@ import * as _ from 'lodash';
 import { WhereFilterOp, FieldPath } from '@google-cloud/firestore';
 import type { FirestoreFilter, StrapiAttribute, StrapiOrFilter, StrapiWhereFilter } from '../types';
 import type { FirestoreConnectorModel } from '../model';
-import { coerceAttrToModel } from '../coerce/coerce-to-model';
+import { coerceAttrToModel, CoercionError } from '../coerce/coerce-to-model';
 import { isEqualHandlingRef, Snapshot } from '../db/reference';
 import { StatusError } from './status-error';
+import { mapNotNull } from './map-not-null';
 
 const FIRESTORE_MAX_ARRAY_ELEMENTS = 10;
 
 export class EmptyQueryError extends Error {
   constructor() {
-    super('Query parameters will result in empty response');
+    super('Query parameters will result in an empty response');
   }
 }
 
@@ -70,18 +71,31 @@ export function convertWhere(model: FirestoreConnectorModel<any>, { field, opera
         throw new StatusError(`OR filters are not supported natively by Firestore. Use the \`allowNonNativeQueries\` option to enable a manual version of this query.`, 400);  
       }
       
-      const orFilters: ManualFilter[] = filters.map(andFilters => {
-        const convertedAndFilters = andFilters.map(filter => convertWhere(model, filter, 'manualOnly'));
-
-        // Combine the AND filters within this OR filter
-        return snap => {
-          for (const f of convertedAndFilters) {
-            if (f && !f(snap))
-              return false;
+      const orFilters: ManualFilter[] = mapNotNull(filters, andFilters => {
+        try {
+          // Combine the AND filters within this OR filter
+          const convertedAndFilters = andFilters.map(filter => convertWhere(model, filter, 'manualOnly'));
+          return snap => {
+            for (const f of convertedAndFilters) {
+              if (f && !f(snap))
+                return false;
+            }
+            return true;
           }
-          return true;
+        } catch (err) {
+          // If any of the AND filters within this OR filter are empty
+          // Then ignore this OR filter (i.e. "or false" has no effect)
+          if (err instanceof EmptyQueryError) {
+            return null;
+          } else {
+            throw err;
+          }
         }
       });
+
+      if (!orFilters.length) {
+        throw new EmptyQueryError();
+      }
 
       return snap => {
         for (const f of orFilters) {
@@ -260,7 +274,17 @@ export function convertWhere(model: FirestoreConnectorModel<any>, { field, opera
   }
 
   // Coerce the attribute into the correct type
-  value = coerceAttribute(attr, value);
+  try {
+    value = coerceAttribute(attr, value);
+  } catch (err) {
+    if (err instanceof CoercionError) {
+      // If the value cannot be coerced to the appropriate type
+      // then this filter will reject all entries
+      throw new EmptyQueryError();
+    } else {
+      throw err;
+    }
+  }
   
   if (typeof op === 'function') {
     const testFn = op;
@@ -281,10 +305,12 @@ export function convertWhere(model: FirestoreConnectorModel<any>, { field, opera
 }
 
 function coerceAttribute(attr: StrapiAttribute | undefined, value: unknown): unknown {
+  // Use editMode == 'update' so that strict coercion rules will be applies
+  // An error will be thrown rather than silently ignoring
   if (Array.isArray(value)) {
-    value = value.map(v => coerceAttrToModel(attr, v, {}));
+    value = value.map(v => coerceAttrToModel(attr, v, { editMode: 'update' }));
   } else {
-    value = coerceAttrToModel(attr, value, {});
+    value = coerceAttrToModel(attr, value, { editMode: 'update' });
   }
   return value;
 }

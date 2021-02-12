@@ -197,10 +197,7 @@ async function buildAndFetchQuery<T extends object>(args: QueryArgs<T>, transact
   return await fetchQuery(queryOrRefs, transaction);
 }
 
-async function fetchQuery<T extends object>(queryOrRefs: Queryable<T> | Reference<T>[] | null, transaction: Transaction): Promise<Snapshot<T>[]> {
-  if (!queryOrRefs) {
-    return [];
-  }
+async function fetchQuery<T extends object>(queryOrRefs: Queryable<T> | Reference<T>[], transaction: Transaction): Promise<Snapshot<T>[]> {
   if (Array.isArray(queryOrRefs)) {
     if (queryOrRefs.length) {
       return await transaction.getNonAtomic(queryOrRefs, { isSingleRequest: true });
