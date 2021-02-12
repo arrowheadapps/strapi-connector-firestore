@@ -114,13 +114,6 @@ export class QueryableFlatCollection<T extends object = DocumentData> implements
   }
 
   async get(repo?: ReadRepository): Promise<QuerySnapshot<T>> {
-    // FIXME: Is this desirable?
-    // Ensure consistent ordering
-    // const orderings: OrderSpec[] = this._orderBy.length
-    //   ? this._orderBy
-    //   : [{ field: FieldPath.documentId(), directionStr: 'asc' }];
-    const orderings = this._orderBy;
-
     const snap = repo
       ? (await repo.getAll([{ ref: this.flatDoc }]))[0]
       : await this.flatDoc.get();
@@ -140,7 +133,7 @@ export class QueryableFlatCollection<T extends object = DocumentData> implements
       }
     }
 
-    for (const { field, directionStr } of orderings) {
+    for (const { field, directionStr } of this._orderBy) {
       docs = _.orderBy(docs, d => getAtFieldPath(this.model, field, d), directionStr);
     }
     

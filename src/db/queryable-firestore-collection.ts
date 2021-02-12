@@ -22,7 +22,6 @@ export class QueryableFirestoreCollection<T extends object = DocumentData> imple
   private query: Query<T>
   private _limit?: number;
   private _offset?: number;
-  private _sorted = false;
 
   constructor(other: QueryableFirestoreCollection<T>)
   constructor(model: FirestoreConnectorModel<T>)
@@ -37,7 +36,6 @@ export class QueryableFirestoreCollection<T extends object = DocumentData> imple
       this.manualFilters = modelOrOther.manualFilters.slice();
       this._limit = modelOrOther._limit;
       this._offset = modelOrOther._offset;
-      this._sorted = modelOrOther._sorted;
     } else {
       
       this.model = modelOrOther;
@@ -114,13 +112,6 @@ export class QueryableFirestoreCollection<T extends object = DocumentData> imple
       q = q.limit(this.maxQuerySize);
     }
 
-    // FIXME: This interferes with Firestore limitations (inequality filters and sort must have the same key,
-    // cannot sort on key with equality filter..)
-    // Ensure consistent ordering
-    // if (!this._sorted) {
-    //   q = q.orderBy(FieldPath.documentId(), 'asc');
-    // }
-
     const docs = q.manualFilters.length
       ? await queryWithManualFilters(q.query, q.manualFilters, q._limit || 0, q._offset || 0, this.maxQuerySize, trans)
       : await (trans ? trans.getQuery(q.query) : q.query.get()).then(snap => snap.docs);
@@ -154,7 +145,6 @@ export class QueryableFirestoreCollection<T extends object = DocumentData> imple
   orderBy(field: string | FieldPath, directionStr: "desc" | "asc" = 'asc'): QueryableFirestoreCollection<T> {
     const other = new QueryableFirestoreCollection(this);
     other.query = this.query.orderBy(field, directionStr);
-    other._sorted = true;
     return other;
   }
 
