@@ -1,14 +1,11 @@
 import * as _ from 'lodash';
-import { convertRestQueryParams } from 'strapi-utils';
-import { FieldPath } from '@google-cloud/firestore';
 import { populateDoc, populateSnapshots } from './populate';
-import { buildPrefixQuery } from './utils/prefix-query';
 import { StatusError } from './utils/status-error';
-import type { FirestoreConnectorModel } from './model';
-import type { StrapiQuery, StrapiAttributeType, StrapiFilter, AttributeKey, StrapiContext, StrapiWhereFilter } from './types';
+import type { StrapiQuery, AttributeKey, StrapiContext } from './types';
 import type { Queryable } from './db/queryable-collection';
 import type { Transaction } from './db/transaction';
 import type { Reference, Snapshot } from './db/reference';
+import { buildQuery, QueryArgs } from './build-query';
 
 
 /**
@@ -142,7 +139,7 @@ export function queries<T extends object>({ model, strapi }: StrapiContext<T>): 
 
     const relation = model.relations.find(a => a.alias === attribute);
     if (!relation) {
-      throw new Error(`Could not find relation "${attribute}" in model "${model.globalId}".`);
+      throw new StatusError(`Could not find relation "${attribute}" in model "${model.globalId}".`, 400);
     }
 
     if (!entitiesIds.length) {
@@ -178,198 +175,12 @@ export function queries<T extends object>({ model, strapi }: StrapiContext<T>): 
   return queries;
 }
 
-
-interface QueryArgs<T extends object> {
-  model: FirestoreConnectorModel<T>
-  params: any
-  allowSearch?: boolean
-}
-
-function buildSearchQuery<T extends object>(model: FirestoreConnectorModel<T>, value: any, query: Queryable<T>) {
-
-  if (model.options.searchAttribute) {
-    const field = model.options.searchAttribute;
-    const type: StrapiAttributeType | undefined = (field === model.primaryKey)
-      ? 'uid'
-      : model.attributes[field].type;
-
-    // Build a native implementation of primitive search
-    switch (type) {
-      case 'integer':
-      case 'float':
-      case 'decimal':
-      case 'biginteger':
-      case 'date':
-      case 'time':
-      case 'datetime':
-      case 'timestamp':
-      case 'json':
-      case 'boolean':
-        // Use equality operator 
-        return query.where(field, 'eq', value);
-
-      case 'string':
-      case 'text':
-      case 'richtext':
-      case 'email':
-      case 'enumeration':
-      case 'uid':
-        // Use prefix operator
-        const { gte, lt } = buildPrefixQuery(value);
-        return query
-          .where(field, 'gte', gte)
-          .where(field, 'lt', lt);
-
-      case 'password':
-        // Explicitly don't search in password fields
-        throw new Error('Not allowed to query password fields');
-        
-      default:
-        throw new Error(`Search attribute "${field}" is an of an unsupported type`);
-    }
-
-  } else {
-
-    // Build a manual implementation of fully-featured search
-    const filters: StrapiWhereFilter[] = [];
-
-    if (value != null) {
-      filters.push({ field: model.primaryKey, operator: 'containss', value });
-    }
-
-    for (const field of Object.keys(model.attributes)) {
-      const attr = model.attributes[field];
-      switch (attr.type) {
-        case 'integer':
-        case 'float':
-        case 'decimal':
-        case 'biginteger':
-          try {
-            // Use equality operator for numbers
-            filters.push({ field, operator: 'eq', value });
-          } catch {
-            // Ignore if the query can't be coerced to this type
-          }
-          break;
-
-        case 'string':
-        case 'text':
-        case 'richtext':
-        case 'email':
-        case 'enumeration':
-        case 'uid':
-          try {
-            // User contains operator for strings
-            filters.push({ field, operator: 'contains', value });
-          } catch {
-            // Ignore if the query can't be coerced to this type
-          }
-          break;
-
-        case 'date':
-        case 'time':
-        case 'datetime':
-        case 'timestamp':
-        case 'json':
-        case 'boolean':
-        case 'password':
-          // Explicitly don't search in these fields
-          break;
-          
-        default:
-          // Unsupported field type for search
-          // Don't search in these fields
-          break;
-      }
-    }
-
-    return query.whereAny(filters);
-  }
-};
-
-function buildQuery<T extends object>(query: Queryable<T>, { model, params, allowSearch }: QueryArgs<T>): Queryable<T> | Reference<T>[] {
-  const isSearch = allowSearch && params._q;
-  const { where, limit, sort, start }: StrapiFilter = convertRestQueryParams(params);
-
-  if (isSearch) {
-    query = buildSearchQuery(model, params._q, query);
-  }
-
-  // Check for special case where querying for document IDs
-  // In this case it is more effective to fetch the documents by id
-  // because the "in" operator only supports ten arguments
-  if (where && (where.length === 1)) {
-    const [{ field, operator, value }] = where;
-    if ((field === model.primaryKey) && ((operator === 'eq') || (operator === 'in'))) {
-      return _.castArray(value || [])
-        .slice(start || 0, (limit || -1) < 1 ? undefined : limit)
-        .map(v => {
-          if (!v || (typeof v !== 'string')) {
-            throw new StatusError(`Argument for "${model.primaryKey}" must be an array of strings`, 400);
-          }
-          return model.db.doc(v)
-        });
-    }
-  }
-
-  // Apply filters
-  for (let { field, operator, value } of (where || [])) {
-    if (operator === 'in') {
-      if (Array.isArray(value) && (value.length === 0)) {
-        // Special case: empty query
-        return [];
-      }
-      value = _.castArray(value);
-    }
-    if (operator === 'nin') {
-      if (Array.isArray(value) && (value.length === 0)) {
-        // Special case: no effect
-        continue;
-      }
-      value = _.castArray(value);
-    }
-
-    // Prevent querying passwords
-    if (model.attributes[field]?.type === 'password') {
-      throw new Error('Not allowed to query password fields');
-    }
-
-    query = query.where(field, operator, value);
-  }
-
-  for (const { field, order } of (sort || [])) {
-    if (field === model.primaryKey) {
-      if (isSearch || 
-        (where || []).some(w => w.field !== model.primaryKey)) {
-        // Ignore sort by document ID when there are other filers
-        // on fields other than the document ID
-        // Document ID is the default sort for all queries 
-        // And more often than not, it interferes with Firestore inequality filter
-        // or indexing rules
-      } else {
-        query = query.orderBy(FieldPath.documentId() as any, order);
-      }
-    } else {
-      query = query.orderBy(field, order);
-    }
-  };
-
-  if (start && (start > 0)) {
-    query = query.offset(start);
-  }
-
-  if (limit && (limit > 1)) {
-    query = query.limit(limit);
-  }
-
-  return query;
-}
-
 async function buildAndCountQuery<T extends object>(args: QueryArgs<T>, transaction?: Transaction): Promise<number> {
   const queryOrIds = buildQuery(args.model.db, args);
   if (!queryOrIds) {
     return 0;
   }
+  
   if (Array.isArray(queryOrIds)) {
     // Don't do any read operations if we already know the count
     return queryOrIds.length;

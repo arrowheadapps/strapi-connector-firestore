@@ -4,7 +4,7 @@ module.exports = {
   testEnvironment: 'node',
   verbose: true,
   transform: { },
-  testMatch: ['<rootDir>/test/**/*.test*.js'],
+  testMatch: ['<rootDir>/test/tests/*.test*.js'],
   setupFilesAfterEnv: ['<rootDir>/test/utils/setup-test.js'],
   globalTeardown: '<rootDir>/test/teardown.js',
 

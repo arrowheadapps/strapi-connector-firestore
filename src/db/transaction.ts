@@ -101,6 +101,7 @@ export class TransactionImpl implements Transaction {
   
   private readonly writes = new Map<string, WriteOp>();
 
+  private readonly timestamp = new Date();
   private readonly atomicReads: ReadRepository;
   private readonly nonAtomicReads: ReadRepository;
   private readonly ensureFlatCollections: Promise<void>[] = [];
@@ -226,6 +227,7 @@ export class TransactionImpl implements Transaction {
       data,
       opts,
       transaction: this,
+      timestamp: this.timestamp,
     }))!;
   }
   
@@ -238,6 +240,7 @@ export class TransactionImpl implements Transaction {
       data,
       opts,
       transaction: this,
+      timestamp: this.timestamp,
     }))!;
   }
   
@@ -248,6 +251,7 @@ export class TransactionImpl implements Transaction {
       data: undefined,
       opts,
       transaction: this,
+      timestamp: this.timestamp,
     });
   }
 

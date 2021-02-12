@@ -12,15 +12,16 @@ export interface LifecycleArgs<T extends object> extends Required<CoerceOpts> {
   data: T | Partial<T> | undefined
   transaction?: TransactionImpl
   opts: SetOpts | undefined
+  timestamp: Date
 }
 
 /**
  * Runs the full lifecycle on the given reference including coercion and updating relations.
  * @returns The coerced data
  */
-export async function runUpdateLifecycle<T extends object>({ ref, data, editMode, opts, transaction }: LifecycleArgs<T>): Promise<T | Partial<T> | undefined> {
+export async function runUpdateLifecycle<T extends object>({ ref, data, editMode, opts, timestamp, transaction }: LifecycleArgs<T>): Promise<T | Partial<T> | undefined> {
   const db = ref.parent;
-  const newData = data ? coerceToModel(db.model, ref.id, data, null, { editMode }) : undefined;
+  const newData = data ? coerceToModel(db.model, ref.id, data, null, { editMode, timestamp }) : undefined;
 
   if (shouldUpdateRelations(opts)) {
 

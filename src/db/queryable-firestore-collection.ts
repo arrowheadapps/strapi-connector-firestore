@@ -1,8 +1,8 @@
 import * as _ from 'lodash';
-import { ManualFilter, convertWhere, WhereFilter } from '../utils/convert-where';
-import { Query, QueryDocumentSnapshot, FieldPath, WhereFilterOp, DocumentData, CollectionReference, FirestoreDataConverter } from '@google-cloud/firestore';
+import { ManualFilter, convertWhere } from '../utils/convert-where';
+import { Query, QueryDocumentSnapshot, FieldPath, DocumentData, CollectionReference, FirestoreDataConverter } from '@google-cloud/firestore';
 import type { QueryableCollection, QuerySnapshot } from './queryable-collection';
-import type { StrapiWhereFilter, StrapiWhereOperator } from '../types';
+import type { FirestoreFilter, StrapiOrFilter, StrapiWhereFilter } from '../types';
 import type { FirestoreConnectorModel } from '../model';
 import { coerceModelToFirestore, coerceToFirestore } from '../coerce/coerce-to-firestore';
 import { coerceToModel } from '../coerce/coerce-to-model';
@@ -113,7 +113,7 @@ export class QueryableFirestoreCollection<T extends object = DocumentData> imple
     }
 
     const docs = q.manualFilters.length
-      ? await queryWithManualFilters(q.query, q.manualFilters, q._limit || 0, q._offset || 0, trans)
+      ? await queryWithManualFilters(q.query, q.manualFilters, q._limit || 0, q._offset || 0, this.maxQuerySize, trans)
       : await (trans ? trans.getQuery(q.query) : q.query.get()).then(snap => snap.docs);
 
 
@@ -126,34 +126,19 @@ export class QueryableFirestoreCollection<T extends object = DocumentData> imple
     };
   }
 
-  where(filter: StrapiWhereFilter | WhereFilter): QueryableFirestoreCollection<T>
-  where(field: string | FieldPath, operator: WhereFilterOp | StrapiWhereOperator, value: any): QueryableFirestoreCollection<T>
-  where(fieldOrFilter: string | FieldPath | StrapiWhereFilter | WhereFilter, operator?: WhereFilterOp | StrapiWhereOperator, value?: any): QueryableFirestoreCollection<T> {
-    if ((typeof fieldOrFilter === 'string') || (fieldOrFilter instanceof FieldPath)) {
-      const filter = convertWhere(this.model, fieldOrFilter, operator!, value, this.allowNonNativeQueries ? 'preferNative' : 'nativeOnly');
-      const other = new QueryableFirestoreCollection(this);
-      if (typeof filter === 'function') {
-        other.manualFilters.push(filter);
-      } else {
-        // Convert the value for Firestore-native query
-        const value = coerceToFirestore(filter.value);
-        other.query = this.query.where(filter.field, filter.operator, value);
-      }
-      return other;
-    } else {
-      return this.where(fieldOrFilter.field, fieldOrFilter.operator, fieldOrFilter.value);
-    }
-  }
-
-  whereAny(filters: (StrapiWhereFilter | WhereFilter)[]): QueryableFirestoreCollection<T> {
-    if (!this.allowNonNativeQueries) {
-      throw new Error('OR filters and search are not natively supported by Firestore. Use the `allowNonNativeQueries` option to enable manual search, or `searchAttribute` to enable primitive search.');
+  where(clause: StrapiWhereFilter | StrapiOrFilter | FirestoreFilter): QueryableFirestoreCollection<T> {
+    const filter = convertWhere(this.model, clause, this.allowNonNativeQueries ? 'preferNative' : 'nativeOnly');
+    if (!filter) {
+      return this;
     }
     const other = new QueryableFirestoreCollection(this);
-    const filterFns = filters.map(({ field, operator, value }) => {
-      return convertWhere(this.model, field, operator, value, 'manualOnly');
-    });
-    other.manualFilters.push(data => filterFns.some(f => f(data)));
+    if (typeof filter === 'function') {
+      other.manualFilters.push(filter);
+    } else {
+      // Convert the value for Firestore-native query
+      const value = coerceToFirestore(filter.value);
+      other.query = this.query.where(filter.field, filter.operator, value);
+    }
     return other;
   }
 
@@ -180,14 +165,23 @@ export class QueryableFirestoreCollection<T extends object = DocumentData> imple
   offset(offset: number): QueryableFirestoreCollection<T> {
     const other = new QueryableFirestoreCollection(this);
     other.query = this.query.offset(offset);
+    other._offset = offset;
     return other;
   }
 }
 
 
-async function* queryChunked<T extends object>(query: Query<T>, chunkSize:number, transaction: ReadRepository | undefined) {
+async function* queryChunked<T extends object>(query: Query<T>, chunkSize: number, maxQuerySize: number, transaction: ReadRepository | undefined) {
   let cursor: QueryDocumentSnapshot<T> | undefined
+  let totalReads = 0;
+
   while (true) {
+    if (maxQuerySize) {
+      chunkSize = Math.max(chunkSize, maxQuerySize - totalReads);
+    }
+    if (chunkSize === 0) {
+      return;
+    }
     let q = query.limit(chunkSize);
     if (cursor) {
       // WARNING:
@@ -201,6 +195,7 @@ async function* queryChunked<T extends object>(query: Query<T>, chunkSize:number
 
     const { docs } = await (transaction ? transaction.getQuery(q) : q.get());
     cursor = docs[docs.length - 1];
+    totalReads += docs.length;
 
     for (const d of docs) {
       yield d;
@@ -212,7 +207,7 @@ async function* queryChunked<T extends object>(query: Query<T>, chunkSize:number
   }
 }
 
-async function queryWithManualFilters<T extends object>(query: Query<T>, filters: ManualFilter[], limit: number, offset: number, transaction: ReadRepository | undefined): Promise<QueryDocumentSnapshot<T>[]> {
+async function queryWithManualFilters<T extends object>(query: Query<T>, filters: ManualFilter[], limit: number, offset: number, maxQuerySize: number, transaction: ReadRepository | undefined): Promise<QueryDocumentSnapshot<T>[]> {
 
   // Use a chunk size of 10 for the native query
   // E.g. if we only want 1 result, we will still query
@@ -224,12 +219,11 @@ async function queryWithManualFilters<T extends object>(query: Query<T>, filters
   const q = query.offset(offset);
 
   const docs: QueryDocumentSnapshot<T>[] = [];
-  let skipped = 0;
 
-  for await (const doc of queryChunked(q, chunkSize, transaction)) {
+  for await (const doc of queryChunked(q, chunkSize, maxQuerySize, transaction)) {
     if (filters.every(op => op(doc))) {
-      if (limit > skipped) {
-        skipped++;
+      if (offset) {
+        offset--;
       } else {
         docs.push(doc);
         if (docs.length >= limit) {

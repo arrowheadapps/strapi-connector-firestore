@@ -12,10 +12,15 @@ import { updateComponentsMetadata } from '../utils/components-indexing';
 import { NormalReference } from '../db/normal-reference';
 import { FieldOperation } from '../db/field-operation';
 
-
+export class CoercionError extends StatusError {
+  constructor(message: string) {
+    super(message, 400);
+  }
+}
 
 export interface CoerceOpts {
   editMode?: 'create' | 'update'
+  timestamp?: Date
 }
 
 /**
@@ -40,7 +45,7 @@ export function coerceToModel<T extends object>(model: FirestoreConnectorModel<T
 
     // Assign timestamps
     if (model.timestamps && opts.editMode) {
-      const now = new Date();
+      const now = opts.timestamp || new Date();
       const [createdAtKey, updatedAtKey] = model.timestamps;
       _.set(obj, updatedAtKey, now);
       if (opts.editMode === 'create') {
@@ -423,7 +428,7 @@ function getIdOrAuto(model: FirestoreConnectorModel, value: any): string | undef
 
 function fault({ editMode }: CoerceOpts, message: string): null {
   if (editMode) {
-    throw new StatusError(message, 400);
+    throw new CoercionError(message);
   } else {
     strapi.log.warn(message);
     return null;

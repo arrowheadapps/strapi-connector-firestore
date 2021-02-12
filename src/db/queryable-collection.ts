@@ -1,6 +1,5 @@
-import type { OrderByDirection, FieldPath, WhereFilterOp, FirestoreDataConverter } from '@google-cloud/firestore';
-import type { StrapiWhereFilter, StrapiWhereOperator, } from '../types';
-import type { WhereFilter } from '../utils/convert-where';
+import type { OrderByDirection, FieldPath, FirestoreDataConverter } from '@google-cloud/firestore';
+import type { FirestoreFilter, StrapiOrFilter, StrapiWhereFilter } from '../types';
 import type { DeepReference } from './deep-reference';
 import type { FirestoreConnectorModel } from '../model';
 import type { Snapshot } from './reference';
@@ -17,9 +16,7 @@ export interface QuerySnapshot<T extends object> {
 export interface Queryable<T extends object> {
   get(trans?: ReadRepository): Promise<QuerySnapshot<T>>;
   
-  where(field: string | FieldPath, opStr: WhereFilterOp | StrapiWhereOperator, value: any): Queryable<T>;
-  where(filter: StrapiWhereFilter | WhereFilter): Queryable<T>;
-  whereAny(filters: (StrapiWhereFilter | WhereFilter)[]): Queryable<T>;
+  where(filter: StrapiWhereFilter | StrapiOrFilter | FirestoreFilter): Queryable<T>;
   orderBy(field: string | FieldPath, directionStr?: OrderByDirection): Queryable<T>;
   limit(limit: number): Queryable<T>;
   offset(offset: number): Queryable<T>;

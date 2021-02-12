@@ -1,4 +1,4 @@
-import type { DocumentData, DocumentReference, Settings } from '@google-cloud/firestore';
+import type { DocumentData, DocumentReference, FieldPath, Settings, WhereFilterOp } from '@google-cloud/firestore';
 import type { Logger } from 'pino';
 import type { FirestoreConnectorModel } from './model';
 
@@ -319,7 +319,7 @@ export interface StrapiFilter {
   sort?: { field: string, order: 'asc' | 'desc'  }[]
   start?: number,
   limit?: number,
-  where?: StrapiWhereFilter[]
+  where?: (StrapiWhereFilter | StrapiOrFilter)[]
 }
 
 export type StrapiWhereOperator = 'eq' | 'ne' | 'in' | 'nin' | 'contains' | 'ncontains' | 'containss' | 'ncontainss' | 'lt' | 'lte' | 'gt' | 'gte' | 'null';
@@ -327,5 +327,17 @@ export type StrapiWhereOperator = 'eq' | 'ne' | 'in' | 'nin' | 'contains' | 'nco
 export interface StrapiWhereFilter {
   field: string
   operator: StrapiWhereOperator
+  value: any
+}
+
+export interface StrapiOrFilter {
+  field?: null
+  operator: 'or'
+  value: StrapiWhereFilter[][]
+}
+
+export interface FirestoreFilter {
+  field: string | FieldPath
+  operator: WhereFilterOp
   value: any
 }
