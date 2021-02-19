@@ -1,18 +1,17 @@
 import * as _ from 'lodash';
-import { ManualFilter, convertWhere } from '../utils/convert-where';
-import { Query, QueryDocumentSnapshot, FieldPath, DocumentData, CollectionReference, FirestoreDataConverter } from '@google-cloud/firestore';
+import { ManualFilter, convertWhere, FirestoreFilter } from '../utils/convert-where';
+import { Query, QueryDocumentSnapshot, FieldPath, CollectionReference, FirestoreDataConverter } from '@google-cloud/firestore';
 import type { QueryableCollection, QuerySnapshot } from './queryable-collection';
-import type { FirestoreFilter, StrapiOrFilter, StrapiWhereFilter } from '../types';
-import type { FirestoreConnectorModel } from '../model';
+import type { Model, ModelData, OrClause, WhereClause } from 'strapi';
 import { coerceModelToFirestore, coerceToFirestore } from '../coerce/coerce-to-firestore';
 import { coerceToModel } from '../coerce/coerce-to-model';
 import { makeNormalSnap, NormalReference } from './normal-reference';
 import type { ReadRepository } from '../utils/read-repository';
 
 
-export class QueryableFirestoreCollection<T extends object = DocumentData> implements QueryableCollection<T> {
+export class QueryableFirestoreCollection<T extends ModelData> implements QueryableCollection<T> {
 
-  readonly model: FirestoreConnectorModel<T>
+  readonly model: Model<T>
   readonly converter: FirestoreDataConverter<T>;
   
   private readonly collection: CollectionReference<T>
@@ -24,8 +23,8 @@ export class QueryableFirestoreCollection<T extends object = DocumentData> imple
   private _offset?: number;
 
   constructor(other: QueryableFirestoreCollection<T>)
-  constructor(model: FirestoreConnectorModel<T>)
-  constructor(modelOrOther: FirestoreConnectorModel<T> | QueryableFirestoreCollection<T>) {
+  constructor(model: Model<T>)
+  constructor(modelOrOther: Model<T> | QueryableFirestoreCollection<T>) {
     if (modelOrOther instanceof QueryableFirestoreCollection) {
       this.model = modelOrOther.model;
       this.collection = modelOrOther.collection;
@@ -126,7 +125,7 @@ export class QueryableFirestoreCollection<T extends object = DocumentData> imple
     };
   }
 
-  where(clause: StrapiWhereFilter | StrapiOrFilter | FirestoreFilter): QueryableFirestoreCollection<T> {
+  where(clause: WhereClause | OrClause | FirestoreFilter): QueryableFirestoreCollection<T> {
     const filter = convertWhere(this.model, clause, this.allowNonNativeQueries ? 'preferNative' : 'nativeOnly');
     if (!filter) {
       return this;
@@ -171,7 +170,7 @@ export class QueryableFirestoreCollection<T extends object = DocumentData> imple
 }
 
 
-async function* queryChunked<T extends object>(query: Query<T>, chunkSize: number, maxQuerySize: number, transaction: ReadRepository | undefined) {
+async function* queryChunked<T extends ModelData>(query: Query<T>, chunkSize: number, maxQuerySize: number, transaction: ReadRepository | undefined) {
   let cursor: QueryDocumentSnapshot<T> | undefined
   let totalReads = 0;
 
@@ -207,7 +206,7 @@ async function* queryChunked<T extends object>(query: Query<T>, chunkSize: numbe
   }
 }
 
-async function queryWithManualFilters<T extends object>(query: Query<T>, filters: ManualFilter[], limit: number, offset: number, maxQuerySize: number, transaction: ReadRepository | undefined): Promise<QueryDocumentSnapshot<T>[]> {
+async function queryWithManualFilters<T extends ModelData>(query: Query<T>, filters: ManualFilter[], limit: number, offset: number, maxQuerySize: number, transaction: ReadRepository | undefined): Promise<QueryDocumentSnapshot<T>[]> {
 
   // Use a chunk size of 10 for the native query
   // E.g. if we only want 1 result, we will still query

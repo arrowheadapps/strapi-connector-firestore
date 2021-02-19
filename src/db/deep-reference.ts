@@ -4,12 +4,13 @@ import type { QueryableFlatCollection } from './queryable-flat-collection';
 import { FlatReferenceShape, Reference, SetOpts, Snapshot } from './reference';
 import { FieldOperation } from './field-operation';
 import { runUpdateLifecycle } from '../utils/lifecycle';
+import type { ModelData } from 'strapi';
 
 /**
  * References an item in a flattened collection 
  * (i.e.) a field within a document.
  */
-export class DeepReference<T extends object> extends Reference<T> {
+export class DeepReference<T extends ModelData> extends Reference<T> {
 
   readonly doc: DocumentReference<{ [id: string]: T }>
 
@@ -122,7 +123,7 @@ export class DeepReference<T extends object> extends Reference<T> {
 }
 
 
-export function makeDeepSnap<T extends object>(ref: DeepReference<T>, snap: DocumentSnapshot<{[id: string]: T}>): Snapshot<T> {
+export function makeDeepSnap<T extends ModelData>(ref: DeepReference<T>, snap: DocumentSnapshot<{[id: string]: T}>): Snapshot<T> {
   const data = snap.data()?.[ref.id];
   return {
     ref,
@@ -132,7 +133,7 @@ export function makeDeepSnap<T extends object>(ref: DeepReference<T>, snap: Docu
   };
 }
 
-export function mapToFlattenedDoc<T extends object>({ id }: DeepReference<T>, data: Partial<T> | undefined, merge: boolean): { [id: string]: any } {
+export function mapToFlattenedDoc<T extends ModelData>({ id }: DeepReference<T>, data: Partial<T> | undefined, merge: boolean): { [id: string]: any } {
   if ((data !== undefined) && (typeof data !== 'object')) {
     throw new Error(`Invalid data provided to Firestore. It must be an object but it was: ${JSON.stringify(data)}`);
   }

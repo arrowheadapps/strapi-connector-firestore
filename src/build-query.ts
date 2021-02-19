@@ -5,23 +5,22 @@ import { EmptyQueryError } from './utils/convert-where';
 import { StatusError } from './utils/status-error';
 import { buildPrefixQuery } from './utils/prefix-query';
 import type { Queryable } from './db/queryable-collection';
-import type { StrapiAttributeType, StrapiFilter, StrapiOrFilter } from './types';
-import type { FirestoreConnectorModel } from './model';
+import type { AttributeType, Filter, Model, ModelData, OrClause } from 'strapi';
 import type { Reference } from './db/reference';
 
-export interface QueryArgs<T extends object> {
-  model: FirestoreConnectorModel<T>
+export interface QueryArgs<T extends ModelData> {
+  model: Model<T>
   params: any
   allowSearch?: boolean
 }
 
-export function buildQuery<T extends object>(query: Queryable<T>, { model, params, allowSearch }: QueryArgs<T>): Queryable<T> | Reference<T>[] {
+export function buildQuery<T extends ModelData>(query: Queryable<T>, { model, params, allowSearch }: QueryArgs<T>): Queryable<T> | Reference<T>[] {
 
   // Capture the search term and remove it so it doesn't appear as filter
   const searchTerm = allowSearch ? params._q : undefined;
   delete params._q;
 
-  const { where, limit, sort, start }: StrapiFilter = convertRestQueryParams(params);
+  const { where, limit, sort, start }: Filter = convertRestQueryParams(params);
 
   try {
     if (searchTerm !== undefined) {
@@ -84,7 +83,7 @@ export function buildQuery<T extends object>(query: Queryable<T>, { model, param
   }
 }
 
-function buildSearchQuery<T extends object>(model: FirestoreConnectorModel<T>, value: any, query: Queryable<T>) {
+function buildSearchQuery<T extends ModelData>(model: Model<T>, value: any, query: Queryable<T>) {
 
   // Special case: empty query will match all entries
   if (value === '') {
@@ -93,7 +92,7 @@ function buildSearchQuery<T extends object>(model: FirestoreConnectorModel<T>, v
 
   if (model.options.searchAttribute) {
     const field = model.options.searchAttribute;
-    const type: StrapiAttributeType | undefined = (field === model.primaryKey)
+    const type: AttributeType | undefined = (field === model.primaryKey)
       ? 'uid'
       : model.attributes[field].type;
 
@@ -132,7 +131,7 @@ function buildSearchQuery<T extends object>(model: FirestoreConnectorModel<T>, v
   } else {
 
     // Build a manual implementation of fully-featured search
-    const filters: StrapiOrFilter['value'] = [];
+    const filters: OrClause['value'] = [];
 
     if (value != null) {
       filters.push([{ field: model.primaryKey, operator: 'eq', value }]);

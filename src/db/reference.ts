@@ -1,6 +1,7 @@
 import * as _ from 'lodash';
 import type { DocumentReference, Firestore } from '@google-cloud/firestore';
 import type { QueryableCollection } from './queryable-collection';
+import type { ModelData } from 'strapi';
 
 
 /**
@@ -22,31 +23,31 @@ export function isEqualHandlingRef(a: any, b: any): boolean {
 /**
  * The shape of references as stored in Firestore.
  */
-export type ReferenceShape<T extends object> = 
+export type ReferenceShape<T extends ModelData> = 
   DocumentReference<T> |
   FlatReferenceShape<T> |
   MorphReferenceShape<T>;
 
-export interface FlatReferenceShape<T extends object> {
+export interface FlatReferenceShape<T extends ModelData> {
   ref: DocumentReference<{ [id: string]: T }>
   id: string
 }
 
-export type MorphReferenceShape<T extends object> = NormalMorphReferenceShape<T> | FlatMorphReferenceShape<T>;
+export type MorphReferenceShape<T extends ModelData> = NormalMorphReferenceShape<T> | FlatMorphReferenceShape<T>;
 
-export interface NormalMorphReferenceShape<T extends object> {
+export interface NormalMorphReferenceShape<T extends ModelData> {
   ref: DocumentReference<T>
   filter: string | null
 }
 
-export interface FlatMorphReferenceShape<T extends object> extends FlatReferenceShape<T> {
+export interface FlatMorphReferenceShape<T extends ModelData> extends FlatReferenceShape<T> {
   filter: string | null
 }
 
 
 
 
-export interface Snapshot<T extends object> {
+export interface Snapshot<T extends ModelData> {
   data(): T | undefined
   ref: Reference<T>
   id: string
@@ -73,7 +74,7 @@ export interface SetOpts {
  * References perform coercion on input data according to the model
  * schema that they belong to.
  */
-export abstract class Reference<T extends object> {
+export abstract class Reference<T extends ModelData> {
 
   abstract readonly parent: QueryableCollection<T>;
   abstract readonly id: string;

@@ -1,12 +1,12 @@
 import * as _ from 'lodash';
+import { Model, ModelData } from 'strapi';
 import { FieldOperation } from '../db/field-operation';
-import type { FirestoreConnectorModel } from '../model';
 
 /**
  * Lightweight converter for a root model object. Ensures that the
  * `primaryKey` is not set on the Firestore data.
  */
-export function coerceModelToFirestore<T extends object>(model: FirestoreConnectorModel<T>, data: T): T {
+export function coerceModelToFirestore<T extends ModelData>(model: Model<T>, data: T): T {
   const obj = coerceToFirestore(data);
   _.unset(obj, model.primaryKey);
   return obj;
@@ -16,7 +16,7 @@ export function coerceModelToFirestore<T extends object>(model: FirestoreConnect
  * Lightweight converter that converts known custom classes
  * to Firestore-compatible values.
  */
-export function coerceToFirestore<T extends object>(data: T): T {
+export function coerceToFirestore<T extends ModelData>(data: T): T {
   return _.cloneDeepWith(data, value => {
     
     // Coerce values within FieldOperation

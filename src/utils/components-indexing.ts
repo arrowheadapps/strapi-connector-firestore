@@ -1,17 +1,18 @@
 import * as _ from 'lodash';
 import { isEqualHandlingRef } from '../db/reference';
-import type { FirestoreConnectorModel } from '../model';
-import type { AttributeKey, IndexerFn, StrapiAttribute, StrapiModel } from '../types';
+import type { Model, AttributeKey, Attribute, ModelData, ModelBase } from 'strapi';
+import type { IndexerFn } from '../types';
 import { getComponentModel } from './components';
+import { PRIMARY_KEY } from '../model';
 
 
 
-export function doesComponentRequireMetadata(attr: StrapiAttribute): boolean {
+export function doesComponentRequireMetadata(attr: Attribute): boolean {
   return (attr.type === 'dynamiczone') 
     || ((attr.type === 'component') && (attr.repeatable === true));
 }
 
-export function updateComponentsMetadata<T extends object>(model: FirestoreConnectorModel<T>, data: T, output: T = data) {
+export function updateComponentsMetadata<T extends ModelData>(model: Model<T>, data: T, output: T = data) {
   if (model.isComponent) {
     return;
   }
@@ -27,7 +28,7 @@ export function updateComponentsMetadata<T extends object>(model: FirestoreConne
   }
 }
 
-export function generateMetadataForComponent<T extends object>(model: FirestoreConnectorModel<T>, parentAlias: AttributeKey<T>, data: T): object | undefined {
+export function generateMetadataForComponent<T extends ModelData>(model: Model<T>, parentAlias: AttributeKey<T>, data: T): object | undefined {
 
   const parentAttr = model.attributes[parentAlias];
   if (doesComponentRequireMetadata(parentAttr)) {
@@ -99,7 +100,7 @@ export function generateMetadataForComponent<T extends object>(model: FirestoreC
 
 export interface AttributeIndexInfo {
   alias: string
-  attr: StrapiAttribute
+  attr: Attribute
   defaultIndexer?: string
   indexers: {
     [key: string]: IndexerFn
@@ -110,7 +111,7 @@ export interface AttributeIndexInfo {
  * Build indexers for all the indexed attributes
  * in a component model.
  */
-export function buildIndexers<T extends object>(model: StrapiModel<T>): AttributeIndexInfo[] | undefined {
+export function buildIndexers<T extends ModelData>(model: ModelBase<T>): AttributeIndexInfo[] | undefined {
   if (model.modelType !== 'component') {
     return undefined;
   }
@@ -162,7 +163,7 @@ export function buildIndexers<T extends object>(model: StrapiModel<T>): Attribut
       // If this indexer is for the primary key and only the indexer is defined
       // then this is a special case and we remove the attribute once
       // the indexers have been absorbed
-      if ((alias === model.primaryKey) && !Object.keys(attr).length) {
+      if ((alias === PRIMARY_KEY) && !Object.keys(attr).length) {
         delete model.attributes[alias];
       }
 

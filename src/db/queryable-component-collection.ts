@@ -1,12 +1,12 @@
 import type { CollectionReference } from '@google-cloud/firestore';
-import type { FirestoreConnectorModel } from '../model';
+import type { Model, ModelData } from 'strapi';
 import type { QueryableCollection } from './queryable-collection';
 
 
-export class QueryableComponentCollection<T extends object = never> implements QueryableCollection<T> {
+export class QueryableComponentCollection<T extends ModelData = never> implements QueryableCollection<T> {
 
   private collection: CollectionReference
-  constructor(readonly model: FirestoreConnectorModel<T>) {
+  constructor(readonly model: Model<T>) {
     this.collection = model.firestore.collection(model.collectionName);
   }
 

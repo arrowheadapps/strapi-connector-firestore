@@ -3,11 +3,12 @@ import type { DocumentReference, DocumentSnapshot } from '@google-cloud/firestor
 import { Reference, SetOpts, Snapshot } from './reference';
 import type { QueryableFirestoreCollection } from './queryable-firestore-collection';
 import { runUpdateLifecycle } from '../utils/lifecycle';
+import type { ModelData } from 'strapi';
 
 /**
  * Acts as a wrapper around a native `DocumentReference`,
  */
-export class NormalReference<T extends object> extends Reference<T> {
+export class NormalReference<T extends ModelData> extends Reference<T> {
 
   constructor(readonly ref: DocumentReference<T>, readonly parent: QueryableFirestoreCollection<T>) {
     super();
@@ -108,7 +109,7 @@ export class NormalReference<T extends object> extends Reference<T> {
   }
 }
 
-export function makeNormalSnap<T extends object>(ref: NormalReference<T>, snap: DocumentSnapshot<T>): Snapshot<T> {
+export function makeNormalSnap<T extends ModelData>(ref: NormalReference<T>, snap: DocumentSnapshot<T>): Snapshot<T> {
   const data = snap.data();
   return {
     ref,

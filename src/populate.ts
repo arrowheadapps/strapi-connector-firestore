@@ -1,15 +1,14 @@
 import * as _ from 'lodash';
 import { getComponentModel } from './utils/components';
 import type { Transaction } from './db/transaction';
-import type { AttributeKey } from './types';
+import type { AttributeKey, Model, ModelData } from 'strapi';
 import type { Reference, Snapshot } from './db/reference';
-import { FirestoreConnectorModel } from './model';
 import { StatusError } from './utils/status-error';
 
 /**
  * Populates all the requested relational field on the given documents.
  */
-export async function populateSnapshots<T extends object>(snaps: Snapshot<T>[], populate: AttributeKey<T>[], transaction: Transaction) {
+export async function populateSnapshots<T extends ModelData>(snaps: Snapshot<T>[], populate: AttributeKey<T>[], transaction: Transaction) {
   return await Promise.all(
     snaps.map(async snap => {
       const data = snap.data();
@@ -24,7 +23,7 @@ export async function populateSnapshots<T extends object>(snaps: Snapshot<T>[], 
 /**
  * Populates all the requested relational field on the given document.
  */
-export async function populateDoc<T extends object>(model: FirestoreConnectorModel<T>, ref: Reference<T>, data: T, populateKeys: AttributeKey<T>[], transaction: Transaction): Promise<T> {
+export async function populateDoc<T extends ModelData>(model: Model<T>, ref: Reference<T>, data: T, populateKeys: AttributeKey<T>[], transaction: Transaction): Promise<T> {
   const promises: Promise<any>[] = [];
 
   // Shallow copy the object

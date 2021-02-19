@@ -7,6 +7,7 @@ import { Reference, SetOpts, Snapshot } from './reference';
 import { MorphReference } from './morph-reference';
 import { makeNormalSnap, NormalReference } from './normal-reference';
 import { runUpdateLifecycle } from '../utils/lifecycle';
+import type { ModelData } from 'strapi';
 
 export interface GetOpts {
   /**
@@ -57,18 +58,18 @@ export interface Transaction {
    * Does not return a cached response from `getNonAtomic(...)` because
    * that would not establish a lock.
    */
-  getAtomic<T extends object>(ref: Reference<T>, opts?: GetOpts): Promise<Snapshot<T>>
-  getAtomic<T extends object>(refs: Reference<T>[], opts?: GetOpts): Promise<Snapshot<T>[]>
-  getAtomic<T extends object>(query: Queryable<T>): Promise<QuerySnapshot<T>>
+  getAtomic<T extends ModelData>(ref: Reference<T>, opts?: GetOpts): Promise<Snapshot<T>>
+  getAtomic<T extends ModelData>(refs: Reference<T>[], opts?: GetOpts): Promise<Snapshot<T>[]>
+  getAtomic<T extends ModelData>(query: Queryable<T>): Promise<QuerySnapshot<T>>
 
   /**
    * Reads the given document. Returns a cached response if the document
    * has been read *(with `getNonAtomic(...)` or `getAtomic(...)`)* within
    * this transaction.
    */
-  getNonAtomic<T extends object>(ref: Reference<T>, opts?: GetOpts): Promise<Snapshot<T>>
-  getNonAtomic<T extends object>(refs: Reference<T>[], opts?: GetOpts): Promise<Snapshot<T>[]>
-  getNonAtomic<T extends object>(query: Queryable<T>): Promise<QuerySnapshot<T>>
+  getNonAtomic<T extends ModelData>(ref: Reference<T>, opts?: GetOpts): Promise<Snapshot<T>>
+  getNonAtomic<T extends ModelData>(refs: Reference<T>[], opts?: GetOpts): Promise<Snapshot<T>[]>
+  getNonAtomic<T extends ModelData>(query: Queryable<T>): Promise<QuerySnapshot<T>>
 
   /**
    * Creates the given document, merging the data with any other `create()` or `update()`
@@ -76,8 +77,8 @@ export interface Transaction {
    * 
    * @returns The coerced data
    */
-  create<T extends object>(ref: Reference<T>, data: T, opts?: SetOpts): Promise<T>
-  create<T extends object>(ref: Reference<T>, data: Partial<T>, opts?: SetOpts): Promise<Partial<T>>
+  create<T extends ModelData>(ref: Reference<T>, data: T, opts?: SetOpts): Promise<T>
+  create<T extends ModelData>(ref: Reference<T>, data: Partial<T>, opts?: SetOpts): Promise<Partial<T>>
   
   /**
    * Updates the given document, merging the data with any other `create()` or `update()`
@@ -85,14 +86,14 @@ export interface Transaction {
    * 
    * @returns The coerced data
    */
-  update<T extends object>(ref: Reference<T>, data: Partial<T>, opts?: SetOpts): Promise<T>
-  update<T extends object>(ref: Reference<T>, data: Partial<Partial<T>>, opts?: SetOpts): Promise<Partial<T>>
+  update<T extends ModelData>(ref: Reference<T>, data: Partial<T>, opts?: SetOpts): Promise<T>
+  update<T extends ModelData>(ref: Reference<T>, data: Partial<Partial<T>>, opts?: SetOpts): Promise<Partial<T>>
 
   /**
    * Deletes the given document, overriding all other write operations
    * on the document in this transaction.
    */
-  delete<T extends object>(ref: Reference<T>, opts?: SetOpts): Promise<void>
+  delete<T extends ModelData>(ref: Reference<T>, opts?: SetOpts): Promise<void>
 
 }
 
@@ -166,10 +167,10 @@ export class TransactionImpl implements Transaction {
     return refs.map((ref, i) => makeSnap(ref, results[mapping[i]]));
   }
   
-  getAtomic<T extends object>(ref: Reference<T>, opts?: GetOpts): Promise<Snapshot<T>>
-  getAtomic<T extends object>(refs: Reference<T>[], opts?: GetOpts): Promise<Snapshot<T>[]>
-  getAtomic<T extends object>(query: Queryable<T>): Promise<QuerySnapshot<T>>
-  getAtomic<T extends object>(refOrQuery: Reference<T> | Reference<T>[] | Queryable<T>, opts?: GetOpts): Promise<Snapshot<T> | Snapshot<T>[] | QuerySnapshot<T>> {
+  getAtomic<T extends ModelData>(ref: Reference<T>, opts?: GetOpts): Promise<Snapshot<T>>
+  getAtomic<T extends ModelData>(refs: Reference<T>[], opts?: GetOpts): Promise<Snapshot<T>[]>
+  getAtomic<T extends ModelData>(query: Queryable<T>): Promise<QuerySnapshot<T>>
+  getAtomic<T extends ModelData>(refOrQuery: Reference<T> | Reference<T>[] | Queryable<T>, opts?: GetOpts): Promise<Snapshot<T> | Snapshot<T>[] | QuerySnapshot<T>> {
     if (Array.isArray(refOrQuery)) {
       return this._getAll(refOrQuery, this.atomicReads, opts);
     }  else {
@@ -177,10 +178,10 @@ export class TransactionImpl implements Transaction {
     }
   }
   
-  getNonAtomic<T extends object>(ref: Reference<T>, opts?: GetOpts): Promise<Snapshot<T>>
-  getNonAtomic<T extends object>(refs: Reference<T>[], opts?: GetOpts): Promise<Snapshot<T>[]>
-  getNonAtomic<T extends object>(query: Queryable<T>): Promise<QuerySnapshot<T>>
-  getNonAtomic<T extends object>(refOrQuery: Reference<T> | Reference<T>[] | Queryable<T>, opts?: GetOpts): Promise<Snapshot<T> | Snapshot<T>[] | QuerySnapshot<T>> {
+  getNonAtomic<T extends ModelData>(ref: Reference<T>, opts?: GetOpts): Promise<Snapshot<T>>
+  getNonAtomic<T extends ModelData>(refs: Reference<T>[], opts?: GetOpts): Promise<Snapshot<T>[]>
+  getNonAtomic<T extends ModelData>(query: Queryable<T>): Promise<QuerySnapshot<T>>
+  getNonAtomic<T extends ModelData>(refOrQuery: Reference<T> | Reference<T>[] | Queryable<T>, opts?: GetOpts): Promise<Snapshot<T> | Snapshot<T>[] | QuerySnapshot<T>> {
     if (Array.isArray(refOrQuery)) {
       return this._getAll(refOrQuery, this.nonAtomicReads, opts);
     } else {
@@ -218,9 +219,9 @@ export class TransactionImpl implements Transaction {
   }
 
 
-  create<T extends object>(ref: Reference<T>, data: T, opts?: SetOpts): Promise<T>
-  create<T extends object>(ref: Reference<T>, data: Partial<T>, opts?: SetOpts): Promise<Partial<T>>
-  async create<T extends object>(ref: Reference<T>, data: T | Partial<T>, opts?: SetOpts): Promise<T | Partial<T>> {
+  create<T extends ModelData>(ref: Reference<T>, data: T, opts?: SetOpts): Promise<T>
+  create<T extends ModelData>(ref: Reference<T>, data: Partial<T>, opts?: SetOpts): Promise<Partial<T>>
+  async create<T extends ModelData>(ref: Reference<T>, data: T | Partial<T>, opts?: SetOpts): Promise<T | Partial<T>> {
     return (await runUpdateLifecycle({
       editMode: 'create',
       ref,
@@ -231,9 +232,9 @@ export class TransactionImpl implements Transaction {
     }))!;
   }
   
-  update<T extends object>(ref: Reference<T>, data: T, opts?: SetOpts): Promise<T>
-  update<T extends object>(ref: Reference<T>, data: Partial<T>, opts?: SetOpts): Promise<Partial<T>>
-  async update<T extends object>(ref: Reference<T>, data: T | Partial<T>, opts?: SetOpts): Promise<T | Partial<T>> {
+  update<T extends ModelData>(ref: Reference<T>, data: T, opts?: SetOpts): Promise<T>
+  update<T extends ModelData>(ref: Reference<T>, data: Partial<T>, opts?: SetOpts): Promise<Partial<T>>
+  async update<T extends ModelData>(ref: Reference<T>, data: T | Partial<T>, opts?: SetOpts): Promise<T | Partial<T>> {
     return (await runUpdateLifecycle({
       editMode: 'update',
       ref,
@@ -244,7 +245,7 @@ export class TransactionImpl implements Transaction {
     }))!;
   }
   
-  async delete<T extends object>(ref: Reference<T>, opts?: SetOpts): Promise<void> {
+  async delete<T extends ModelData>(ref: Reference<T>, opts?: SetOpts): Promise<void> {
     await runUpdateLifecycle({
       editMode: 'update',
       ref,
@@ -263,7 +264,7 @@ export class TransactionImpl implements Transaction {
    * @private
    * @deprecated For internal connector use only
    */
-  mergeWriteInternal<T extends object>(ref: Reference<T>, data: Partial<T> | undefined, editMode: 'create' | 'update') {
+  mergeWriteInternal<T extends ModelData>(ref: Reference<T>, data: Partial<T> | undefined, editMode: 'create' | 'update') {
 
     const { docRef, deepRef } = getRefInfo(ref);
     const { path } = docRef;

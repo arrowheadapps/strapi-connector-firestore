@@ -2,14 +2,15 @@ import * as _ from 'lodash';
 import { DeepReference } from './deep-reference';
 import type { QueryableCollection } from './queryable-collection';
 import { MorphReferenceShape, Reference, SetOpts } from './reference';
-import { NormalReference } from './normal-reference';
+import type { NormalReference } from './normal-reference';
+import type { ModelData } from 'strapi';
 
 
 /**
  * Acts as a wrapper around a `NormalReference` or a `DeepReference`
  * with additional field/filter information for polymorphic references.
  */
-export class MorphReference<T extends object> extends Reference<T> {
+export class MorphReference<T extends ModelData> extends Reference<T> {
 
   constructor(readonly ref: NormalReference<T> | DeepReference<T>, readonly filter: string | null) {
     super();

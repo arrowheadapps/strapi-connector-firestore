@@ -4,16 +4,10 @@ import * as _ from 'lodash';
 import { Firestore, Settings, DocumentReference, Timestamp } from '@google-cloud/firestore';
 import { allModels, DEFAULT_CREATE_TIME_KEY, DEFAULT_UPDATE_TIME_KEY, mountModels } from './model';
 import { queries } from './queries';
-import type { Strapi, ConnectorOptions } from './types';
+import type { Strapi, ConnectorOptions } from 'strapi';
 import { QueryableFlatCollection } from './db/queryable-flat-collection';
 
-export type { 
-  Strapi,
-  Connector,
-  ConnectorOptions,
-  ModelOptions,
-  Converter,
-  StrapiQuery,
+export type {
   IndexerFn,
   FlattenFn,
   ModelTestFn,
@@ -27,7 +21,6 @@ export type {
   QueryableCollection,
   QuerySnapshot, 
 } from './db/queryable-collection';
-export type { FirestoreConnectorModel } from './model';
 export type { Transaction } from './db/transaction';
 
 

@@ -1,11 +1,10 @@
 import * as _ from 'lodash';
 import * as path from 'path';
-import { convertWhere, ManualFilter, getAtFieldPath } from '../utils/convert-where';
-import { DocumentReference, OrderByDirection, FieldPath, DocumentData, FirestoreDataConverter } from '@google-cloud/firestore';
+import { convertWhere, ManualFilter, getAtFieldPath, FirestoreFilter } from '../utils/convert-where';
+import { DocumentReference, OrderByDirection, FieldPath, FirestoreDataConverter } from '@google-cloud/firestore';
 import type { QueryableCollection, QuerySnapshot } from './queryable-collection';
-import type { FirestoreFilter, StrapiOrFilter, StrapiWhereFilter } from '../types';
+import type { Model, ModelData, OrClause, WhereClause } from 'strapi';
 import { DeepReference } from './deep-reference';
-import type { FirestoreConnectorModel } from '../model';
 import { coerceModelToFirestore, coerceToFirestore } from '../coerce/coerce-to-firestore';
 import { coerceToModel } from '../coerce/coerce-to-model';
 import type { Snapshot } from './reference';
@@ -16,9 +15,9 @@ interface OrderSpec {
   directionStr: OrderByDirection
 }
 
-export class QueryableFlatCollection<T extends object = DocumentData> implements QueryableCollection<T> {
+export class QueryableFlatCollection<T extends ModelData> implements QueryableCollection<T> {
 
-  readonly model: FirestoreConnectorModel<T>
+  readonly model: Model<T>
   readonly flatDoc: DocumentReference<{ [id: string]: T }>;
   readonly converter: FirestoreDataConverter<{ [id: string]: T }>;
 
@@ -30,9 +29,9 @@ export class QueryableFlatCollection<T extends object = DocumentData> implements
   private _ensureDocument: Promise<any> | null;
 
 
-  constructor(model: FirestoreConnectorModel<T>)
+  constructor(model: Model<T>)
   constructor(other: QueryableFlatCollection<T>)
-  constructor(modelOrOther: FirestoreConnectorModel<T> | QueryableFlatCollection<T>) {
+  constructor(modelOrOther: Model<T> | QueryableFlatCollection<T>) {
     if (modelOrOther instanceof QueryableFlatCollection) {
       // Copy the values
       this.model = modelOrOther.model;
@@ -148,7 +147,7 @@ export class QueryableFlatCollection<T extends object = DocumentData> implements
     };
   }
 
-  where(clause: StrapiWhereFilter | StrapiOrFilter | FirestoreFilter): QueryableFlatCollection<T> {
+  where(clause: WhereClause | OrClause | FirestoreFilter): QueryableFlatCollection<T> {
     const filter = convertWhere(this.model, clause, 'manualOnly');
     if (!filter) {
       return this;

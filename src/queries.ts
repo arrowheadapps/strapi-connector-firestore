@@ -1,22 +1,20 @@
 import * as _ from 'lodash';
 import { populateDoc, populateSnapshots } from './populate';
 import { StatusError } from './utils/status-error';
-import type { StrapiQuery, AttributeKey, StrapiContext } from './types';
+import type { QueryBuilder, AttributeKey, Strapi, ModelData, Model } from 'strapi';
 import type { Queryable } from './db/queryable-collection';
 import type { Transaction } from './db/transaction';
 import type { Reference, Snapshot } from './db/reference';
 import { buildQuery, QueryArgs } from './build-query';
 
 
-/**
- * Firestore connector implementation of the Strapi query interface.
- */
-export interface FirestoreConnectorQueries<T extends object> extends StrapiQuery<T> {
-
+export interface QueryBuilderArgs<T extends ModelData = ModelData> {
+  strapi: Strapi
+  modelKey: string
+  model: Model<T>
 }
 
-
-export function queries<T extends object>({ model, strapi }: StrapiContext<T>): FirestoreConnectorQueries<T> {
+export function queries<T extends ModelData>({ model, strapi }: QueryBuilderArgs<T>): QueryBuilder<T> {
 
   const log = model.options.logQueries
     ? (name: string, details: object) => { strapi.log.debug(`QUERY ${model.modelName}.${name}: ${JSON.stringify(details)}`) }
@@ -160,7 +158,7 @@ export function queries<T extends object>({ model, strapi }: StrapiContext<T>): 
     });
   };
 
-  const queries: FirestoreConnectorQueries<T> = {
+  const queries: QueryBuilder<T> = {
     model,
     find,
     findOne,
@@ -175,7 +173,7 @@ export function queries<T extends object>({ model, strapi }: StrapiContext<T>): 
   return queries;
 }
 
-async function buildAndCountQuery<T extends object>(args: QueryArgs<T>, transaction?: Transaction): Promise<number> {
+async function buildAndCountQuery<T extends ModelData>(args: QueryArgs<T>, transaction?: Transaction): Promise<number> {
   const queryOrIds = buildQuery(args.model.db, args);
   if (!queryOrIds) {
     return 0;
@@ -192,12 +190,12 @@ async function buildAndCountQuery<T extends object>(args: QueryArgs<T>, transact
   }
 }
 
-async function buildAndFetchQuery<T extends object>(args: QueryArgs<T>, transaction: Transaction): Promise<Snapshot<T>[]> {
+async function buildAndFetchQuery<T extends ModelData>(args: QueryArgs<T>, transaction: Transaction): Promise<Snapshot<T>[]> {
   const queryOrRefs = buildQuery(args.model.db, args);
   return await fetchQuery(queryOrRefs, transaction);
 }
 
-async function fetchQuery<T extends object>(queryOrRefs: Queryable<T> | Reference<T>[], transaction: Transaction): Promise<Snapshot<T>[]> {
+async function fetchQuery<T extends ModelData>(queryOrRefs: Queryable<T> | Reference<T>[], transaction: Transaction): Promise<Snapshot<T>[]> {
   if (Array.isArray(queryOrRefs)) {
     if (queryOrRefs.length) {
       return await transaction.getNonAtomic(queryOrRefs, { isSingleRequest: true });

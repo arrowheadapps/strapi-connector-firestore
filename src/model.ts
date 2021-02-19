@@ -3,11 +3,12 @@ import * as utils from 'strapi-utils';
 import { QueryableFirestoreCollection } from './db/queryable-firestore-collection';
 import { QueryableFlatCollection } from './db/queryable-flat-collection';
 import { QueryableComponentCollection } from './db/queryable-component-collection';
-import type { AttributeKey, ConnectorOptions, FlattenFn, ModelOptions, ModelTestFn, Strapi, StrapiAttribute, StrapiAttributeType, StrapiModel, StrapiModelRecord } from './types';
+import type { AttributeKey, ConnectorOptions, Strapi, Model, ModelData, AttributeType, Attribute, ModelOptions, ModelBase } from 'strapi';
+import type { FlattenFn, ModelTestFn } from './types';
 import { populateDoc, populateSnapshots } from './populate';
 import { buildPrefixQuery } from './utils/prefix-query';
 import type{ QueryableCollection } from './db/queryable-collection';
-import { DocumentReference, Firestore } from '@google-cloud/firestore';
+import { DocumentData, DocumentReference, Firestore } from '@google-cloud/firestore';
 import type { Transaction } from './db/transaction';
 import type { RelationHandler } from './utils/relation-handler';
 import { buildRelations } from './relations';
@@ -19,14 +20,16 @@ import { makeTransactionRunner } from './utils/transaction-runner';
 
 export const DEFAULT_CREATE_TIME_KEY = 'createdAt';
 export const DEFAULT_UPDATE_TIME_KEY = 'updatedAt';
+export const PRIMARY_KEY = 'id';
+export const PRIMARY_KEY_TYPE = 'string';
 
 
 /**
  * Iterates each model in a the given of models.
  */
-export function* eachModel<M extends StrapiModel<any> = FirestoreConnectorModel<any>>(models: StrapiModelRecord): Generator<M> {
+export function* eachModel(models: Strapi['models']): Generator<Model> {
   for (const key of Object.keys(models)) {
-    const model: M = models[key];
+    const model = models[key];
 
     // The internal core_store and webhooks models don't
     // have modelKey set, which breaks some of our code
@@ -40,7 +43,7 @@ export function* eachModel<M extends StrapiModel<any> = FirestoreConnectorModel<
  * Iterates all models in the Strapi instance.
  * @param strapiInstance Defaults to global Strapi
  */
-export function* allModels<M extends StrapiModel<any> = FirestoreConnectorModel<any>>(strapiInstance = strapi): Generator<M> {
+export function* allModels(strapiInstance = strapi): Generator<Model> {
   // Iterate components first because subsequent models 
   // need to access the indexers
   yield* eachModel(strapiInstance.components);
@@ -52,44 +55,115 @@ export function* allModels<M extends StrapiModel<any> = FirestoreConnectorModel<
   }
 }
 
-
-/**
- * Firestore connector implementation of the Strapi model interface.
- */
-export interface FirestoreConnectorModel<T extends object = object> extends StrapiModel<T> {
-  options: Required<ModelOptions<T>>;
-  defaultPopulate: AttributeKey<T>[];
-
-  assocKeys: AttributeKey<T>[];
-  componentKeys: AttributeKey<T>[];
-  
+declare module 'strapi' {
   /**
-   * If this model is a component, then this is a list of indexer
-   * information for all of the indexed fields.
+   * Firestore connector implementation of the Strapi model interface.
    */
-  indexers: AttributeIndexInfo[] | undefined;
-  
-  isComponent: boolean;
-  relations: RelationHandler<T, any>[];
+  interface Model<T extends ModelData = ModelData> {
+    options: Required<ModelOptions<T>>;
+    defaultPopulate: AttributeKey<T>[];
 
-  firestore: Firestore;
-  db: QueryableCollection<T>;
-  timestamps: [string, string] | null;
+    assocKeys: AttributeKey<T>[];
+    componentKeys: AttributeKey<T>[];
+    
+    /**
+     * If this model is a component, then this is a list of indexer
+     * information for all of the indexed fields.
+     */
+    indexers: AttributeIndexInfo[] | undefined;
+    
+    isComponent: boolean;
+    relations: RelationHandler<T, any>[];
+
+    firestore: Firestore;
+    db: QueryableCollection<T>;
+    timestamps: [string, string] | null;
+
+    /**
+     * Gets the path of the field to store the metadata/index
+     * map for the given repeatable component attribute.
+     */
+    getMetadataMapKey(attrKey: AttributeKey<T>): string
+    hasPK(obj: any): boolean;
+    getPK(obj: any): string;
+
+    runTransaction<TResult>(fn: (transaction: Transaction) => TResult | PromiseLike<TResult>): Promise<TResult>;
+
+    populate(data: Snapshot<T>, transaction: Transaction, populate?: AttributeKey<T>[]): Promise<any>;
+    populateAll(datas: Snapshot<T>[], transaction: Transaction, populate?: AttributeKey<T>[]): Promise<any[]>;
+  }
 
   /**
-   * Gets the path of the field to store the metadata/index
-   * map for the given repeatable component attribute.
+   * Configuration options for Firestore connector models.
    */
-  getMetadataMapKey(attrKey: AttributeKey<T>): string
-  hasPK(obj: any): boolean;
-  getPK(obj: any): string;
-
-  runTransaction<TResult>(fn: (transaction: Transaction) => TResult | PromiseLike<TResult>): Promise<TResult>;
-
-  populate(data: Snapshot<T>, transaction: Transaction, populate?: AttributeKey<T>[]): Promise<any>;
-  populateAll(datas: Snapshot<T>[], transaction: Transaction, populate?: AttributeKey<T>[]): Promise<any[]>;
+  interface ModelOptions<T extends ModelData, R extends DocumentData = DocumentData> {
+    timestamps?: boolean | [string, string]
+    singleId?: string
+  
+    /**
+     * Override connector option per model.
+     * 
+     * Defaults to `undefined` (use connector setting).
+     */
+    logQueries?: boolean
+  
+    /**
+     * Override connector flattening options per model.
+     * `false` to disable.
+     * `true` to enable and use connector's `singleId` for the document ID.
+     * 
+     * Defaults to `undefined` (use connector setting).
+     */
+    flatten?: boolean
+  
+  
+    /**
+     * Override connector setting per model.
+     * 
+     * Defaults to `undefined` (use connector setting).
+     */
+    allowNonNativeQueries?: boolean
+  
+    /**
+     * If defined, nominates a single attribute to be searched when fully-featured
+     * search is disabled because of the `allowNonNativeQueries` setting.
+     */
+    searchAttribute?: string
+  
+    /**
+     * Override connector setting per model.
+     * 
+     * Defaults to `undefined` (use connector setting).
+     */
+    ensureComponentIds?: boolean
+  
+    /**
+     * Override connector setting per model.
+     * 
+     * Defaults to `undefined` (use connector setting).
+     */
+    maxQuerySize?: number
+  
+    /**
+     * Override connector setting per model.
+     * 
+     * Defaults to `undefined` (use connector setting).
+     */
+    metadataField?: string | ((attrKey: AttributeKey<T>) => string)
+  
+    /**
+     * Converter that is run upon data immediately before it
+     * is stored in Firestore, and immediately after it is
+     * retrieved from Firestore.
+     */
+    converter?: Converter<T, R>
+  }
 }
 
+export interface Converter<T, R = DocumentData> {
+  toFirestore?: (data: Partial<T>) => R
+  fromFirestore?: (data: R) => T
+}
 
 export interface FirestoreConnectorModelArgs {
   firestore: Firestore
@@ -105,8 +179,8 @@ export interface FirestoreConnectorModelArgs {
  */
 export function mountModels(args: FirestoreConnectorModelArgs) {
   // Mount initialise all models onto the existing model instances
-  const models: FirestoreConnectorModel[] = [];
-  for (const model of allModels<StrapiModel>(args.strapi)) {
+  const models: Model[] = [];
+  for (const model of allModels(args.strapi)) {
     models.push(mountModel(model, args));
   }
 
@@ -117,11 +191,8 @@ export function mountModels(args: FirestoreConnectorModelArgs) {
 }
 
 
-function mountModel<T extends object>(mdl: StrapiModel<T>, { strapi, firestore, connectorOptions }: FirestoreConnectorModelArgs): FirestoreConnectorModel<T> {
+function mountModel<T extends ModelData>(mdl: ModelBase<T>, { strapi, firestore, connectorOptions }: FirestoreConnectorModelArgs): Model<T> {
 
-  mdl.orm = 'firestore';
-  mdl.primaryKey = mdl.primaryKey || 'id';
-  mdl.primaryKeyType = mdl.primaryKeyType || 'string';
   mdl.attributes = mdl.attributes || {};
   mdl.collectionName = mdl.collectionName || mdl.globalId;
 
@@ -143,6 +214,9 @@ function mountModel<T extends object>(mdl: StrapiModel<T>, { strapi, firestore, 
     allowNonNativeQueries: defaultAllowNonNativeQueries(mdl, opts, connectorOptions),
     metadataField: opts.metadataField || connectorOptions.metadataField,
     converter: opts.converter || {},
+    populateCreatorFields: opts.populateCreatorFields || false,
+    draftAndPublish: opts.draftAndPublish || false,
+    privateAttributes: opts.privateAttributes || [],
   };
 
   const timestamps: [string, string] | null = (typeof options.timestamps === 'boolean')
@@ -184,13 +258,8 @@ function mountModel<T extends object>(mdl: StrapiModel<T>, { strapi, firestore, 
       return attr.autoPopulate ?? true;
     });
 
-  const hasPK = (obj: any) => {
-    return _.has(obj, mdl.primaryKey) || _.has(obj, 'id');
-  }
-
-  const getPK = (obj: any) => {
-    return ((_.has(obj, mdl.primaryKey) ? obj[mdl.primaryKey] : obj.id));
-  }
+  const hasPK = (obj: any) => PRIMARY_KEY in obj;
+  const getPK = (obj: any) => obj[PRIMARY_KEY];
 
   const populate = async (snap: Snapshot<T>, transaction: Transaction, populate = defaultPopulate) => {
     const data = snap.data();
@@ -243,7 +312,10 @@ function mountModel<T extends object>(mdl: StrapiModel<T>, { strapi, firestore, 
 
 
 
-  const model: FirestoreConnectorModel<T> = Object.assign(mdl, {
+  const model: Model<T> = Object.assign(mdl, {
+    orm: 'firestore',
+    primaryKey: PRIMARY_KEY,
+    primaryKeyType: PRIMARY_KEY_TYPE,
     firestore,
     options,
     timestamps,
@@ -259,7 +331,10 @@ function mountModel<T extends object>(mdl: StrapiModel<T>, { strapi, firestore, 
 
     // We assign this next
     // The constructors need these other values to be populated onto the model first
-    db: null!,
+    db: undefined!,
+
+    // We assign this later using utils.models.defineAssociations()
+    associations: undefined!,
 
     hasPK,
     getPK,
@@ -300,7 +375,7 @@ function mountModel<T extends object>(mdl: StrapiModel<T>, { strapi, firestore, 
 }
 
 
-function defaultAllowNonNativeQueries<T extends object>(model: StrapiModel<T>, options: ModelOptions<T>, connectorOptions: Required<ConnectorOptions>) {
+function defaultAllowNonNativeQueries<T extends ModelData>(model: ModelBase<T>, options: ModelOptions<T>, connectorOptions: Required<ConnectorOptions>) {
   if (options.allowNonNativeQueries === undefined) {
     const rootAllow = connectorOptions.allowNonNativeQueries;
     if (typeof rootAllow === 'boolean') {
@@ -330,7 +405,7 @@ interface FlattenResult {
   singleId: string
 }
 
-function defaultFlattenOpts<T extends object>(model: StrapiModel<T>, options: ModelOptions<T>, connectorOptions: Required<ConnectorOptions>): FlattenResult | null {
+function defaultFlattenOpts<T extends ModelData>(model: ModelBase<T>, options: ModelOptions<T>, connectorOptions: Required<ConnectorOptions>): FlattenResult | null {
   const singleId = options.singleId || connectorOptions.singleId;
   const result: FlattenResult = {
     collectionName: null,
@@ -377,14 +452,13 @@ function defaultFlattenOpts<T extends object>(model: StrapiModel<T>, options: Mo
   }
 }
 
-function defaultSearchAttrOpts<T extends object>(model: StrapiModel<any>, options: ModelOptions<T>) {
+function defaultSearchAttrOpts<T extends ModelData>(model: ModelBase<T>, options: ModelOptions<T>) {
   const searchAttr = options.searchAttribute || '';
 
   if (searchAttr) {
-    const type: StrapiAttributeType | undefined = (searchAttr === model.primaryKey)
-      ? 'uid'
-      : model.attributes[searchAttr]?.type;
-    const notAllowed: StrapiAttributeType[] = [
+    const type: AttributeType | undefined 
+      = (searchAttr === PRIMARY_KEY) ? 'uid' : model.attributes[searchAttr]?.type;
+    const notAllowed: AttributeType[] = [
       'password',
       'dynamiczone',
       'component',
@@ -401,8 +475,8 @@ function defaultSearchAttrOpts<T extends object>(model: StrapiModel<any>, option
 /**
  * Build attributes for the metadata map fields.
  */
-function buildMetadataAttributes<T extends object>(model: StrapiModel<T>, { componentKeys, getMetadataMapKey }: Pick<FirestoreConnectorModel<T>, 'componentKeys'> & Pick<FirestoreConnectorModel<T>, 'getMetadataMapKey'>): { [key: string]: StrapiAttribute } {
-  const attributes: { [key: string]: StrapiAttribute } = {};
+function buildMetadataAttributes<T extends ModelData>(model: ModelBase<T>, { componentKeys, getMetadataMapKey }: Pick<Model<T>, 'componentKeys'> & Pick<Model<T>, 'getMetadataMapKey'>): Model<T>['attributes'] {
+  const attributes: Model<T>['attributes'] = {};
   if (model.modelType !== 'component') {
     for (const alias of componentKeys) {
       const attr = model.attributes[alias];
@@ -423,7 +497,7 @@ function buildMetadataAttributes<T extends object>(model: StrapiModel<T>, { comp
         for (const info of indexers!) {
           for (const key of Object.keys(info.indexers)) {
             const attrPath = `${mapKey}.${key}`;
-            const attrValue: StrapiAttribute = {
+            const attrValue: Attribute = {
               collection: info.attr.model || info.attr.collection,
               via: info.attr.via,
               type: info.attr.type,

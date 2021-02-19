@@ -1,15 +1,14 @@
-import type { FirestoreConnectorModel } from "../model";
-import type { AttributeKey } from "../types";
+import type { Model, ModelData, AttributeKey } from 'strapi';
 
-export interface Component<T extends object> {
+export interface Component<T extends ModelData> {
   key: string
   value: any
-  model: FirestoreConnectorModel<T>
+  model: Model<T>
 }
 
-export function getComponentModel<R extends object>(componentName: string): FirestoreConnectorModel<R>
-export function getComponentModel<T extends object, R extends object = any>(hostModel: FirestoreConnectorModel<T>, key: AttributeKey<T>, value: T[AttributeKey<T>]): FirestoreConnectorModel<R>
-export function getComponentModel<T extends object, R extends object = any>(hostModelOrName: FirestoreConnectorModel<T> | string, key?: AttributeKey<T>, value?: any): FirestoreConnectorModel<R> {
+export function getComponentModel<R extends ModelData>(componentName: string): Model<R>
+export function getComponentModel<T extends ModelData>(hostModel: Model<T>, key: AttributeKey<T>, value: T[AttributeKey<T>]): Model
+export function getComponentModel<T extends ModelData>(hostModelOrName: Model<T> | string, key?: AttributeKey<T>, value?: any): Model {
   const modelName = typeof hostModelOrName === 'string'
     ? hostModelOrName
     : value!.__component || hostModelOrName.attributes[key!].component;

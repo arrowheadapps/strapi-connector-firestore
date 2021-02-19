@@ -1,11 +1,10 @@
 import * as _ from 'lodash';
 import * as parseType from 'strapi-utils/lib/parse-type';
 import { DocumentReference, FieldValue, Timestamp } from '@google-cloud/firestore';
-import type { FirestoreConnectorModel } from '../model';
+import type { Attribute, Model, ModelData } from 'strapi';
 import { DeepReference } from '../db/deep-reference';
 import { FlatReferenceShape, MorphReferenceShape, Reference } from '../db/reference';
 import { StatusError } from '../utils/status-error';
-import type { StrapiAttribute } from '../types';
 import { getComponentModel } from '../utils/components';
 import { MorphReference } from '../db/morph-reference';
 import { updateComponentsMetadata } from '../utils/components-indexing';
@@ -30,7 +29,7 @@ export interface CoerceOpts {
  * 
  * Designed to both coerce from user input, or rehydrate from Firestore.
  */
-export function coerceToModel<T extends object>(model: FirestoreConnectorModel<T>, id: string | undefined, data: unknown, fieldPath: string | null | undefined, opts: CoerceOpts): T {
+export function coerceToModel<T extends ModelData>(model: Model<T>, id: string | undefined, data: unknown, fieldPath: string | null | undefined, opts: CoerceOpts): T {
   
   const obj = coerceModelRecursive(model, data, fieldPath, opts);
 
@@ -76,7 +75,7 @@ function fallbackCoerceOrCopy(value: any, opts: CoerceOpts): any {
   return result;
 }
 
-function coerceModelRecursive<T extends object>(model: FirestoreConnectorModel<T>, data: unknown, parentPath: string | null | undefined, opts: CoerceOpts) {
+function coerceModelRecursive<T extends ModelData>(model: Model<T>, data: unknown, parentPath: string | null | undefined, opts: CoerceOpts) {
   return _.cloneDeepWith(data, (value, key) => {
     const path = [parentPath, key].filter(Boolean).join('.');
     if (!path) {
@@ -107,7 +106,7 @@ function coerceModelRecursive<T extends object>(model: FirestoreConnectorModel<T
  * Coerces a given attribute value to out of the value stored in Firestore to the
  * value expected by the given attribute schema.
  */
-export function coerceAttrToModel(attr: StrapiAttribute | undefined, value: unknown, opts: CoerceOpts): unknown {
+export function coerceAttrToModel(attr: Attribute | undefined, value: unknown, opts: CoerceOpts): unknown {
 
   // Coerce values inside FieldOperation
   if (value instanceof FieldOperation) {
@@ -282,7 +281,7 @@ export function coerceAttrToModel(attr: StrapiAttribute | undefined, value: unkn
 /**
  * Coerces a value to a `Reference` if it is one.
  */
-function coerceToReference<T extends object = object>(value: any, to: FirestoreConnectorModel<T> | undefined, opts: CoerceOpts): Reference<T> | null {
+function coerceToReference<T extends ModelData>(value: any, to: Model<T> | undefined, opts: CoerceOpts): Reference<T> | null {
   if ((value === undefined) || (value === null)) {
     return null;
   }
@@ -341,11 +340,11 @@ function coerceToReference<T extends object = object>(value: any, to: FirestoreC
       && (typeof id === 'string')
       && (!plugin || (typeof plugin === 'string'))
       && (!field || (typeof field === 'string'))) {
-      const targetModel = strapi.db.getModel(targetModelName, plugin);
+      const targetModel = strapi.db.getModel<T>(targetModelName, plugin);
       if (!targetModel) {
         return fault(opts, `The model "${targetModelName}" with plugin "${plugin}" in polymorphic relation could not be found`)
       }
-      return new MorphReference(targetModel.db.doc(id), field);
+      return new MorphReference<T>(targetModel.db.doc(id), field);
     }
   }
 
@@ -383,7 +382,7 @@ function coerceToReference<T extends object = object>(value: any, to: FirestoreC
         return deepRef;
       } else {
         const collection = _.trim(path.slice(0, lastSep), '/');
-        const model = strapi.db.getModelByCollectionName(collection);
+        const model = strapi.db.getModelByCollectionName<T>(collection);
         if (!model) {
           return fault(opts, `The model referred to by "${collection}" doesn't exist`);
         }
@@ -400,7 +399,7 @@ function coerceToReference<T extends object = object>(value: any, to: FirestoreC
  * Reinstantiates the reference via the target model so that it comes
  * loaded with the appropriate converter.
  */
-function reinstantiateReference<T extends object>(value: DocumentReference<T | { [id: string]: T }>, id: string | undefined, to: FirestoreConnectorModel<T> | undefined, opts: CoerceOpts): NormalReference<T> | DeepReference<T> | null {
+function reinstantiateReference<T extends ModelData>(value: DocumentReference<T | { [id: string]: T }>, id: string | undefined, to: Model<T> | undefined, opts: CoerceOpts): NormalReference<T> | DeepReference<T> | null {
   if (to) {
     const newRef = to.db.doc(id || value.id);
     if (newRef.parent.path !== value.parent.path) {
@@ -408,7 +407,7 @@ function reinstantiateReference<T extends object>(value: DocumentReference<T | {
     }
     return newRef;
   } else {
-    const model = strapi.db.getModelByCollectionName(value.parent.path);
+    const model = strapi.db.getModelByCollectionName<T>(value.parent.path);
     if (!model) {
       return fault(opts, `The model referred to by "${value.parent.path}" doesn't exist`);
     }
@@ -416,7 +415,7 @@ function reinstantiateReference<T extends object>(value: DocumentReference<T | {
   }
 }
 
-function getIdOrAuto(model: FirestoreConnectorModel, value: any): string | undefined {
+function getIdOrAuto(model: Model, value: any): string | undefined {
   if (model.options.ensureComponentIds) {
     // Ensure there is a guaranteed ID
     return _.get(value, model.primaryKey) || model.db.autoId();

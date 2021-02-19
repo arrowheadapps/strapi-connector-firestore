@@ -7,7 +7,7 @@
     "noUnusedLocals": true,
     "outDir": "lib",
     "target": "ES2019",
-    "types": ["node"],
+    "types": ["node", "strapi"],
     "noImplicitAny": false,
     "sourceMap": false,
     "declaration": true

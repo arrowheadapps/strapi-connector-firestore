@@ -1,5 +1,5 @@
 import * as _ from 'lodash';
-import type { FirestoreConnectorModel } from '../model';
+import type { Model, ModelData } from 'strapi';
 import type { Transaction } from '../db/transaction';
 import { StatusError } from './status-error';
 import { MorphReference } from '../db/morph-reference';
@@ -9,8 +9,8 @@ import { NormalReference } from '../db/normal-reference';
 import { DeepReference } from '../db/deep-reference';
 import { mapNotNull } from './map-not-null';
 
-export interface RelationInfo<T extends object> {
-  model: FirestoreConnectorModel<T>
+export interface RelationInfo<T extends ModelData = ModelData> {
+  model: Model<T>
   attr: RelationAttrInfo | undefined
   parentModels: RelationInfo<any>[] | undefined
 }
@@ -38,7 +38,7 @@ export interface RelationAttrInfo {
   isMeta: boolean
 }
 
-export class RelationHandler<T extends object, R extends object = object> {
+export class RelationHandler<T extends ModelData, R extends ModelData = ModelData> {
 
   constructor(
     private readonly thisEnd: RelationInfo<T>,
@@ -345,9 +345,9 @@ export class RelationHandler<T extends object, R extends object = object> {
 
 
 
-interface RefInfo<T extends object, R extends object> {
+interface RefInfo<T extends ModelData, R extends ModelData> {
   ref: Reference<R>
-  model: FirestoreConnectorModel<R>
+  model: Model<R>
 
   /**
    * If the snapshot was found by querying, then this is the
@@ -361,7 +361,7 @@ interface RefInfo<T extends object, R extends object> {
   attr: RelationAttrInfo | undefined
 }
 
-function makeRefInfo<T extends object, R extends object>(info: RelationInfo<R>, ref: Reference<R>, thisRefValue: Reference<T> | undefined): RefInfo<T, R> {
+function makeRefInfo<T extends ModelData, R extends ModelData>(info: RelationInfo<R>, ref: Reference<R>, thisRefValue: Reference<T> | undefined): RefInfo<T, R> {
   return {
     ...info,
     ref,

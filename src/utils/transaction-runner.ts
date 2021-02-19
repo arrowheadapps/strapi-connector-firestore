@@ -1,17 +1,16 @@
 import type { Firestore } from '@google-cloud/firestore';
-import type { ConnectorOptions, ModelOptions } from '../types';
-import type { FirestoreConnectorModel } from '../model';
+import type { ConnectorOptions, Model, ModelData, ModelOptions } from 'strapi';
 import { TransactionImpl } from '../db/transaction';
 import PQueue from 'p-queue';
 
-export type TransactionRunner<T extends object> = FirestoreConnectorModel<T>['runTransaction'];
+export type TransactionRunner<T extends ModelData> = Model<T>['runTransaction'];
 
 /**
  * Makes a function that runs a transaction.
  * If the connector is using an emulator then the return runner queues transactions
  * with a maximum concurrency limit.
  */
-export function makeTransactionRunner<T extends object>(firestore: Firestore, options: Required<ModelOptions<T>>, connectorOptions: Required<ConnectorOptions>): TransactionRunner<T> {
+export function makeTransactionRunner<T extends ModelData>(firestore: Firestore, options: Required<ModelOptions<T>>, connectorOptions: Required<ConnectorOptions>): TransactionRunner<T> {
   const { useEmulator, logTransactionStats } = connectorOptions;
 
   const normalRunner: TransactionRunner<T> = async (fn) => {
