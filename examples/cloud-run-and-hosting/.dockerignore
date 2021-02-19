@@ -1,22 +1,22 @@
 # Exclude Strapi build outputs
 # These are for the admin font-end which is deployed to Firebase Hosting
-# so we dont wan't them in the Cloud Run image
-admin/
-build/
-.cache/
-.temp/
+# so we don't want them in the Cloud Run image
+/admin
+/build
+/.cache
+/.temp
 .strapi-updater.json
 
 # Exclude environment variables because we set variables using Cloud Run
 .env
 
 # Don't serve uploads from Cloud Run because we use Cloud Storage
-public/uploads/
+/public/uploads
 
 # Firebase exclusions
 firebase.json
 .firebaserc
-.firebase/
+.firebase
 *.rules
 
 # Other exclusions
