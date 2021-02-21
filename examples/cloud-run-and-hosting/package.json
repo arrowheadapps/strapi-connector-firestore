@@ -27,7 +27,7 @@
   },
   "devDependencies": {
     "execa": "^5.0.0",
-    "fs-extra": "^7.0.1",
+    "fs-extra": "^9.1.0",
     "patch-package": "^6.2.2",
     "rimraf": "^3.0.2"
   }

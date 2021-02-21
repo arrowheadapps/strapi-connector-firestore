@@ -74,7 +74,7 @@ export interface FirestoreConnectorModel<T extends object = object> extends Stra
 
   firestore: Firestore;
   db: QueryableCollection<T>;
-  timestamps: [string, string] | null;
+  timestamps: [string, string] | false;
 
   /**
    * Gets the path of the field to store the metadata/index
@@ -145,10 +145,10 @@ function mountModel<T extends object>(mdl: StrapiModel<T>, { strapi, firestore, 
     converter: opts.converter || {},
   };
 
-  const timestamps: [string, string] | null = (typeof options.timestamps === 'boolean')
-      ? (options.timestamps ? [DEFAULT_CREATE_TIME_KEY, DEFAULT_UPDATE_TIME_KEY] : null)
+  const timestamps: [string, string] | false = (options.timestamps && (typeof options.timestamps === 'boolean'))
+      ? [DEFAULT_CREATE_TIME_KEY, DEFAULT_UPDATE_TIME_KEY]
       : options.timestamps;
-  options.timestamps = timestamps || false;
+  options.timestamps = timestamps;
 
   const componentKeys = (Object.keys(mdl.attributes) as AttributeKey<T>[])
     .filter(key => {
