@@ -30,7 +30,7 @@
     "@google-cloud/firestore": "^4.9.4",
     "@types/pino": "^6.3.6",
     "fs-extra": "^9.1.0",
-    "lodash": "^4.17.20",
+    "lodash": "^4.17.21",
     "p-queue": "^6.6.2",
     "strapi-utils": "^3.5.0"
   },
