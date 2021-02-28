@@ -15,7 +15,6 @@ import { buildRelations } from './relations';
 import { getComponentModel } from './utils/components';
 import { AttributeIndexInfo, buildIndexers, doesComponentRequireMetadata } from './utils/components-indexing';
 import type { Snapshot } from './db/reference';
-import { StatusError } from './utils/status-error';
 import { makeTransactionRunner } from './utils/transaction-runner';
 
 export const DEFAULT_CREATE_TIME_KEY = 'createdAt';
@@ -264,7 +263,7 @@ function mountModel<T extends ModelData>(mdl: ModelBase<T>, { strapi, firestore,
   const populate = async (snap: Snapshot<T>, transaction: Transaction, populate = defaultPopulate) => {
     const data = snap.data();
     if (!data) {
-      throw new StatusError('entry.notFound', 404);
+      throw strapi.errors.notFound();
     }
     return await populateDoc(model, snap.ref, data, populate || model.defaultPopulate, transaction);
   };

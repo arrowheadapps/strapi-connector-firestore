@@ -2,7 +2,6 @@ import * as _ from 'lodash';
 import { convertRestQueryParams } from 'strapi-utils';
 import { FieldPath } from '@google-cloud/firestore';
 import { EmptyQueryError } from './utils/convert-where';
-import { StatusError } from './utils/status-error';
 import { buildPrefixQuery } from './utils/prefix-query';
 import type { Queryable } from './db/queryable-collection';
 import type { AttributeType, Filter, Model, ModelData, OrClause } from 'strapi';
@@ -37,7 +36,7 @@ export function buildQuery<T extends ModelData>(query: Queryable<T>, { model, pa
           .slice(start || 0, (limit || -1) < 1 ? undefined : limit)
           .map(v => {
             if (!v || (typeof v !== 'string')) {
-              throw new StatusError(`Argument for "${model.primaryKey}" must be an array of strings`, 400);
+              throw strapi.errors.badRequest(`Argument for "${model.primaryKey}" must be an array of strings`);
             }
             return model.db.doc(v)
           });
@@ -125,7 +124,7 @@ function buildSearchQuery<T extends ModelData>(model: Model<T>, value: any, quer
           .where({ field, operator: 'lt', value: lt });
         
       default:
-        throw new StatusError(`Search attribute "${field}" is an of an unsupported type`, 400);
+        throw strapi.errors.badRequest(`Search attribute "${field}" is an of an unsupported type`);
     }
 
   } else {

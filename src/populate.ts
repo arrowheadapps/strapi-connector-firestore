@@ -3,7 +3,6 @@ import { getComponentModel } from './utils/components';
 import type { Transaction } from './db/transaction';
 import type { AttributeKey, Model, ModelData } from 'strapi';
 import type { Reference, Snapshot } from './db/reference';
-import { StatusError } from './utils/status-error';
 
 /**
  * Populates all the requested relational field on the given documents.
@@ -13,7 +12,7 @@ export async function populateSnapshots<T extends ModelData>(snaps: Snapshot<T>[
     snaps.map(async snap => {
       const data = snap.data();
       if (!data) {
-        throw new StatusError('entry.notFound', 404);
+        throw strapi.errors.notFound();
       }
       return await populateDoc(snap.ref.parent.model, snap.ref, data, populate, transaction);
     })

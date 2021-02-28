@@ -4,18 +4,11 @@ import { DocumentReference, FieldValue, Timestamp } from '@google-cloud/firestor
 import type { Attribute, Model, ModelData } from 'strapi';
 import { DeepReference } from '../db/deep-reference';
 import { FlatReferenceShape, MorphReferenceShape, Reference } from '../db/reference';
-import { StatusError } from '../utils/status-error';
 import { getComponentModel } from '../utils/components';
 import { MorphReference } from '../db/morph-reference';
 import { updateComponentsMetadata } from '../utils/components-indexing';
 import { NormalReference } from '../db/normal-reference';
 import { FieldOperation } from '../db/field-operation';
-
-export class CoercionError extends StatusError {
-  constructor(message: string) {
-    super(message, 400);
-  }
-}
 
 export interface CoerceOpts {
   editMode?: 'create' | 'update'
@@ -427,7 +420,7 @@ function getIdOrAuto(model: Model, value: any): string | undefined {
 
 function fault({ editMode }: CoerceOpts, message: string): null {
   if (editMode) {
-    throw new CoercionError(message);
+    throw strapi.errors.badRequest(message);
   } else {
     strapi.log.warn(message);
     return null;

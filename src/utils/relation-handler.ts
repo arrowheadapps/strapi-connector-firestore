@@ -1,7 +1,6 @@
 import * as _ from 'lodash';
 import type { Model, ModelData } from 'strapi';
 import type { Transaction } from '../db/transaction';
-import { StatusError } from './status-error';
 import { MorphReference } from '../db/morph-reference';
 import { FieldOperation } from '../db/field-operation';
 import { isEqualHandlingRef, Reference } from '../db/reference';
@@ -329,10 +328,9 @@ export class RelationHandler<T extends ModelData, R extends ModelData = ModelDat
         // Find the end which this reference relates to
         other = this.otherEnds.find(({ model }) => model.db.path === ref.parent.path);
         if (!other) {
-          throw new StatusError(
+          throw strapi.errors.badRequest(
             `Reference "${ref.path}" does not refer to any of the available models: ` 
-            + this.otherEnds.map(e => `"${e.model.uid}"`).join(', '),
-            400,
+            + this.otherEnds.map(e => `"${e.model.uid}"`).join(', ')
           );
         }
       }

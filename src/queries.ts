@@ -1,6 +1,5 @@
 import * as _ from 'lodash';
 import { populateDoc, populateSnapshots } from './populate';
-import { StatusError } from './utils/status-error';
 import type { QueryBuilder, AttributeKey, Strapi, ModelData, Model } from 'strapi';
 import type { Queryable } from './db/queryable-collection';
 import type { Transaction } from './db/transaction';
@@ -68,7 +67,7 @@ export function queries<T extends ModelData>({ model, strapi }: QueryBuilderArgs
 
       const prevData = snap && snap.data();
       if (!prevData) {
-        throw new StatusError('entry.notFound', 404);
+        throw strapi.errors.notFound();
       }
 
       // Update while coercing data and updating relations
@@ -137,7 +136,7 @@ export function queries<T extends ModelData>({ model, strapi }: QueryBuilderArgs
 
     const relation = model.relations.find(a => a.alias === attribute);
     if (!relation) {
-      throw new StatusError(`Could not find relation "${attribute}" in model "${model.globalId}".`, 400);
+      throw strapi.errors.badRequest(`Could not find relation "${attribute}" in model "${model.globalId}"`);
     }
 
     if (!entitiesIds.length) {

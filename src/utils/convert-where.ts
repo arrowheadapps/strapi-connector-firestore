@@ -1,9 +1,8 @@
 import * as _ from 'lodash';
 import { WhereFilterOp, FieldPath } from '@google-cloud/firestore';
 import type { Attribute, Model, ModelData, OrClause, WhereClause } from 'strapi';
-import { coerceAttrToModel, CoercionError } from '../coerce/coerce-to-model';
+import { coerceAttrToModel } from '../coerce/coerce-to-model';
 import { isEqualHandlingRef, Snapshot } from '../db/reference';
-import { StatusError } from './status-error';
 import { mapNotNull } from './map-not-null';
 
 const FIRESTORE_MAX_ARRAY_ELEMENTS = 10;
@@ -73,7 +72,7 @@ export function convertWhere(model: Model<any>, { field, operator, value }:  Whe
       value = consolidated.value;
     } else {
       if (mode === 'nativeOnly') {
-        throw new StatusError(`OR filters are not supported natively by Firestore. Use the \`allowNonNativeQueries\` option to enable a manual version of this query.`, 400);  
+        throw strapi.errors.badRequest(`OR filters are not supported natively by Firestore. Use the \`allowNonNativeQueries\` option to enable a manual version of this query`);  
       }
       
       const orFilters: ManualFilter[] = mapNotNull(filters, andFilters => {
@@ -113,7 +112,7 @@ export function convertWhere(model: Model<any>, { field, operator, value }:  Whe
   }
 
   if (!field) {
-    throw new StatusError(`Query field must not be empty, received: ${JSON.stringify(field)}.`, 400);
+    throw strapi.errors.badRequest(`Query field must not be empty, received: ${JSON.stringify(field)}`);
   }
 
   let op: WhereFilterOp | ((filterValue: any, fieldValue: any) => boolean);
@@ -269,26 +268,22 @@ export function convertWhere(model: Model<any>, { field, operator, value }:  Whe
   }
 
   if ((mode === 'nativeOnly') && (typeof op === 'function')) {
-    throw new StatusError(`Operator "${operator}" is not supported natively by Firestore. Use the \`allowNonNativeQueries\` option to enable a manual version of this query.`, 400);  
+    throw strapi.errors.badRequest(`Operator "${operator}" is not supported natively by Firestore. Use the \`allowNonNativeQueries\` option to enable a manual version of this query`);  
   }
 
   const path = fieldPathToPath(model, field);
   const attr: Attribute | undefined = (path === model.primaryKey) ? { type: 'string' } : model.attributes[path];
   if (attr?.type === 'password') {
-    throw new StatusError('Not allowed to query password fields', 400);
+    throw strapi.errors.badRequest('Not allowed to query password fields');
   }
 
   // Coerce the attribute into the correct type
   try {
     value = coerceAttribute(attr, value);
   } catch (err) {
-    if (err instanceof CoercionError) {
-      // If the value cannot be coerced to the appropriate type
-      // then this filter will reject all entries
-      throw new EmptyQueryError();
-    } else {
-      throw err;
-    }
+    // If the value cannot be coerced to the appropriate type
+    // then this filter will reject all entries
+    throw new EmptyQueryError();
   }
   
   if (typeof op === 'function') {
