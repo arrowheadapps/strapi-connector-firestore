@@ -13,14 +13,14 @@
     "qs": "^6.9.6",
     "remap-istanbul": "^0.13.0",
     "request-promise-native": "^1.0.9",
-    "strapi": "^3.5.1",
-    "strapi-admin": "^3.5.1",
+    "strapi": "^3.5.2",
+    "strapi-admin": "^3.5.2",
     "strapi-connector-firestore": "file:..",
-    "strapi-plugin-content-manager": "^3.5.1",
-    "strapi-plugin-content-type-builder": "^3.5.1",
-    "strapi-plugin-upload": "^3.5.1",
-    "strapi-plugin-users-permissions": "^3.5.1",
-    "strapi-utils": "^3.5.1",
+    "strapi-plugin-content-manager": "^3.5.2",
+    "strapi-plugin-content-type-builder": "^3.5.2",
+    "strapi-plugin-upload": "^3.5.2",
+    "strapi-plugin-users-permissions": "^3.5.2",
+    "strapi-utils": "^3.5.2",
     "supertest": "^6.1.3",
     "wait-on": "^5.2.1"
   },
@@ -30,7 +30,7 @@
     "@actions/io": "^1.0.2",
     "fs-extra": "^9.1.0",
     "glob": "^7.1.6",
-    "glob-promise": "^4.0.1",
+    "glob-promise": "^4.1.0",
     "istanbul-combine": "^0.3.0"
   }
 }

@@ -14,5 +14,5 @@ async function deploy() {
   await execa.command(`gcloud builds submit --tag ${tag} --project ${projectId}`, { stdio: 'inherit' });
 
   // Deploy to Cloud Run
-  await execa.command(`gcloud run deploy ${name} --quiet --image ${tag} --project ${projectId} --platform managed --region us-central1 --allow-unauthenticated`, { stdio: 'inherit' });
+  await execa.command(`gcloud run deploy ${name} --quiet --image ${tag} --project ${projectId} --update-env-vars GCP_PROJECT=${projectId} --platform managed --region us-central1 --allow-unauthenticated`, { stdio: 'inherit' });
 }

@@ -1,3 +1,6 @@
+# Exclude scripts
+/scripts
+
 # Exclude Strapi build outputs
 # These are for the admin font-end which is deployed to Firebase Hosting
 # so we don't want them in the Cloud Run image

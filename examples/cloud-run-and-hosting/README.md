@@ -16,7 +16,7 @@
 ## How to use
 
 1. Create a Firebase project.
-2. Insert your Firebase/GCP project ID in `.firebaserc`.
+2. Insert your Firebase/GCP project ID in `.firebaserc`, and create a file  at `./.env` setting `GCP_PROJECT` variable to your project ID (required to run locally; the deployment script automatically sets the environment variable on the Cloud Run container).
 3. Configure the admin JWT secret, as outlined [here](https://strapi.io/documentation/v3.x/migration-guide/migration-guide-3.0.x-to-3.1.x.html#_2-define-the-admin-jwt-token), but also apply it to the Cloud Run container using the GCP console. If this is a new container, you may need to deploy it first before assigning the environment variable, and the first deploy will fail to start without the environment variable. 
 
 ## Run locally

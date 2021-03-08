@@ -6,9 +6,11 @@ module.exports = ({ env }) => {
       upload: {
         provider: 'google-cloud-storage',
         providerOptions: {
-          bucketName: `${env('npm_package_project_id')}.appspot.com`,
+          // The GCP_PROJECT variable is set by the deployment script in production
+          bucketName: `${env('GCP_PROJECT')}.appspot.com`,
           basePath: '/',
           publicFiles: true,
+          uniform: false,
         },
       },
     };
