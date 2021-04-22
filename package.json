@@ -32,7 +32,7 @@
     "fs-extra": "^9.1.0",
     "lodash": "^4.17.21",
     "p-queue": "^6.6.2",
-    "strapi-utils": "^3.5.2"
+    "strapi-utils": "^3.6.0"
   },
   "devDependencies": {
     "@types/fs-extra": "^9.0.8",
