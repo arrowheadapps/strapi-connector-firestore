@@ -15,10 +15,10 @@
   },
   "dependencies": {
     "strapi": "^3.5.2",
-    "strapi-admin": "^3.5.2",
+    "strapi-admin": "^3.6.3",
     "strapi-connector-firestore": "^3.0.0-alpha.28",
-    "strapi-plugin-content-manager": "^3.5.2",
-    "strapi-plugin-content-type-builder": "^3.5.2",
+    "strapi-plugin-content-manager": "^3.6.3",
+    "strapi-plugin-content-type-builder": "^3.6.3",
     "strapi-plugin-email": "^3.5.2",
     "strapi-plugin-upload": "^3.5.2",
     "strapi-plugin-users-permissions": "^3.5.2",
