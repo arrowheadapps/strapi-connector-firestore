@@ -1,6 +1,6 @@
 import * as _ from 'lodash';
 import type { DocumentReference, DocumentSnapshot } from "@google-cloud/firestore";
-import type { QueryableFlatCollection } from './queryable-flat-collection';
+import type { FlatCollection } from './flat-collection';
 import { FlatReferenceShape, Reference, SetOpts, Snapshot } from './reference';
 import { FieldOperation } from './field-operation';
 import { runUpdateLifecycle } from '../utils/lifecycle';
@@ -13,7 +13,7 @@ export class DeepReference<T extends object> extends Reference<T> {
 
   readonly doc: DocumentReference<{ [id: string]: T }>
 
-  constructor(readonly id: string, readonly parent: QueryableFlatCollection<T>) {
+  constructor(readonly id: string, readonly parent: FlatCollection<T>) {
     super();
     if (!id) {
       throw new Error('Document ID must not be empty');

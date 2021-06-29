@@ -2,7 +2,7 @@ import * as _ from 'lodash';
 import { DocumentReference, Transaction as FirestoreTransaction, DocumentData, Firestore, DocumentSnapshot, FirestoreDataConverter } from '@google-cloud/firestore';
 import { DeepReference, makeDeepSnap, mapToFlattenedDoc } from './deep-reference';
 import { ReadRepository, RefAndMask } from '../utils/read-repository';
-import type { Queryable, QuerySnapshot } from './queryable-collection';
+import type { Queryable, QuerySnapshot } from './collection';
 import { Reference, SetOpts, Snapshot } from './reference';
 import { MorphReference } from './morph-reference';
 import { makeNormalSnap, NormalReference } from './normal-reference';

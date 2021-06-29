@@ -1,9 +1,9 @@
 import type { CollectionReference } from '@google-cloud/firestore';
 import type { FirestoreConnectorModel } from '../model';
-import type { QueryableCollection } from './queryable-collection';
+import type { Collection } from './collection';
 
 
-export class QueryableComponentCollection<T extends object = never> implements QueryableCollection<T> {
+export class ComponentCollection<T extends object = never> implements Collection<T> {
 
   private collection: CollectionReference
   constructor(readonly model: FirestoreConnectorModel<T>) {

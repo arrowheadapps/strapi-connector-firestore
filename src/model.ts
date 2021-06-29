@@ -1,12 +1,12 @@
 import * as _ from 'lodash';
 import * as utils from 'strapi-utils';
-import { QueryableFirestoreCollection } from './db/queryable-firestore-collection';
-import { QueryableFlatCollection } from './db/queryable-flat-collection';
-import { QueryableComponentCollection } from './db/queryable-component-collection';
+import { NormalCollection } from './db/normal-collection';
+import { FlatCollection } from './db/flat-collection';
+import { ComponentCollection } from './db/component-collection';
 import type { AttributeKey, ConnectorOptions, FlattenFn, ModelOptions, ModelTestFn, Strapi, StrapiAttribute, StrapiAttributeType, StrapiModel, StrapiModelRecord } from './types';
 import { PickReferenceKeys, PopulatedKeys, populateDoc, populateSnapshots } from './populate';
 import { buildPrefixQuery } from './utils/prefix-query';
-import type{ QueryableCollection } from './db/queryable-collection';
+import type{ Collection } from './db/collection';
 import { DocumentReference, Firestore } from '@google-cloud/firestore';
 import type { Transaction } from './db/transaction';
 import type { RelationHandler } from './utils/relation-handler';
@@ -74,7 +74,7 @@ export interface FirestoreConnectorModel<T extends object = object> extends Stra
   relations: RelationHandler<T, any>[];
 
   firestore: Firestore;
-  db: QueryableCollection<T>;
+  db: Collection<T>;
   timestamps: [string, string] | false;
 
   /**
@@ -326,10 +326,10 @@ function mountModel<T extends object>(target: object, modelKey: string, mdl: Str
   });
 
   model.db = isComponent
-    ? new QueryableComponentCollection<T>(model)
+    ? new ComponentCollection<T>(model)
     : (flattening 
-        ? new QueryableFlatCollection<T>(model) 
-        : new QueryableFirestoreCollection<T>(model)
+        ? new FlatCollection<T>(model) 
+        : new NormalCollection<T>(model)
       )
 
 

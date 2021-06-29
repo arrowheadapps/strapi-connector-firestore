@@ -2,7 +2,7 @@ import * as _ from 'lodash';
 import { PickReferenceKeys, PopulatedKeys, populateDoc, populateSnapshots } from './populate';
 import { StatusError } from './utils/status-error';
 import type { StrapiQuery, StrapiContext } from './types';
-import type { Queryable } from './db/queryable-collection';
+import type { Queryable } from './db/collection';
 import type { Transaction } from './db/transaction';
 import type { Reference, Snapshot } from './db/reference';
 import { buildQuery, QueryArgs } from './build-query';

@@ -22,7 +22,7 @@ export interface Queryable<T extends object> {
   offset(offset: number): Queryable<T>;
 }
 
-export interface QueryableCollection<T extends object> extends Queryable<T> {
+export interface Collection<T extends object> extends Queryable<T> {
   readonly model: FirestoreConnectorModel<T>
   readonly path: string
   readonly converter: FirestoreDataConverter<any>

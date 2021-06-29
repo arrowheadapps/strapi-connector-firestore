@@ -1,7 +1,7 @@
 import * as _ from 'lodash';
 import { ManualFilter, convertWhere } from '../utils/convert-where';
 import { Query, QueryDocumentSnapshot, FieldPath, DocumentData, CollectionReference, FirestoreDataConverter } from '@google-cloud/firestore';
-import type { QueryableCollection, QuerySnapshot } from './queryable-collection';
+import type { Collection, QuerySnapshot } from './collection';
 import type { FirestoreFilter, StrapiOrFilter, StrapiWhereFilter } from '../types';
 import type { FirestoreConnectorModel } from '../model';
 import { coerceModelToFirestore, coerceToFirestore } from '../coerce/coerce-to-firestore';
@@ -10,7 +10,7 @@ import { makeNormalSnap, NormalReference } from './normal-reference';
 import type { ReadRepository } from '../utils/read-repository';
 
 
-export class QueryableFirestoreCollection<T extends object = DocumentData> implements QueryableCollection<T> {
+export class NormalCollection<T extends object = DocumentData> implements Collection<T> {
 
   readonly model: FirestoreConnectorModel<T>
   readonly converter: FirestoreDataConverter<T>;
@@ -24,10 +24,10 @@ export class QueryableFirestoreCollection<T extends object = DocumentData> imple
   private _limit?: number;
   private _offset?: number;
 
-  constructor(other: QueryableFirestoreCollection<T>)
+  constructor(other: NormalCollection<T>)
   constructor(model: FirestoreConnectorModel<T>)
-  constructor(modelOrOther: FirestoreConnectorModel<T> | QueryableFirestoreCollection<T>) {
-    if (modelOrOther instanceof QueryableFirestoreCollection) {
+  constructor(modelOrOther: FirestoreConnectorModel<T> | NormalCollection<T>) {
+    if (modelOrOther instanceof NormalCollection) {
       this.model = modelOrOther.model;
       this.collection = modelOrOther.collection;
       this.converter = modelOrOther.converter;
@@ -106,7 +106,7 @@ export class QueryableFirestoreCollection<T extends object = DocumentData> imple
 
   async get(trans?: ReadRepository): Promise<QuerySnapshot<T>> {
     // Ensure the maximum limit is set if no limit has been set yet
-    let q: QueryableFirestoreCollection<T> = this;
+    let q: NormalCollection<T> = this;
     if (this.maxQuerySize && (this._limit === undefined)) {
       // Log a warning when the limit is applied where no limit was requested
       this.warnQueryLimit('unlimited');
@@ -127,12 +127,12 @@ export class QueryableFirestoreCollection<T extends object = DocumentData> imple
     };
   }
 
-  where(clause: StrapiWhereFilter | StrapiOrFilter | FirestoreFilter): QueryableFirestoreCollection<T> {
+  where(clause: StrapiWhereFilter | StrapiOrFilter | FirestoreFilter): NormalCollection<T> {
     const filter = convertWhere(this.model, clause, this.allowNonNativeQueries ? 'preferNative' : 'nativeOnly');
     if (!filter) {
       return this;
     }
-    const other = new QueryableFirestoreCollection(this);
+    const other = new NormalCollection(this);
     if (typeof filter === 'function') {
       other.manualFilters.push(filter);
     } else {
@@ -143,13 +143,13 @@ export class QueryableFirestoreCollection<T extends object = DocumentData> imple
     return other;
   }
 
-  orderBy(field: string | FieldPath, directionStr: "desc" | "asc" = 'asc'): QueryableFirestoreCollection<T> {
-    const other = new QueryableFirestoreCollection(this);
+  orderBy(field: string | FieldPath, directionStr: "desc" | "asc" = 'asc'): NormalCollection<T> {
+    const other = new NormalCollection(this);
     other.query = this.query.orderBy(field, directionStr);
     return other;
   }
 
-  limit(limit: number): QueryableFirestoreCollection<T> {
+  limit(limit: number): NormalCollection<T> {
     if (this.maxQuerySize && (this.maxQuerySize < limit)) {
       // Log a warning when a limit is explicitly requested larger
       // than than the configured limit
@@ -157,14 +157,14 @@ export class QueryableFirestoreCollection<T extends object = DocumentData> imple
       limit = this.maxQuerySize;
     }
 
-    const other = new QueryableFirestoreCollection(this);
+    const other = new NormalCollection(this);
     other.query = this.query.limit(limit);
     other._limit = limit;
     return other;
   }
 
-  offset(offset: number): QueryableFirestoreCollection<T> {
-    const other = new QueryableFirestoreCollection(this);
+  offset(offset: number): NormalCollection<T> {
+    const other = new NormalCollection(this);
     other.query = this.query.offset(offset);
     other._offset = offset;
     return other;

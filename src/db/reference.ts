@@ -1,6 +1,6 @@
 import * as _ from 'lodash';
 import type { DocumentReference, Firestore } from '@google-cloud/firestore';
-import type { QueryableCollection } from './queryable-collection';
+import type { Collection } from './collection';
 
 
 /**
@@ -75,7 +75,7 @@ export interface SetOpts {
  */
 export abstract class Reference<T extends object> {
 
-  abstract readonly parent: QueryableCollection<T>;
+  abstract readonly parent: Collection<T>;
   abstract readonly id: string;
   abstract readonly path: string;
 

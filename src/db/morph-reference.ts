@@ -1,6 +1,6 @@
 import * as _ from 'lodash';
 import { DeepReference } from './deep-reference';
-import type { QueryableCollection } from './queryable-collection';
+import type { Collection } from './collection';
 import { MorphReferenceShape, Reference, SetOpts } from './reference';
 import { NormalReference } from './normal-reference';
 
@@ -15,7 +15,7 @@ export class MorphReference<T extends object> extends Reference<T> {
     super();
   }
 
-  get parent(): QueryableCollection<T> {
+  get parent(): Collection<T> {
     return this.ref.parent;
   }
 

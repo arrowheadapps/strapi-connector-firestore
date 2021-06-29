@@ -4,7 +4,7 @@ import { FieldPath } from '@google-cloud/firestore';
 import { EmptyQueryError } from './utils/convert-where';
 import { StatusError } from './utils/status-error';
 import { buildPrefixQuery } from './utils/prefix-query';
-import type { Queryable } from './db/queryable-collection';
+import type { Queryable } from './db/collection';
 import type { StrapiAttributeType, StrapiFilter, StrapiOrFilter } from './types';
 import type { FirestoreConnectorModel } from './model';
 import type { Reference } from './db/reference';

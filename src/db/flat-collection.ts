@@ -2,7 +2,7 @@ import * as _ from 'lodash';
 import * as path from 'path';
 import { convertWhere, ManualFilter, getAtFieldPath } from '../utils/convert-where';
 import { DocumentReference, OrderByDirection, FieldPath, DocumentData, FirestoreDataConverter } from '@google-cloud/firestore';
-import type { QueryableCollection, QuerySnapshot } from './queryable-collection';
+import type { Collection, QuerySnapshot } from './collection';
 import type { FirestoreFilter, StrapiOrFilter, StrapiWhereFilter } from '../types';
 import { DeepReference } from './deep-reference';
 import type { FirestoreConnectorModel } from '../model';
@@ -16,7 +16,7 @@ interface OrderSpec {
   directionStr: OrderByDirection
 }
 
-export class QueryableFlatCollection<T extends object = DocumentData> implements QueryableCollection<T> {
+export class FlatCollection<T extends object = DocumentData> implements Collection<T> {
 
   readonly model: FirestoreConnectorModel<T>
   readonly document: DocumentReference<{ [id: string]: T }>;
@@ -31,9 +31,9 @@ export class QueryableFlatCollection<T extends object = DocumentData> implements
 
 
   constructor(model: FirestoreConnectorModel<T>)
-  constructor(other: QueryableFlatCollection<T>)
-  constructor(modelOrOther: FirestoreConnectorModel<T> | QueryableFlatCollection<T>) {
-    if (modelOrOther instanceof QueryableFlatCollection) {
+  constructor(other: FlatCollection<T>)
+  constructor(modelOrOther: FirestoreConnectorModel<T> | FlatCollection<T>) {
+    if (modelOrOther instanceof FlatCollection) {
       // Copy the values
       this.model = modelOrOther.model;
       this.document = modelOrOther.document;
@@ -148,30 +148,30 @@ export class QueryableFlatCollection<T extends object = DocumentData> implements
     };
   }
 
-  where(clause: StrapiWhereFilter | StrapiOrFilter | FirestoreFilter): QueryableFlatCollection<T> {
+  where(clause: StrapiWhereFilter | StrapiOrFilter | FirestoreFilter): FlatCollection<T> {
     const filter = convertWhere(this.model, clause, 'manualOnly');
     if (!filter) {
       return this;
     }
-    const other = new QueryableFlatCollection(this);
+    const other = new FlatCollection(this);
     other.manualFilters.push(filter);
     return other;
   }
 
-  orderBy(field: string | FieldPath, directionStr: OrderByDirection = 'asc'): QueryableFlatCollection<T> {
-    const other = new QueryableFlatCollection(this);
+  orderBy(field: string | FieldPath, directionStr: OrderByDirection = 'asc'): FlatCollection<T> {
+    const other = new FlatCollection(this);
     other._orderBy.push({ field, directionStr });
     return other;
   }
 
-  limit(limit: number): QueryableFlatCollection<T> {
-    const other = new QueryableFlatCollection(this);
+  limit(limit: number): FlatCollection<T> {
+    const other = new FlatCollection(this);
     other._limit = limit;
     return other;
   }
 
-  offset(offset: number): QueryableFlatCollection<T> {
-    const other = new QueryableFlatCollection(this);
+  offset(offset: number): FlatCollection<T> {
+    const other = new FlatCollection(this);
     other._offset = offset;
     return other;
   }

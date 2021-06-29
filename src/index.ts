@@ -5,7 +5,7 @@ import { Firestore, Settings, DocumentReference, Timestamp } from '@google-cloud
 import { allModels, DEFAULT_CREATE_TIME_KEY, DEFAULT_UPDATE_TIME_KEY, mountModels } from './model';
 import { queries } from './queries';
 import type { Strapi, ConnectorOptions } from './types';
-import { QueryableFlatCollection } from './db/queryable-flat-collection';
+import { FlatCollection } from './db/flat-collection';
 
 export type { 
   Strapi,
@@ -24,14 +24,14 @@ export type {
 } from './db/reference';
 export type { 
   Queryable,
-  QueryableCollection,
+  Collection,
   QuerySnapshot, 
-} from './db/queryable-collection';
+} from './db/collection';
 export type { FirestoreConnectorModel } from './model';
 export type { Transaction } from './db/transaction';
 
-export { QueryableFirestoreCollection } from './db/queryable-firestore-collection';
-export { QueryableFlatCollection } from './db/queryable-flat-collection';
+export { NormalCollection } from './db/normal-collection';
+export { FlatCollection } from './db/flat-collection';
 
 
 const defaults = {
@@ -144,7 +144,7 @@ module.exports = (strapi: Strapi) => {
         // but in the emulator it results in deadlock
         const tasks: Promise<void>[] = [];
         for (const { model: { db } } of allModels()) {
-          if (db instanceof QueryableFlatCollection) {
+          if (db instanceof FlatCollection) {
             tasks.push(db.ensureDocument());
           }
         }

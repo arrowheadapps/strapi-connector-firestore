@@ -1,7 +1,7 @@
 import * as _ from 'lodash';
 import type { DocumentReference, DocumentSnapshot } from '@google-cloud/firestore';
 import { Reference, SetOpts, Snapshot } from './reference';
-import type { QueryableFirestoreCollection } from './queryable-firestore-collection';
+import type { NormalCollection } from './normal-collection';
 import { runUpdateLifecycle } from '../utils/lifecycle';
 
 /**
@@ -9,7 +9,7 @@ import { runUpdateLifecycle } from '../utils/lifecycle';
  */
 export class NormalReference<T extends object> extends Reference<T> {
 
-  constructor(readonly ref: DocumentReference<T>, readonly parent: QueryableFirestoreCollection<T>) {
+  constructor(readonly ref: DocumentReference<T>, readonly parent: NormalCollection<T>) {
     super();
   }
 
