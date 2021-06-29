@@ -30,6 +30,9 @@ export type {
 export type { FirestoreConnectorModel } from './model';
 export type { Transaction } from './db/transaction';
 
+export { QueryableFirestoreCollection } from './db/queryable-firestore-collection';
+export { QueryableFlatCollection } from './db/queryable-flat-collection';
+
 
 const defaults = {
   defaultConnection: 'default',

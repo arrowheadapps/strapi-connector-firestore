@@ -19,7 +19,7 @@ interface OrderSpec {
 export class QueryableFlatCollection<T extends object = DocumentData> implements QueryableCollection<T> {
 
   readonly model: FirestoreConnectorModel<T>
-  readonly flatDoc: DocumentReference<{ [id: string]: T }>;
+  readonly document: DocumentReference<{ [id: string]: T }>;
   readonly converter: FirestoreDataConverter<{ [id: string]: T }>;
 
   private readonly manualFilters: ManualFilter[] = [];
@@ -36,7 +36,7 @@ export class QueryableFlatCollection<T extends object = DocumentData> implements
     if (modelOrOther instanceof QueryableFlatCollection) {
       // Copy the values
       this.model = modelOrOther.model;
-      this.flatDoc = modelOrOther.flatDoc;
+      this.document = modelOrOther.document;
       this.converter = modelOrOther.converter;
       this._ensureDocument = modelOrOther._ensureDocument;
       this.manualFilters = modelOrOther.manualFilters.slice();
@@ -73,18 +73,18 @@ export class QueryableFlatCollection<T extends object = DocumentData> implements
       };
 
       const docPath = path.posix.join(modelOrOther.collectionName, modelOrOther.options.singleId);
-      this.flatDoc = modelOrOther.firestore
+      this.document = modelOrOther.firestore
         .doc(docPath)
         .withConverter(this.converter);
     }
   }
 
   get path(): string {
-    return this.flatDoc.parent.path;
+    return this.document.parent.path;
   }
 
   autoId() {
-    return this.flatDoc.parent.doc().id;
+    return this.document.parent.doc().id;
   }
 
   doc(): DeepReference<T>;
@@ -104,7 +104,7 @@ export class QueryableFlatCollection<T extends object = DocumentData> implements
     // This will ensure that the document exists using
     // as single write operation
     if (!this._ensureDocument) {
-      this._ensureDocument = this.flatDoc.set({}, { merge: true })
+      this._ensureDocument = this.document.set({}, { merge: true })
         .catch((err) => {
           this._ensureDocument = null;
           throw err;
@@ -115,8 +115,8 @@ export class QueryableFlatCollection<T extends object = DocumentData> implements
 
   async get(repo?: ReadRepository): Promise<QuerySnapshot<T>> {
     const snap = repo
-      ? (await repo.getAll([{ ref: this.flatDoc }]))[0]
-      : await this.flatDoc.get();
+      ? (await repo.getAll([{ ref: this.document }]))[0]
+      : await this.document.get();
 
     let docs: Snapshot<T>[] = [];
     for (const [id, data] of Object.entries<any>(snap.data() || {})) {

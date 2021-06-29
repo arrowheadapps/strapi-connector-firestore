@@ -19,7 +19,7 @@ export class DeepReference<T extends object> extends Reference<T> {
       throw new Error('Document ID must not be empty');
     }
 
-    this.doc = parent.flatDoc;
+    this.doc = parent.document;
   }
 
   get path() {

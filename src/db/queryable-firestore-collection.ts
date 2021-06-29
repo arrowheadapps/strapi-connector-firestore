@@ -15,7 +15,8 @@ export class QueryableFirestoreCollection<T extends object = DocumentData> imple
   readonly model: FirestoreConnectorModel<T>
   readonly converter: FirestoreDataConverter<T>;
   
-  private readonly collection: CollectionReference<T>
+  readonly collection: CollectionReference<T>
+  
   private readonly allowNonNativeQueries: boolean
   private readonly maxQuerySize: number
   private readonly manualFilters: ManualFilter[];
