@@ -7,7 +7,7 @@ const startFirestore = async () => {
   const firestore = new FirestoreEmulator({
     host: '127.0.0.1',
     port: '8080',
-    projectId: 'test-project-id'
+    projectId: 'test-project-id',
   });
   const stop = async () => {
     process.stdout.write('Stopping Firestore because process is exiting....');

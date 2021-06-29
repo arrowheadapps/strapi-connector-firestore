@@ -1,12 +1,10 @@
 {
+  "extends": "@tsconfig/node12/tsconfig.json",
   "compilerOptions": {
-    "lib": ["ES2019"],
-    "module": "CommonJS",
     "strict": true,
     "noImplicitReturns": true,
     "noUnusedLocals": true,
     "outDir": "lib",
-    "target": "ES2019",
     "types": ["node"],
     "noImplicitAny": false,
     "sourceMap": false,

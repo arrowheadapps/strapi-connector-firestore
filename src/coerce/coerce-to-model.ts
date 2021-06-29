@@ -209,7 +209,7 @@ export function coerceAttrToModel(attr: StrapiAttribute | undefined, value: unkn
       case 'biginteger':
         if (typeof value !== 'bigint') {
           try {
-            value = BigInt(value);
+            value = BigInt(value as any);
           } catch {
             return err();
           }
