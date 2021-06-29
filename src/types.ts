@@ -1,7 +1,7 @@
 import type { DocumentData, DocumentReference, FieldPath, Settings, WhereFilterOp } from '@google-cloud/firestore';
 import type { Logger } from 'pino';
 import type { FirestoreConnectorModel } from './model';
-import type { PickReferenceKeys, PopulatedKeys } from './populate';
+import type { PickReferenceKeys, PopulatedByKeys } from './populate';
 
 export interface Connector {
   connector: string
@@ -219,13 +219,13 @@ export type AttributeKey<T extends object> = Extract<keyof T, string>;
 
 export interface StrapiQuery<T extends object = DocumentData> {
   model: StrapiModel<T>
-  find<K extends PickReferenceKeys<T>>(params?: any, populate?: K[]): Promise<PopulatedKeys<T, K>[]>
-  findOne<K extends PickReferenceKeys<T>>(params?: any, populate?: K[]): Promise<PopulatedKeys<T, K> | null>
-  create<K extends PickReferenceKeys<T>>(values: T, populate?: K[]): Promise<PopulatedKeys<T, K>>
-  update<K extends PickReferenceKeys<T>>(params: any, values: T, populate?: K[]): Promise<PopulatedKeys<T, K>>
-  delete<K extends PickReferenceKeys<T>>(params: any, populate?: K[]): Promise<PopulatedKeys<T, K> | null | (PopulatedKeys<T, K> | null)[]>
+  find<K extends PickReferenceKeys<T>>(params?: any, populate?: K[]): Promise<PopulatedByKeys<T, K>[]>
+  findOne<K extends PickReferenceKeys<T>>(params?: any, populate?: K[]): Promise<PopulatedByKeys<T, K> | null>
+  create<K extends PickReferenceKeys<T>>(values: T, populate?: K[]): Promise<PopulatedByKeys<T, K>>
+  update<K extends PickReferenceKeys<T>>(params: any, values: T, populate?: K[]): Promise<PopulatedByKeys<T, K>>
+  delete<K extends PickReferenceKeys<T>>(params: any, populate?: K[]): Promise<PopulatedByKeys<T, K> | null | (PopulatedByKeys<T, K> | null)[]>
   count(params?: any): Promise<number>
-  search<K extends PickReferenceKeys<T>>(params: any, populate?: K[]): Promise<PopulatedKeys<T, K>[]>
+  search<K extends PickReferenceKeys<T>>(params: any, populate?: K[]): Promise<PopulatedByKeys<T, K>[]>
   countSearch(params: any): Promise<number>
   fetchRelationCounters<K extends PickReferenceKeys<T>>(attribute: K, entitiesIds?: string[]): Promise<RelationCounter[]>
 }

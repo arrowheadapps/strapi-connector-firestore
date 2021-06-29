@@ -29,6 +29,10 @@ export type {
 } from './db/collection';
 export type { FirestoreConnectorModel } from './model';
 export type { Transaction } from './db/transaction';
+export type {
+  PopulatedByKeys,
+  PickReferenceKeys,
+} from './populate';
 
 export { NormalCollection } from './db/normal-collection';
 export { FlatCollection } from './db/flat-collection';

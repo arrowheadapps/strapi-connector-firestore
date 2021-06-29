@@ -6,28 +6,30 @@ import { FirestoreConnectorModel } from './model';
 import { StatusError } from './utils/status-error';
 
 /**
- * Defines a type where all Reference members of T are populated as their referred types.
+ * Defines a type where all Reference members of T are populated as their referred types (including arrays of references).
+ * Note: This typing is not accurate for components, where all references would be populated, but this type does not populate
+ * any keys inside components.
  */
 export type Populated<T extends object> = {
-  [Key in keyof T]: T[Key] extends Reference<infer R> ? R : T[Key];
+  [Key in keyof T]: T[Key] extends Reference<infer R> ? R : T[Key] extends Reference<infer R>[] ? R[] : T[Key];
 }
 
 /**
- * Picks the keys of T whose values are References.
+ * Picks the keys of T whose values are References or arrays of references.
  */
- export type PickReferenceKeys<T extends object> = Extract<{ [Key in keyof T]-?: T[Key] extends Reference<infer R> ? Key : never; }[keyof T], string>
+ export type PickReferenceKeys<T extends object> = Extract<{ [Key in keyof T]-?: T[Key] extends Reference<infer R> ? Key : T[Key] extends Reference<infer R>[] ? Key : never; }[keyof T], string>
 
 /**
- * Defines a type where all Reference members amongst those with the given keys are
- * populated as their referred types.
+ * Defines a type where all Reference members amongst those with the given keys are populated as their referred types.
+ * Note: This typing is not accurate for components, where all references would be populated, but this type does not populate
+ * any keys inside components.
  */
-export type PopulatedKeys<T extends object, K extends PickReferenceKeys<T>> = Omit<T, K> & Populated<Pick<T, K>>
-
+export type PopulatedByKeys<T extends object, K extends PickReferenceKeys<T>> = Omit<T, K> & Populated<Pick<T, K>>
 
 /**
  * Populates all the requested relational field on the given documents.
  */
-export async function populateSnapshots<T extends object, K extends PickReferenceKeys<T>>(snaps: Snapshot<T>[], populate: K[], transaction: Transaction): Promise<PopulatedKeys<T, K>[]> {
+export async function populateSnapshots<T extends object, K extends PickReferenceKeys<T>>(snaps: Snapshot<T>[], populate: K[], transaction: Transaction): Promise<PopulatedByKeys<T, K>[]> {
   return await Promise.all(
     snaps.map(async snap => {
       const data = snap.data();
@@ -41,8 +43,9 @@ export async function populateSnapshots<T extends object, K extends PickReferenc
 
 /**
  * Populates all the requested relational field on the given document.
+ * All references in components are populated by default.
  */
-export async function populateDoc<T extends object, K extends PickReferenceKeys<T>>(model: FirestoreConnectorModel<T>, ref: Reference<T>, data: T, populateKeys: K[], transaction: Transaction): Promise<PopulatedKeys<T, K>> {
+export async function populateDoc<T extends object, K extends PickReferenceKeys<T>>(model: FirestoreConnectorModel<T>, ref: Reference<T>, data: T, populateKeys: K[], transaction: Transaction): Promise<PopulatedByKeys<T, K>> {
   const promises: Promise<any>[] = [];
 
   // Shallow copy the object

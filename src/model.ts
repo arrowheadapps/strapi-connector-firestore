@@ -4,7 +4,7 @@ import { NormalCollection } from './db/normal-collection';
 import { FlatCollection } from './db/flat-collection';
 import { ComponentCollection } from './db/component-collection';
 import type { AttributeKey, ConnectorOptions, FlattenFn, ModelOptions, ModelTestFn, Strapi, StrapiAttribute, StrapiAttributeType, StrapiModel, StrapiModelRecord } from './types';
-import { PickReferenceKeys, PopulatedKeys, populateDoc, populateSnapshots } from './populate';
+import { PickReferenceKeys, PopulatedByKeys, populateDoc, populateSnapshots } from './populate';
 import { buildPrefixQuery } from './utils/prefix-query';
 import type{ Collection } from './db/collection';
 import { DocumentReference, Firestore } from '@google-cloud/firestore';
@@ -87,8 +87,8 @@ export interface FirestoreConnectorModel<T extends object = object> extends Stra
 
   runTransaction<TResult>(fn: (transaction: Transaction) => TResult | PromiseLike<TResult>): Promise<TResult>;
 
-  populate<K extends PickReferenceKeys<T>>(data: Snapshot<T>, transaction: Transaction, populate?: K[]): Promise<PopulatedKeys<T, K>>;
-  populateAll<K extends PickReferenceKeys<T>>(datas: Snapshot<T>[], transaction: Transaction, populate?: K[]): Promise<PopulatedKeys<T, K>[]>;
+  populate<K extends PickReferenceKeys<T>>(data: Snapshot<T>, transaction: Transaction, populate?: K[]): Promise<PopulatedByKeys<T, K>>;
+  populateAll<K extends PickReferenceKeys<T>>(datas: Snapshot<T>[], transaction: Transaction, populate?: K[]): Promise<PopulatedByKeys<T, K>[]>;
 }
 
 

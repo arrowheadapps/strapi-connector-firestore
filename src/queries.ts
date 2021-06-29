@@ -1,5 +1,5 @@
 import * as _ from 'lodash';
-import { PickReferenceKeys, PopulatedKeys, populateDoc, populateSnapshots } from './populate';
+import { PickReferenceKeys, PopulatedByKeys, populateDoc, populateSnapshots } from './populate';
 import { StatusError } from './utils/status-error';
 import type { StrapiQuery, StrapiContext } from './types';
 import type { Queryable } from './db/collection';
@@ -106,7 +106,7 @@ export function queries<T extends object>({ model, strapi }: StrapiContext<T>): 
     });
   };
 
-  async function deleteOne<K extends PickReferenceKeys<T>>(snap: Snapshot<T>, populate: K[], trans: Transaction): Promise<PopulatedKeys<T, K> | null> {
+  async function deleteOne<K extends PickReferenceKeys<T>>(snap: Snapshot<T>, populate: K[], trans: Transaction): Promise<PopulatedByKeys<T, K> | null> {
     const prevData = snap.data();
     if (!prevData) {
       // Delete API returns `null` rather than throwing an error for non-existent documents
