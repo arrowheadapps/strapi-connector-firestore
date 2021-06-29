@@ -1,7 +1,7 @@
 import * as _ from 'lodash';
-import { populateDoc, populateSnapshots } from './populate';
+import { PickReferenceKeys, PopulatedKeys, populateDoc, populateSnapshots } from './populate';
 import { StatusError } from './utils/status-error';
-import type { StrapiQuery, AttributeKey, StrapiContext } from './types';
+import type { StrapiQuery, StrapiContext } from './types';
 import type { Queryable } from './db/queryable-collection';
 import type { Transaction } from './db/transaction';
 import type { Reference, Snapshot } from './db/reference';
@@ -22,7 +22,7 @@ export function queries<T extends object>({ model, strapi }: StrapiContext<T>): 
     ? (name: string, details: object) => { strapi.log.debug(`QUERY ${model.modelName}.${name}: ${JSON.stringify(details)}`) }
     : () => {};
 
-  const find = async (params: any, populate = model.defaultPopulate) => {
+  const find: FirestoreConnectorQueries<T>['find'] = async (params, populate = (model.defaultPopulate as any)) => {
     log('find', { params, populate });
 
     return await model.runTransaction(async trans => {
@@ -33,17 +33,17 @@ export function queries<T extends object>({ model, strapi }: StrapiContext<T>): 
     });
   };
 
-  const findOne = async (params: any, populate = model.defaultPopulate) => {
+  const findOne: FirestoreConnectorQueries<T>['findOne'] = async (params, populate) => {
     const [entry] = await find({ ...params, _limit: 1 }, populate);
     return entry || null;
   };
 
-  const count = async (params: any) => {
+  const count: FirestoreConnectorQueries<T>['count'] = async (params) => {
     log('count', { params });
     return await buildAndCountQuery({ model, params });
   };
 
-  const create = async (values: any, populate = model.defaultPopulate) => {
+  const create: FirestoreConnectorQueries<T>['create'] = async (values, populate = (model.defaultPopulate as any)) => {
     log('create', { populate });
 
     const ref = model.hasPK(values)
@@ -59,7 +59,7 @@ export function queries<T extends object>({ model, strapi }: StrapiContext<T>): 
     });
   };
 
-  const update = async (params: any, values: any, populate = model.defaultPopulate) => {
+  const update: FirestoreConnectorQueries<T>['update'] = async (params, values, populate = (model.defaultPopulate as any)) => {
     log('update', { params, populate });
     
     return await model.runTransaction(async trans => {
@@ -87,7 +87,7 @@ export function queries<T extends object>({ model, strapi }: StrapiContext<T>): 
     });
   };
 
-  const deleteMany = async (params: any, populate = model.defaultPopulate) => {
+  const deleteMany: FirestoreConnectorQueries<T>['delete'] = async (params, populate = (model.defaultPopulate as any)) => {
     log('delete', { params, populate });
 
     return await model.runTransaction(async trans => {
@@ -99,14 +99,14 @@ export function queries<T extends object>({ model, strapi }: StrapiContext<T>): 
       if (Array.isArray(query) && (query.length === 1)) {
         return await deleteOne(snaps[0], populate, trans);
       } else {
-        return Promise.all(
+        return await Promise.all(
           snaps.map(snap => deleteOne(snap, populate, trans))
         );
       }
     });
   };
 
-  const deleteOne = async (snap: Snapshot<T>, populate: AttributeKey<T>[], trans: Transaction) => {
+  async function deleteOne<K extends PickReferenceKeys<T>>(snap: Snapshot<T>, populate: K[], trans: Transaction): Promise<PopulatedKeys<T, K> | null> {
     const prevData = snap.data();
     if (!prevData) {
       // Delete API returns `null` rather than throwing an error for non-existent documents
@@ -120,7 +120,7 @@ export function queries<T extends object>({ model, strapi }: StrapiContext<T>): 
     return await populateDoc(model, snap.ref, prevData, populate, trans);
   };
 
-  const search = async (params: any, populate = model.defaultPopulate) => {
+  const search: FirestoreConnectorQueries<T>['search'] = async (params, populate = (model.defaultPopulate as any)) => {
     log('search', { params, populate });
 
     return await model.runTransaction(async trans => {
@@ -129,12 +129,12 @@ export function queries<T extends object>({ model, strapi }: StrapiContext<T>): 
     });
   };
 
-  const countSearch = async (params: any) => {
+  const countSearch: FirestoreConnectorQueries<T>['countSearch'] = async (params) => {
     log('countSearch', { params });
     return await buildAndCountQuery({ model, params, allowSearch: true });
   };
 
-  const fetchRelationCounters = async (attribute: AttributeKey<T>, entitiesIds: string[] = []) => {
+  const fetchRelationCounters: FirestoreConnectorQueries<T>['fetchRelationCounters'] = async (attribute, entitiesIds = []) => {
     log('fetchRelationCounters', { attribute, entitiesIds });
 
     const relation = model.relations.find(a => a.alias === attribute);

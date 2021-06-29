@@ -1,6 +1,7 @@
 import type { DocumentData, DocumentReference, FieldPath, Settings, WhereFilterOp } from '@google-cloud/firestore';
 import type { Logger } from 'pino';
 import type { FirestoreConnectorModel } from './model';
+import type { PickReferenceKeys, PopulatedKeys } from './populate';
 
 export interface Connector {
   connector: string
@@ -95,7 +96,7 @@ export interface ConnectorOptions {
   metadataField?: string | ((attrKey: string) => string)
 }
 
-export interface ModelOptions<T extends object, R extends object = any> {
+export interface ModelOptions<T extends object, R extends object = any> extends StrapiModelOptions {
   timestamps?: boolean | [string, string]
   singleId?: string
 
@@ -218,15 +219,15 @@ export type AttributeKey<T extends object> = Extract<keyof T, string>;
 
 export interface StrapiQuery<T extends object = DocumentData> {
   model: StrapiModel<T>
-  find(params?: any, populate?: AttributeKey<T>[]): Promise<T[]>
-  findOne(params?: any, populate?: AttributeKey<T>[]): Promise<T | null>
-  create(values: T, populate?: AttributeKey<T>[]): Promise<T>
-  update(params: any, values: T, populate?: AttributeKey<T>[]): Promise<T>
-  delete(params: any, populate?: AttributeKey<T>[]): Promise<(T | null) | (T | null)[]>
+  find<K extends PickReferenceKeys<T>>(params?: any, populate?: K[]): Promise<PopulatedKeys<T, K>[]>
+  findOne<K extends PickReferenceKeys<T>>(params?: any, populate?: K[]): Promise<PopulatedKeys<T, K> | null>
+  create<K extends PickReferenceKeys<T>>(values: T, populate?: K[]): Promise<PopulatedKeys<T, K>>
+  update<K extends PickReferenceKeys<T>>(params: any, values: T, populate?: K[]): Promise<PopulatedKeys<T, K>>
+  delete<K extends PickReferenceKeys<T>>(params: any, populate?: K[]): Promise<PopulatedKeys<T, K> | null | (PopulatedKeys<T, K> | null)[]>
   count(params?: any): Promise<number>
-  search(params: any, populate?: AttributeKey<T>[]): Promise<T[]>
+  search<K extends PickReferenceKeys<T>>(params: any, populate?: K[]): Promise<PopulatedKeys<T, K>[]>
   countSearch(params: any): Promise<number>
-  fetchRelationCounters(attribute: AttributeKey<T>, entitiesIds?: string[]): Promise<RelationCounter[]>
+  fetchRelationCounters<K extends PickReferenceKeys<T>>(attribute: K, entitiesIds?: string[]): Promise<RelationCounter[]>
 }
 
 export interface RelationCounter {
@@ -250,10 +251,13 @@ export interface StrapiModel<T extends object = object> {
   internal?: boolean
   uid: string
   orm: string
-  options: {
-    timestamps?: boolean | [string, string]
-  }
+  options?: StrapiModelOptions
   associations: StrapiAssociation<AttributeKey<T>>[]
+}
+
+export interface StrapiModelOptions {
+  timestamps?: boolean | [string, string]
+  populateCreatorFields?: boolean
 }
 
 export type StrapiRelationType = 'oneWay' | 'manyWay' | 'oneToMany' | 'oneToOne' | 'manyToMany' | 'manyToOne' | 'oneToManyMorph' | 'manyToManyMorph' | 'manyMorphToMany' | 'manyMorphToOne' | 'oneMorphToOne' | 'oneMorphToMany';
@@ -277,6 +281,7 @@ export interface StrapiAttribute {
   private?: boolean
   configurable?: boolean
   writable?: boolean
+  visible?: boolean
 
   index?: true | string | { [key: string]: true | IndexerFn }
   isMeta?: boolean

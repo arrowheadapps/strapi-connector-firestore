@@ -1,22 +1,40 @@
 import * as _ from 'lodash';
 import { getComponentModel } from './utils/components';
 import type { Transaction } from './db/transaction';
-import type { AttributeKey } from './types';
 import type { Reference, Snapshot } from './db/reference';
 import { FirestoreConnectorModel } from './model';
 import { StatusError } from './utils/status-error';
 
 /**
+ * Defines a type where all Reference members of T are populated as their referred types.
+ */
+export type Populated<T extends object> = {
+  [Key in keyof T]: T[Key] extends Reference<infer R> ? R : T[Key];
+}
+
+/**
+ * Picks the keys of T whose values are References.
+ */
+ export type PickReferenceKeys<T extends object> = Extract<{ [Key in keyof T]-?: T[Key] extends Reference<infer R> ? Key : never; }[keyof T], string>
+
+/**
+ * Defines a type where all Reference members amongst those with the given keys are
+ * populated as their referred types.
+ */
+export type PopulatedKeys<T extends object, K extends PickReferenceKeys<T>> = Omit<T, K> & Populated<Pick<T, K>>
+
+
+/**
  * Populates all the requested relational field on the given documents.
  */
-export async function populateSnapshots<T extends object>(snaps: Snapshot<T>[], populate: AttributeKey<T>[], transaction: Transaction) {
+export async function populateSnapshots<T extends object, K extends PickReferenceKeys<T>>(snaps: Snapshot<T>[], populate: K[], transaction: Transaction): Promise<PopulatedKeys<T, K>[]> {
   return await Promise.all(
     snaps.map(async snap => {
       const data = snap.data();
       if (!data) {
         throw new StatusError('entry.notFound', 404);
       }
-      return await populateDoc(snap.ref.parent.model, snap.ref, data, populate, transaction);
+      return await populateDoc<T, K>(snap.ref.parent.model, snap.ref, data, populate, transaction);
     })
   );
 }
@@ -24,7 +42,7 @@ export async function populateSnapshots<T extends object>(snaps: Snapshot<T>[], 
 /**
  * Populates all the requested relational field on the given document.
  */
-export async function populateDoc<T extends object>(model: FirestoreConnectorModel<T>, ref: Reference<T>, data: T, populateKeys: AttributeKey<T>[], transaction: Transaction): Promise<T> {
+export async function populateDoc<T extends object, K extends PickReferenceKeys<T>>(model: FirestoreConnectorModel<T>, ref: Reference<T>, data: T, populateKeys: K[], transaction: Transaction): Promise<PopulatedKeys<T, K>> {
   const promises: Promise<any>[] = [];
 
   // Shallow copy the object
@@ -61,5 +79,7 @@ export async function populateDoc<T extends object>(model: FirestoreConnectorMod
   );
 
   await Promise.all(promises);
-  return newData
+
+  // TODO: Better type safety
+  return newData as any;
 }

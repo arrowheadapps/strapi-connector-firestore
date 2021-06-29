@@ -16,9 +16,11 @@ afterAll(async () => {
 });
 
 
-// From https://github.com/strapi/strapi/blob/be4d5556936cf923aa3e23d5da82a6c60a5a42bc/test/jest2e2.setup.js
+// From https://github.com/strapi/strapi/blob/23bd0226a594058f5b0b25c82aa03f90b691df9b/test/jest2e2.setup.js
 
 const isoDateRegex = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{3}Z/;
+
+jest.setTimeout(60000);
 
 expect.extend({
   stringOrNull(received) {

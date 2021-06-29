@@ -1,5 +1,4 @@
 import * as _ from 'lodash';
-import * as utils from 'strapi-utils';
 import { allModels, FirestoreConnectorModel } from './model';
 import type { StrapiModel, StrapiAttribute } from './types';
 import type { Transaction } from './db/transaction';
@@ -32,9 +31,6 @@ export function buildRelations<T extends object>(model: FirestoreConnectorModel<
     if (attr.isMeta) {
       continue;
     }
-
-    // Required for other parts of Strapi to work
-    utils.models.defineAssociations(model.uid.toLowerCase(), model, attr, alias);
 
     const targetModelName = attr.model || attr.collection;
     if (!targetModelName) {
@@ -91,7 +87,7 @@ export function buildRelations<T extends object>(model: FirestoreConnectorModel<
 
 function findModelsRelatingTo(info: { model: FirestoreConnectorModel<any>, attr: StrapiAttribute, alias: string }, strapiInstance = strapi): RelationInfo<any>[] {
   const related: RelationInfo<any>[] = [];
-  for (const model of allModels(strapiInstance)) {
+  for (const { model } of allModels(strapiInstance)) {
     if (model.isComponent) {
       // Dominant relations to components not supported
       // Quietly ignore this on polymorphic relations because it
@@ -147,7 +143,7 @@ function findParentModels<T extends object>(componentModel: FirestoreConnectorMo
       throw new Error('Relation in component does not have a default indexer');
     }
 
-    for (const otherModel of allModels(strapiInstance)) {
+    for (const { model: otherModel } of allModels(strapiInstance)) {
       if (componentModel.uid !== otherModel.uid) {
         for (const alias of Object.keys(otherModel.attributes)) {
           const attr = otherModel.attributes[alias];

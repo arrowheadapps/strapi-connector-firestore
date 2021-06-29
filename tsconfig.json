@@ -1,6 +1,7 @@
 {
   "extends": "@tsconfig/node12/tsconfig.json",
   "compilerOptions": {
+    "esModuleInterop": false,
     "strict": true,
     "noImplicitReturns": true,
     "noUnusedLocals": true,

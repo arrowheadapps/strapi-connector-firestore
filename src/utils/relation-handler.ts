@@ -140,7 +140,10 @@ export class RelationHandler<T extends object, R extends object = object> {
         if (!data) {
           // TODO:
           // Should we throw an error if the reference can't be found or just silently omit it?
-          strapi.log.warn(`Could not populate the reference "${snap.ref.path}" because it no longer exists`);
+          strapi.log.warn(
+            `Could not populate the reference "${snap.ref.path}" because it no longer exists. ` + 
+            'This may be because the database has been modified outside of Strapi, or there is a bug in the Firestore connector.'
+          );
         }
         return data;
       });

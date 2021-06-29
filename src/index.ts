@@ -140,7 +140,7 @@ module.exports = (strapi: Strapi) => {
         // In the Firestore production server this resolves and retries
         // but in the emulator it results in deadlock
         const tasks: Promise<void>[] = [];
-        for (const { db } of allModels()) {
+        for (const { model: { db } } of allModels()) {
           if (db instanceof QueryableFlatCollection) {
             tasks.push(db.ensureDocument());
           }

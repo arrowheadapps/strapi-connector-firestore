@@ -4,7 +4,7 @@ import { QueryableFirestoreCollection } from './db/queryable-firestore-collectio
 import { QueryableFlatCollection } from './db/queryable-flat-collection';
 import { QueryableComponentCollection } from './db/queryable-component-collection';
 import type { AttributeKey, ConnectorOptions, FlattenFn, ModelOptions, ModelTestFn, Strapi, StrapiAttribute, StrapiAttributeType, StrapiModel, StrapiModelRecord } from './types';
-import { populateDoc, populateSnapshots } from './populate';
+import { PickReferenceKeys, PopulatedKeys, populateDoc, populateSnapshots } from './populate';
 import { buildPrefixQuery } from './utils/prefix-query';
 import type{ QueryableCollection } from './db/queryable-collection';
 import { DocumentReference, Firestore } from '@google-cloud/firestore';
@@ -20,19 +20,20 @@ import { makeTransactionRunner } from './utils/transaction-runner';
 export const DEFAULT_CREATE_TIME_KEY = 'createdAt';
 export const DEFAULT_UPDATE_TIME_KEY = 'updatedAt';
 
+const {
+  PUBLISHED_AT_ATTRIBUTE,
+  CREATED_BY_ATTRIBUTE,
+  UPDATED_BY_ATTRIBUTE,
+} = utils.contentTypes.constants;
+
 
 /**
  * Iterates each model in a the given of models.
  */
-export function* eachModel<M extends StrapiModel<any> = FirestoreConnectorModel<any>>(models: StrapiModelRecord): Generator<M> {
+export function* eachModel<M extends StrapiModel<any> = FirestoreConnectorModel<any>>(models: StrapiModelRecord): Generator<{ model: M, target: object, key: string }> {
   for (const key of Object.keys(models)) {
     const model: M = models[key];
-
-    // The internal core_store and webhooks models don't
-    // have modelKey set, which breaks some of our code
-    model.modelName = model.modelName || key;
-
-    yield model;
+    yield { model, target: models, key };
   }
 }
 
@@ -40,7 +41,7 @@ export function* eachModel<M extends StrapiModel<any> = FirestoreConnectorModel<
  * Iterates all models in the Strapi instance.
  * @param strapiInstance Defaults to global Strapi
  */
-export function* allModels<M extends StrapiModel<any> = FirestoreConnectorModel<any>>(strapiInstance = strapi): Generator<M> {
+export function* allModels<M extends StrapiModel<any> = FirestoreConnectorModel<any>>(strapiInstance = strapi): Generator<{ model: M, target: object, key: string }> {
   // Iterate components first because subsequent models 
   // need to access the indexers
   yield* eachModel(strapiInstance.components);
@@ -58,7 +59,7 @@ export function* allModels<M extends StrapiModel<any> = FirestoreConnectorModel<
  */
 export interface FirestoreConnectorModel<T extends object = object> extends StrapiModel<T> {
   options: Required<ModelOptions<T>>;
-  defaultPopulate: AttributeKey<T>[];
+  defaultPopulate: PickReferenceKeys<T>[];
 
   assocKeys: AttributeKey<T>[];
   componentKeys: AttributeKey<T>[];
@@ -86,8 +87,8 @@ export interface FirestoreConnectorModel<T extends object = object> extends Stra
 
   runTransaction<TResult>(fn: (transaction: Transaction) => TResult | PromiseLike<TResult>): Promise<TResult>;
 
-  populate(data: Snapshot<T>, transaction: Transaction, populate?: AttributeKey<T>[]): Promise<any>;
-  populateAll(datas: Snapshot<T>[], transaction: Transaction, populate?: AttributeKey<T>[]): Promise<any[]>;
+  populate<K extends PickReferenceKeys<T>>(data: Snapshot<T>, transaction: Transaction, populate?: K[]): Promise<PopulatedKeys<T, K>>;
+  populateAll<K extends PickReferenceKeys<T>>(datas: Snapshot<T>[], transaction: Transaction, populate?: K[]): Promise<PopulatedKeys<T, K>[]>;
 }
 
 
@@ -106,8 +107,8 @@ export interface FirestoreConnectorModelArgs {
 export function mountModels(args: FirestoreConnectorModelArgs) {
   // Mount initialise all models onto the existing model instances
   const models: FirestoreConnectorModel[] = [];
-  for (const model of allModels<StrapiModel>(args.strapi)) {
-    models.push(mountModel(model, args));
+  for (const { model, target, key } of allModels<StrapiModel>(args.strapi)) {
+    models.push(mountModel(target, key, model, args));
   }
 
   // Build relations
@@ -117,7 +118,7 @@ export function mountModels(args: FirestoreConnectorModelArgs) {
 }
 
 
-function mountModel<T extends object>(mdl: StrapiModel<T>, { strapi, firestore, connectorOptions }: FirestoreConnectorModelArgs): FirestoreConnectorModel<T> {
+function mountModel<T extends object>(target: object, modelKey: string, mdl: StrapiModel<T>, { strapi, firestore, connectorOptions }: FirestoreConnectorModelArgs): FirestoreConnectorModel<T> {
 
   mdl.orm = 'firestore';
   mdl.primaryKey = mdl.primaryKey || 'id';
@@ -133,6 +134,7 @@ function mountModel<T extends object>(mdl: StrapiModel<T>, { strapi, firestore, 
 
   const options: Required<ModelOptions<T>> = {
     ...opts,
+    populateCreatorFields: opts.populateCreatorFields || false,
     timestamps: opts.timestamps || false,
     logQueries: opts.logQueries ?? connectorOptions.logQueries,
     singleId: flattening?.singleId || opts.singleId || connectorOptions.singleId,
@@ -149,6 +151,37 @@ function mountModel<T extends object>(mdl: StrapiModel<T>, { strapi, firestore, 
       ? [DEFAULT_CREATE_TIME_KEY, DEFAULT_UPDATE_TIME_KEY]
       : options.timestamps;
   options.timestamps = timestamps;
+
+  if (!mdl.uid.startsWith('strapi::') && mdl.modelType !== 'component') {
+    if (utils.contentTypes.hasDraftAndPublish(mdl)) {
+      mdl.attributes[PUBLISHED_AT_ATTRIBUTE] = {
+        type: 'datetime',
+        configurable: false,
+        writable: true,
+        visible: false,
+      };
+    }
+
+    const isPrivate = options.populateCreatorFields;
+
+    mdl.attributes[CREATED_BY_ATTRIBUTE] = {
+      model: 'user',
+      plugin: 'admin',
+      configurable: false,
+      writable: false,
+      visible: false,
+      private: isPrivate,
+    };
+
+    mdl.attributes[UPDATED_BY_ATTRIBUTE] = {
+      model: 'user',
+      plugin: 'admin',
+      configurable: false,
+      writable: false,
+      visible: false,
+      private: isPrivate,
+    };
+  }
 
   const componentKeys = (Object.keys(mdl.attributes) as AttributeKey<T>[])
     .filter(key => {
@@ -178,11 +211,16 @@ function mountModel<T extends object>(mdl: StrapiModel<T>, { strapi, firestore, 
       return model || collection;
     });
 
-  const defaultPopulate = assocKeys
+  const defaultPopulate: PickReferenceKeys<T>[] = (assocKeys as PickReferenceKeys<T>[])
     .filter(alias => {
       const attr = mdl.attributes[alias];
       return attr.autoPopulate ?? true;
     });
+
+  for (const attrKey of Object.keys(mdl.attributes)) {
+    // Required for other parts of Strapi to work
+    utils.models.defineAssociations(mdl.uid.toLowerCase(), mdl, mdl.attributes[attrKey], attrKey);
+  }
 
   const hasPK = (obj: any) => {
     return _.has(obj, mdl.primaryKey) || _.has(obj, 'id');
@@ -192,7 +230,7 @@ function mountModel<T extends object>(mdl: StrapiModel<T>, { strapi, firestore, 
     return ((_.has(obj, mdl.primaryKey) ? obj[mdl.primaryKey] : obj.id));
   }
 
-  const populate = async (snap: Snapshot<T>, transaction: Transaction, populate = defaultPopulate) => {
+  const populate: FirestoreConnectorModel<T>['populate'] = async (snap: Snapshot<T>, transaction: Transaction, populate = (defaultPopulate as any)) => {
     const data = snap.data();
     if (!data) {
       throw new StatusError('entry.notFound', 404);
@@ -200,7 +238,7 @@ function mountModel<T extends object>(mdl: StrapiModel<T>, { strapi, firestore, 
     return await populateDoc(model, snap.ref, data, populate || model.defaultPopulate, transaction);
   };
 
-  const populateAll = async (snaps: Snapshot<T>[], transaction: Transaction, populate = defaultPopulate) => {
+  const populateAll: FirestoreConnectorModel<T>['populateAll'] = async (snaps: Snapshot<T>[], transaction: Transaction, populate = (defaultPopulate as any)) => {
     return await populateSnapshots(snaps, populate, transaction);
   };
 
@@ -230,7 +268,7 @@ function mountModel<T extends object>(mdl: StrapiModel<T>, { strapi, firestore, 
     return {
       fetchAll: async () => {
         const { gte, lt } = buildPrefixQuery(value);
-        const results = await strapi.query(mdl.modelName).find({
+        const results = await strapi.query(modelKey).find({
           [`${field}_gte`]: gte,
           [`${field}_lt`]: lt,
         });
@@ -241,9 +279,7 @@ function mountModel<T extends object>(mdl: StrapiModel<T>, { strapi, firestore, 
     };
   };
 
-
-
-  const model: FirestoreConnectorModel<T> = Object.assign(mdl, {
+  const model: FirestoreConnectorModel<T> = Object.assign({}, mdl, {
     firestore,
     options,
     timestamps,
@@ -295,6 +331,14 @@ function mountModel<T extends object>(mdl: StrapiModel<T>, { strapi, firestore, 
         ? new QueryableFlatCollection<T>(model) 
         : new QueryableFirestoreCollection<T>(model)
       )
+
+
+  // Mimic built-in connectors
+  // They re-assign an (almost) identical copy of the model object
+  // Without this, there is an infinite recursion loop in the `privateAttributes`
+  // property getter
+  target[modelKey] = model;
+  Object.assign(mdl, _.omit(model, ['privateAttributes']))
 
   return model;
 }
