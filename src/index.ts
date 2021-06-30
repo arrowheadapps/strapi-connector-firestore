@@ -17,6 +17,9 @@ export type {
   IndexerFn,
   FlattenFn,
   ModelTestFn,
+  StrapiAttribute,
+  StrapiAttributeType,
+  AttributePopulate,
 } from './types';
 export type {
   Reference,
