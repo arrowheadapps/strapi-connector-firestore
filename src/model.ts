@@ -475,6 +475,7 @@ function buildMetadataAttributes<T extends object>(model: StrapiModel<T>, { comp
               private: true,
               configurable: false,
               writable: false,
+              visible: false,
             };
 
             const existingAttrValue = attributes[attrPath];
@@ -497,7 +498,8 @@ function buildMetadataAttributes<T extends object>(model: StrapiModel<T>, { comp
               }
             }
 
-            attributes[attrPath] = attrValue;
+            // Other Strapi internals would get confused by the presence of fields if the value is undefined
+            attributes[attrPath] = _.omitBy(attrValue, value => value === undefined);
 
             // Set layout config on the model so that the attribute is hidden
             _.set(model, ['config', 'attributes', attrPath], { hidden: true });
