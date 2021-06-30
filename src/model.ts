@@ -467,7 +467,9 @@ function buildMetadataAttributes<T extends object>(model: StrapiModel<T>, { comp
         for (const info of indexers!) {
           for (const key of Object.keys(info.indexers)) {
             const attrPath = `${mapKey}.${key}`;
-            const attrValue: StrapiAttribute = {
+            
+            // Other Strapi internals would get confused by the presence of fields if the value is undefined
+            const attrValue: StrapiAttribute = _.omitBy({
               collection: info.attr.model || info.attr.collection,
               via: info.attr.via,
               type: info.attr.type,
@@ -476,7 +478,7 @@ function buildMetadataAttributes<T extends object>(model: StrapiModel<T>, { comp
               configurable: false,
               writable: false,
               visible: false,
-            };
+            }, value => value === undefined);
 
             const existingAttrValue = attributes[attrPath];
             if (existingAttrValue) {
@@ -498,8 +500,7 @@ function buildMetadataAttributes<T extends object>(model: StrapiModel<T>, { comp
               }
             }
 
-            // Other Strapi internals would get confused by the presence of fields if the value is undefined
-            attributes[attrPath] = _.omitBy(attrValue, value => value === undefined);
+            attributes[attrPath] = attrValue;
 
             // Set layout config on the model so that the attribute is hidden
             _.set(model, ['config', 'attributes', attrPath], { hidden: true });
