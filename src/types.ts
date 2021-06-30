@@ -94,6 +94,14 @@ export interface ConnectorOptions {
    * Defaults to `"$meta"`.
    */
   metadataField?: string | ((attrKey: string) => string)
+
+  /**
+   * If defined, then overrides the model that is associated with creator fields
+   * such as `"created_by"` and `"updated_by"`.
+   * 
+   * Defaults to the build-in Strapi Admin user model, i.e.: `{ modelKey: "user", plugin: "admin" }`.
+   */
+  creatorUserModel?: string | { model: string, plugin?: string }
 }
 
 export interface ModelOptions<T extends object, R extends object = any> extends StrapiModelOptions {
@@ -157,6 +165,13 @@ export interface ModelOptions<T extends object, R extends object = any> extends 
    * retrieved from Firestore.
    */
   converter?: Converter<T, R>
+
+  /**
+   * Override connector setting per model.
+   * 
+   * Defaults to `undefined` (use connector setting).
+   */
+  creatorUserModel?: string | { model: string, plugin?: string }
 }
 
 export interface Converter<T, R = DocumentData> {
@@ -239,7 +254,7 @@ export interface StrapiModel<T extends object = object> {
   connector: string
   connection: string
   primaryKey: string
-  primaryKeyType: string
+  primaryKeyType: StrapiAttributeType
   attributes: { [key: string]: StrapiAttribute }
   privateAttributes: { [key: string]: StrapiAttribute }
   collectionName: string

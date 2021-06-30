@@ -144,6 +144,7 @@ function mountModel<T extends object>(target: object, modelKey: string, mdl: Str
     ensureComponentIds: opts.ensureComponentIds ?? connectorOptions.ensureComponentIds,
     allowNonNativeQueries: defaultAllowNonNativeQueries(mdl, opts, connectorOptions),
     metadataField: opts.metadataField || connectorOptions.metadataField,
+    creatorUserModel: opts.creatorUserModel || connectorOptions.creatorUserModel,
     converter: opts.converter || {},
   };
 
@@ -151,6 +152,14 @@ function mountModel<T extends object>(target: object, modelKey: string, mdl: Str
       ? [DEFAULT_CREATE_TIME_KEY, DEFAULT_UPDATE_TIME_KEY]
       : options.timestamps;
   options.timestamps = timestamps;
+
+  // Make sure any primary key attribute has the correct type
+  // Normally this doesn't exist, but it may exist if the user has
+  // used it to customise indexing of components
+  if (mdl.attributes[mdl.primaryKey]) {
+    const attr = mdl.attributes[mdl.primaryKey];
+    attr.type = mdl.primaryKeyType;
+  }
 
   if (!mdl.uid.startsWith('strapi::') && mdl.modelType !== 'component') {
     if (utils.contentTypes.hasDraftAndPublish(mdl)) {
@@ -163,23 +172,24 @@ function mountModel<T extends object>(target: object, modelKey: string, mdl: Str
     }
 
     const isPrivate = options.populateCreatorFields;
+    const creatorModelAttr = typeof options.creatorUserModel === 'string'
+      ? { model: options.creatorUserModel }
+      : options.creatorUserModel;
 
     mdl.attributes[CREATED_BY_ATTRIBUTE] = {
-      model: 'user',
-      plugin: 'admin',
       configurable: false,
       writable: false,
       visible: false,
       private: isPrivate,
+      ...creatorModelAttr,
     };
 
     mdl.attributes[UPDATED_BY_ATTRIBUTE] = {
-      model: 'user',
-      plugin: 'admin',
       configurable: false,
       writable: false,
       visible: false,
       private: isPrivate,
+      ...creatorModelAttr,
     };
   }
 

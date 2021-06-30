@@ -1,6 +1,6 @@
 {
   "name": "strapi-connector-firestore",
-  "version": "3.0.0-alpha.34",
+  "version": "3.0.0-alpha.35",
   "description": "Strapi database connector for Firestore database on Google Cloud Platform.",
   "keywords": [
     "firestore",
