@@ -34,8 +34,6 @@ export type {
   PickReferenceKeys,
 } from './populate';
 
-export { NormalCollection } from './db/normal-collection';
-export { FlatCollection } from './db/flat-collection';
 
 
 const defaults = {
@@ -90,14 +88,6 @@ module.exports = (strapi: Strapi) => {
     await Promise.all(
       firestoreConnections.map(async connectionName => {
         const connection = connections[connectionName];
-        if (connection.connector !== 'firestore') {
-          strapi.log.warn(
-            'You are using the Firestore connector alongside ' +
-            'other connector types. The Firestore connector is not ' +
-            'designed for this, so you will likely run into problems.'
-          );
-          return;
-        }
 
         _.defaults(connection.settings, strapi.config.hook.settings.firestore);
         const options = _.defaults(connection.options, defaultOptions);

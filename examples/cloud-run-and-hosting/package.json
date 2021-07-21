@@ -22,7 +22,7 @@
     "strapi-plugin-email": "^3.6.5",
     "strapi-plugin-upload": "^3.6.5",
     "strapi-plugin-users-permissions": "^3.6.5",
-    "strapi-provider-upload-google-cloud-storage": "^3.6.3",
+    "strapi-provider-upload-google-cloud-storage": "^3.6.5",
     "strapi-utils": "^3.6.5"
   },
   "devDependencies": {
