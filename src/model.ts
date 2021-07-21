@@ -483,6 +483,7 @@ function buildMetadataAttributes<T extends object>(model: StrapiModel<T>, { comp
               collection: info.attr.model || info.attr.collection,
               via: info.attr.via,
               type: info.attr.type,
+              plugin: info.attr.plugin,
               isMeta: true,
               private: true,
               configurable: false,
