@@ -131,7 +131,9 @@ export class RelationHandler<T extends object, R extends object = object> {
    */
   async populateRelated(ref: Reference<T>, data: T, transaction: Transaction): Promise<void> {
     const { attr } = this.thisEnd;
-    if (attr) {
+    // This could be a partial data update
+    // If the attribute value does not exist in the data, then we ignore it
+    if (attr && (_.get(data, attr.alias) !== undefined)) {
       const related = await this.findRelated(ref, data, transaction);
       const results = related.length ? await transaction.getNonAtomic(related) : [];
 

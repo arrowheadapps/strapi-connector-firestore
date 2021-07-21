@@ -73,17 +73,14 @@ export function queries<T extends object>({ model, strapi }: StrapiContext<T>): 
         throw new StatusError('entry.notFound', 404);
       }
 
-      // Update while coercing data and updating relations
-      const data = await trans.update(snap.ref, values);
+      // Update and merge coerced data (shallow merge)
+      const data = {
+        ...snap.data(),
+        ...await trans.update(snap.ref, values),
+      };
 
       // Populate relations
-      const result = await populateDoc(model, snap.ref, data, populate, trans);
-      
-      // Merge previous and new data (shallow merge)
-      return {
-        ...snap.data(),
-        ...result,
-      };
+      return await populateDoc(model, snap.ref, data, populate, trans);
     });
   };
 
