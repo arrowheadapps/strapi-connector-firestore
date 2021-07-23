@@ -175,7 +175,9 @@ export function convertWhere(model: FirestoreConnectorModel<any>, { field, opera
       }
       // If the target is an array, then we implicitly use an 'array-contains-none' operation, but this
       // is only supported by manual query, not by native Firestore
-      op = ((value.length > FIRESTORE_MAX_ARRAY_ELEMENTS) || attrIsArray)
+      // TODO: Don't do as above, because this will cause a built-in Strapi query to fail (find users without a role using role_nin)
+      // so just ignore for now (that query won't function, but at least Strapi doesn't crash)
+      op = ((value.length > FIRESTORE_MAX_ARRAY_ELEMENTS) /*|| attrIsArray*/)
         ? fsOps['not-in'] 
         : 'not-in';
       break;
