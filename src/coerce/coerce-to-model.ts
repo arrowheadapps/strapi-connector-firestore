@@ -11,6 +11,7 @@ import { MorphReference } from '../db/morph-reference';
 import { updateComponentsMetadata } from '../utils/components-indexing';
 import { NormalReference } from '../db/normal-reference';
 import { FieldOperation } from '../db/field-operation';
+import { VirtualReference } from '../db/virtual-reference';
 
 export class CoercionError extends StatusError {
   constructor(message: string) {
@@ -400,7 +401,7 @@ function coerceToReference<T extends object = object>(value: any, to: FirestoreC
  * Reinstantiates the reference via the target model so that it comes
  * loaded with the appropriate converter.
  */
-function reinstantiateReference<T extends object>(value: DocumentReference<T | { [id: string]: T }>, id: string | undefined, to: FirestoreConnectorModel<T> | undefined, opts: CoerceOpts): NormalReference<T> | DeepReference<T> | null {
+function reinstantiateReference<T extends object>(value: DocumentReference<T | { [id: string]: T }>, id: string | undefined, to: FirestoreConnectorModel<T> | undefined, opts: CoerceOpts): NormalReference<T> | DeepReference<T> | VirtualReference<T> | null {
   if (to) {
     const newRef = to.db.doc(id || value.id);
     if (newRef.parent.path !== value.parent.path) {

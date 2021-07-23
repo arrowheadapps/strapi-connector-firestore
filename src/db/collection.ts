@@ -5,6 +5,7 @@ import type { FirestoreConnectorModel } from '../model';
 import type { Snapshot } from './reference';
 import type { NormalReference } from './normal-reference';
 import type { ReadRepository } from '../utils/read-repository';
+import { VirtualReference } from './virtual-reference';
 
 
 export interface QuerySnapshot<T extends object> {
@@ -28,6 +29,8 @@ export interface Collection<T extends object> extends Queryable<T> {
   readonly converter: FirestoreDataConverter<any>
   
   autoId(): string;
-  doc(): NormalReference<T> | DeepReference<T>;
-  doc(id: string): NormalReference<T> | DeepReference<T>;
+  doc(): NormalReference<T> | DeepReference<T> | VirtualReference<T>;
+  doc(id: string): NormalReference<T> | DeepReference<T> | VirtualReference<T>;
+
+  get(repo?: ReadRepository): Promise<QuerySnapshot<T>>;
 }

@@ -5,6 +5,7 @@ import { MorphReference } from '../db/morph-reference';
 import { NormalReference } from '../db/normal-reference';
 import type { Reference, SetOpts } from '../db/reference';
 import type { Transaction, TransactionImpl } from '../db/transaction';
+import { VirtualReference } from '../db/virtual-reference';
 import { relationsUpdate, shouldUpdateRelations } from '../relations';
 
 export interface LifecycleArgs<T extends object> extends Required<CoerceOpts> {
@@ -44,7 +45,8 @@ export async function runUpdateLifecycle<T extends object>({ ref, data, editMode
     } else {
       if ((ref instanceof NormalReference)
         || (ref instanceof DeepReference)
-        || (ref instanceof MorphReference)) {
+        || (ref instanceof MorphReference)
+        || (ref instanceof VirtualReference)) {
         await ref.writeInternal(newData, editMode);
       } else {
         throw new Error(`Unknown type of reference: ${ref}`);

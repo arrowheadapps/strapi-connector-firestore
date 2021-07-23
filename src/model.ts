@@ -16,6 +16,7 @@ import { AttributeIndexInfo, buildIndexers, doesComponentRequireMetadata } from 
 import type { Snapshot } from './db/reference';
 import { StatusError } from './utils/status-error';
 import { makeTransactionRunner } from './utils/transaction-runner';
+import { VirtualCollection } from './db/virtual-collection';
 
 export const DEFAULT_CREATE_TIME_KEY = 'createdAt';
 export const DEFAULT_UPDATE_TIME_KEY = 'updatedAt';
@@ -146,6 +147,7 @@ function mountModel<T extends object>(target: object, modelKey: string, mdl: Str
     metadataField: opts.metadataField || connectorOptions.metadataField,
     creatorUserModel: opts.creatorUserModel || connectorOptions.creatorUserModel,
     converter: opts.converter || {},
+    virtualDataSource: opts.virtualDataSource || null,
   };
 
   const timestamps: [string, string] | false = (options.timestamps && (typeof options.timestamps === 'boolean'))
@@ -337,10 +339,11 @@ function mountModel<T extends object>(target: object, modelKey: string, mdl: Str
 
   model.db = isComponent
     ? new ComponentCollection<T>(model)
-    : (flattening 
-        ? new FlatCollection<T>(model) 
-        : new NormalCollection<T>(model)
-      )
+    : opts.virtualDataSource 
+    ? new VirtualCollection<T>(model)
+    : flattening 
+    ? new FlatCollection<T>(model) 
+    : new NormalCollection<T>(model)
 
 
   // Mimic built-in connectors

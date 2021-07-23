@@ -7,6 +7,7 @@ import { Reference, SetOpts, Snapshot } from './reference';
 import { MorphReference } from './morph-reference';
 import { makeNormalSnap, NormalReference } from './normal-reference';
 import { runUpdateLifecycle } from '../utils/lifecycle';
+import { VirtualReference } from './virtual-reference';
 
 export interface GetOpts {
   /**
@@ -132,7 +133,6 @@ export class TransactionImpl implements Transaction {
       // Queryable
       return await refOrQuery.get(repo);
     }
-    
   }
 
 
@@ -140,30 +140,40 @@ export class TransactionImpl implements Transaction {
     const isSingleRequest = opts && opts.isSingleRequest;
 
     // Collect the masks for each native document
-    const mapping = new Array(refs.length);
+    const getters: ((args: { ref: Reference<any>, results: DocumentSnapshot<any>[], virtualSnaps: Snapshot<any>[] }) => Snapshot<any>)[] = new Array(refs.length);
     const docRefs = new Map<string, RefAndMask & { i: number }>();
+    const virtualGets: Promise<Snapshot<any>>[] = [];
+
     for (let i = 0; i < refs.length; i++) {
       const { docRef, deepRef } = getRefInfo(refs[i]);
-      let entry = docRefs.get(docRef.path);
-      if (!entry) {
-        entry = { ref: docRef, i: docRefs.size };
-        docRefs.set(docRef.path, entry);
-      }
-      if (isSingleRequest && deepRef) {
-        if (!entry.fieldMasks) {
-          entry.fieldMasks = [deepRef.id];
-        } else if (!entry.fieldMasks.includes(deepRef.id)) {
-          entry.fieldMasks.push(deepRef.id);
+      if (!docRef) {
+        const index = virtualGets.length;
+        const ref = refs[i] as VirtualReference<any>;
+        virtualGets.push(ref.get());
+        getters[i] = ({ virtualSnaps }) => virtualSnaps[index];
+      } else {
+        let entry = docRefs.get(docRef.path);
+        if (!entry) {
+          entry = { ref: docRef, i: docRefs.size };
+          docRefs.set(docRef.path, entry);
         }
-      }
+        if (isSingleRequest && deepRef) {
+          if (!entry.fieldMasks) {
+            entry.fieldMasks = [deepRef.id];
+          } else if (!entry.fieldMasks.includes(deepRef.id)) {
+            entry.fieldMasks.push(deepRef.id);
+          }
+        }
 
-      mapping[i] = entry.i;
+        getters[i] = ({ ref, results }) => makeSnap(ref, results[entry!.i]);
+      }
     }
 
     const refsWithMasks = Array.from(docRefs.values());
+    const virtualSnaps = await Promise.all(virtualGets);
     const results = await repo.getAll(refsWithMasks);
     
-    return refs.map((ref, i) => makeSnap(ref, results[mapping[i]]));
+    return refs.map((ref, i) => getters[i]({ ref, results, virtualSnaps }));
   }
   
   getAtomic<T extends object>(ref: Reference<T>, opts?: GetOpts): Promise<Snapshot<T>>
@@ -266,6 +276,11 @@ export class TransactionImpl implements Transaction {
   mergeWriteInternal<T extends object>(ref: Reference<T>, data: Partial<T> | undefined, editMode: 'create' | 'update') {
 
     const { docRef, deepRef } = getRefInfo(ref);
+    if (!docRef) {
+      (ref as VirtualReference<T>).writeInternal(data, editMode);
+      return;
+    }
+
     const { path } = docRef;
 
     let op: WriteOp;
@@ -317,7 +332,7 @@ interface WriteOp {
 }
 
 interface RefInfo {
-  docRef: DocumentReference<any>,
+  docRef?: DocumentReference<any>,
   deepRef?: DeepReference<any>,
   morphRef?: MorphReference<any>,
 }
@@ -328,6 +343,9 @@ function getRefInfo(ref: Reference<any>): RefInfo {
   }
   if (ref instanceof DeepReference) {
     return { docRef: ref.doc, deepRef: ref };
+  }
+  if (ref instanceof VirtualReference) {
+    return {};
   }
   if (ref instanceof MorphReference) {
     return {

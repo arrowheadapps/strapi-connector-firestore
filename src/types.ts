@@ -104,7 +104,7 @@ export interface ConnectorOptions {
   creatorUserModel?: string | { model: string, plugin?: string }
 }
 
-export interface ModelOptions<T extends object, R extends object = any> extends StrapiModelOptions {
+export interface ModelOptions<T extends object, R extends DocumentData = DocumentData> extends StrapiModelOptions {
   timestamps?: boolean | [string, string]
   singleId?: string
 
@@ -172,9 +172,21 @@ export interface ModelOptions<T extends object, R extends object = any> extends 
    * Defaults to `undefined` (use connector setting).
    */
   creatorUserModel?: string | { model: string, plugin?: string }
+
+  /**
+   * Makes this model a virtual model, with the given object acting as the data source.
+   * Virtual models are not stored in Firestore, but the given object acts as the proxy
+   * to fetch and store data in it's entirety.
+   */
+  virtualDataSource?: DataSource<T> | null
 }
 
-export interface Converter<T, R = DocumentData> {
+export interface DataSource<T extends object> {
+  getData(): { [id: string]: T } | Promise<{ [id: string]: T }>
+  setData(data: { [id: string]: T }): Promise<void>
+}
+
+export interface Converter<T, R extends DocumentData = DocumentData> {
   toFirestore?: (data: Partial<T>) => R
   fromFirestore?: (data: R) => T
 }

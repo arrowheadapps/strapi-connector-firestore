@@ -3,6 +3,7 @@ import { DeepReference } from './deep-reference';
 import type { Collection } from './collection';
 import { MorphReferenceShape, Reference, SetOpts } from './reference';
 import { NormalReference } from './normal-reference';
+import { VirtualReference } from './virtual-reference';
 
 
 /**
@@ -11,7 +12,7 @@ import { NormalReference } from './normal-reference';
  */
 export class MorphReference<T extends object> extends Reference<T> {
 
-  constructor(readonly ref: NormalReference<T> | DeepReference<T>, readonly filter: string | null) {
+  constructor(readonly ref: NormalReference<T> | DeepReference<T> | VirtualReference<T>, readonly filter: string | null) {
     super();
   }
 
@@ -89,7 +90,7 @@ export class MorphReference<T extends object> extends Reference<T> {
   toFirestoreValue(): MorphReferenceShape<T> {
     const value: MorphReferenceShape<T> = this.ref instanceof DeepReference
       ? { ...this.ref.toFirestoreValue(), filter: this.filter } 
-      : { ref: this.ref.ref, filter: this.filter };
+      : { ref: this.ref.toFirestoreValue(), filter: this.filter };
 
     return value;
   }
