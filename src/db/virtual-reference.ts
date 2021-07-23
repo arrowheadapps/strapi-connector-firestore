@@ -101,8 +101,9 @@ export class VirtualReference<T extends object> extends Reference<T> {
 
   async get(): Promise<Snapshot<T>> {
     const virtualData = await this.parent.getData();
-    const data = this.parent.converter.fromFirestore(virtualData[this.id]);
-    return makeVirtualSnap(this, data);
+    const data = virtualData[this.id];
+    const converted = data ? this.parent.converter.fromFirestore(data) : undefined;
+    return makeVirtualSnap(this, converted);
   }
 
   isEqual(other: any) {
@@ -133,7 +134,7 @@ export class VirtualReference<T extends object> extends Reference<T> {
 }
 
 
-export function makeVirtualSnap<T extends object>(ref: VirtualReference<T>, data: T): Snapshot<T> {
+export function makeVirtualSnap<T extends object>(ref: VirtualReference<T>, data: T | undefined): Snapshot<T> {
   return {
     ref,
     data: () => data,
