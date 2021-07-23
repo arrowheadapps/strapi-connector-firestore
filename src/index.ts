@@ -1,7 +1,7 @@
 import * as path from 'path';
 import * as fs from 'fs-extra';
 import * as _ from 'lodash';
-import { Firestore, Settings, DocumentReference, Timestamp } from '@google-cloud/firestore';
+import { Firestore, Settings, DocumentReference, Timestamp, FieldPath } from '@google-cloud/firestore';
 import { allModels, DEFAULT_CREATE_TIME_KEY, DEFAULT_UPDATE_TIME_KEY, mountModels } from './model';
 import { queries } from './queries';
 import type { Strapi, ConnectorOptions } from './types';
@@ -64,8 +64,9 @@ module.exports = (strapi: Strapi) => {
   }
 
   // Patch Firestore types to allow JSON serialization
-  (DocumentReference.prototype as any).toJSON = function() { return this.id; };
-  (Timestamp.prototype as any).toJSON = function() { return this.toDate().toJSON(); };
+  (DocumentReference.prototype as any).toJSON = function() { return (this as DocumentReference).id; };
+  (Timestamp.prototype as any).toJSON = function() { return (this as Timestamp).toDate().toJSON(); };
+  (FieldPath.prototype as any).toJSON = function() { return (this as FieldPath).toString(); };
 
   const { connections } = strapi.config;
   const firestoreConnections = Object.keys(connections)

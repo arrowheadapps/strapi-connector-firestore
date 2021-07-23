@@ -54,6 +54,7 @@ export function convertWhere(model: FirestoreConnectorModel<any>, { field, opera
 export function convertWhere(model: FirestoreConnectorModel<any>, { field, operator, value }:  StrapiWhereFilter | StrapiOrFilter | FirestoreFilter, mode: 'manualOnly' | 'nativeOnly' | 'preferNative'): FirestoreFilter | ManualFilter | null
 export function convertWhere(model: FirestoreConnectorModel<any>, { field, operator, value }:  StrapiWhereFilter | StrapiOrFilter | FirestoreFilter, mode: 'manualOnly' | 'nativeOnly' | 'preferNative'): FirestoreFilter | ManualFilter | null {
   
+  
   if (operator === 'or') {
     const filters: StrapiOrFilter['value'] = _.castArray(value || []);
     if (!filters.length) {
@@ -111,6 +112,14 @@ export function convertWhere(model: FirestoreConnectorModel<any>, { field, opera
     throw new StatusError(`Query field must not be empty, received: ${JSON.stringify(field)}.`, 400);
   }
 
+  const path = fieldPathToPath(model, field);
+  const attr: StrapiAttribute | undefined = (path === model.primaryKey) ? { type: 'string' } : model.attributes[path];
+  if (attr?.type === 'password') {
+    throw new StatusError('Not allowed to query password fields', 400);
+  }
+
+  const attrIsArray = attr.collection || attr.repeatable;
+
   let op: WhereFilterOp | ((filterValue: any, fieldValue: any) => boolean);
   switch (operator) {
     case '==':
@@ -138,26 +147,35 @@ export function convertWhere(model: FirestoreConnectorModel<any>, { field, opera
       }
 
     case 'in':
+      // Implicitly convert 'in' operator to 'array-contains-any' if the target is an array
+      const actualOp: WhereFilterOp = attrIsArray ? 'array-contains-any' : 'in';
+
       // Included in an array of values
-      // `value` must be an array
-      value = _.castArray(value);
+      // `value` must be an array, don't coerce as it's likely to be an error if it's not an array
+      if (!Array.isArray(value) || value.some(v => v === undefined)) {
+        throw new StatusError(`value for 'in' filter must be an array without undefined values`, 400);
+      }
       if ((value as any[]).length === 0) {
         throw new EmptyQueryError();
       }
       op = ((value as any[]).length > FIRESTORE_MAX_ARRAY_ELEMENTS) 
-        ? fsOps.in 
-        : 'in';
+        ? fsOps[actualOp] 
+        : actualOp;
       break;
 
     case 'not-in':
     case 'nin':
       // Not included in an array of values
-      // `value` must be an array
-      value = _.castArray(value);
-      if ((value as any[]).length === 0) {
+      // `value` must be an array, don't coerce as it's likely to be an error if it's not an array
+      if (!Array.isArray(value) || value.some(v => v === undefined)) {
+        throw new StatusError(`value for 'in' filter must be an array without undefined values`, 400);
+      }
+      if (value.length === 0) {
         return null;
       }
-      op = ((value as any[]).length > FIRESTORE_MAX_ARRAY_ELEMENTS)
+      // If the target is an array, then we implicitly use an 'array-contains-none' operation, but this
+      // is only supported by manual query, not by native Firestore
+      op = ((value.length > FIRESTORE_MAX_ARRAY_ELEMENTS) || attrIsArray)
         ? fsOps['not-in'] 
         : 'not-in';
       break;
@@ -247,6 +265,21 @@ export function convertWhere(model: FirestoreConnectorModel<any>, { field, opera
         return convertWhere(model, { field, operator: '!=', value: null }, mode);
       }
 
+    case 'array-contains-any':
+      // Array includes any value in the given array
+      // `value` must be an array, don't coerce as it's likely to be an error if it's not an array
+      if (!Array.isArray(value) || value.some(v => v === undefined)) {
+        throw new StatusError(`value for 'array-contains-any' filter must be an array without undefined values`, 400);
+      }
+      if (value.length === 0) {
+        throw new EmptyQueryError();
+      }
+      op = (value.length > FIRESTORE_MAX_ARRAY_ELEMENTS) 
+        ? fsOps['array-contains-any'] 
+        : 'array-contains-any';
+      break;
+
+
     default:
       // If Strapi adds other operators in the future then they
       // will be passed directly to Firestore which will most
@@ -265,12 +298,6 @@ export function convertWhere(model: FirestoreConnectorModel<any>, { field, opera
 
   if ((mode === 'nativeOnly') && (typeof op === 'function')) {
     throw new StatusError(`Operator "${operator}" is not supported natively by Firestore. Use the \`allowNonNativeQueries\` option to enable a manual version of this query.`, 400);  
-  }
-
-  const path = fieldPathToPath(model, field);
-  const attr: StrapiAttribute | undefined = (path === model.primaryKey) ? { type: 'string' } : model.attributes[path];
-  if (attr?.type === 'password') {
-    throw new StatusError('Not allowed to query password fields', 400);
   }
 
   // Coerce the attribute into the correct type
@@ -359,9 +386,20 @@ interface TestFn<A = any, B = any> {
 }
 
 const inFn: TestFn<any, any[]> = (fieldValue, filterValue) => {
-  for (const v of filterValue) {
-    if (isEqualHandlingRef(fieldValue, v))
-      return true;
+  if (Array.isArray(fieldValue)) {
+    // Any element is equal to any value in the filter value array
+    for (const val of fieldValue) {
+      for (const v of filterValue) {
+        if (isEqualHandlingRef(val, v))
+          return true;
+      }
+    }
+  } else {
+    // Equal to any value in the filter value array
+    for (const v of filterValue) {
+      if (isEqualHandlingRef(fieldValue, v))
+        return true;
+    }
   }
   return false;
 };

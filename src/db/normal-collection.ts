@@ -8,6 +8,7 @@ import { coerceModelToFirestore, coerceToFirestore } from '../coerce/coerce-to-f
 import { coerceToModel } from '../coerce/coerce-to-model';
 import { makeNormalSnap, NormalReference } from './normal-reference';
 import type { ReadRepository } from '../utils/read-repository';
+import { QueryError } from './query-error';
 
 
 export class NormalCollection<T extends object = DocumentData> implements Collection<T> {
@@ -105,26 +106,30 @@ export class NormalCollection<T extends object = DocumentData> implements Collec
   }
 
   async get(trans?: ReadRepository): Promise<QuerySnapshot<T>> {
-    // Ensure the maximum limit is set if no limit has been set yet
-    let q: NormalCollection<T> = this;
-    if (this.maxQuerySize && (this._limit === undefined)) {
-      // Log a warning when the limit is applied where no limit was requested
-      this.warnQueryLimit('unlimited');
-      q = q.limit(this.maxQuerySize);
+    try {
+      // Ensure the maximum limit is set if no limit has been set yet
+      let q: NormalCollection<T> = this;
+      if (this.maxQuerySize && (this._limit === undefined)) {
+        // Log a warning when the limit is applied where no limit was requested
+        this.warnQueryLimit('unlimited');
+        q = q.limit(this.maxQuerySize);
+      }
+
+      const docs = q.manualFilters.length
+        ? await queryWithManualFilters(q.query, q.manualFilters, q._limit || 0, q._offset || 0, this.maxQuerySize, trans)
+        : await (trans ? trans.getQuery(q.query) : q.query.get()).then(snap => snap.docs);
+
+
+      return {
+        empty: docs.length === 0,
+        docs: docs.map(s => {
+          const ref = this.doc(s.id);
+          return makeNormalSnap(ref, s);
+        }),
+      };
+    } catch (err) {
+      throw new QueryError(err, this.query);
     }
-
-    const docs = q.manualFilters.length
-      ? await queryWithManualFilters(q.query, q.manualFilters, q._limit || 0, q._offset || 0, this.maxQuerySize, trans)
-      : await (trans ? trans.getQuery(q.query) : q.query.get()).then(snap => snap.docs);
-
-
-    return {
-      empty: docs.length === 0,
-      docs: docs.map(s => {
-        const ref = this.doc(s.id);
-        return makeNormalSnap(ref, s);
-      }),
-    };
   }
 
   where(clause: StrapiWhereFilter | StrapiOrFilter | FirestoreFilter): NormalCollection<T> {
