@@ -105,17 +105,27 @@ export interface FirestoreConnectorModelArgs {
  * They are mounted onto the existing instance because that instance is already 
  * propagated through many parts of Strapi's core.
  */
-export function mountModels(args: FirestoreConnectorModelArgs) {
-  // Mount initialise all models onto the existing model instances
-  const models: FirestoreConnectorModel[] = [];
+export async function mountModels(args: FirestoreConnectorModelArgs) {
+  // Call the before mount hook for each model
+  // then mount initialise all models onto the existing model instances
+  const modelPromises: Promise<FirestoreConnectorModel>[] = [];
   for (const { model, target, key } of allModels<StrapiModel>(args.strapi)) {
-    models.push(mountModel(target, key, model, args));
+    modelPromises.push(
+      Promise.resolve()
+        .then(() => args.connectorOptions.beforeMountModel(model))
+        .then(() => mountModel(target, key, model, args))
+    );
   }
+
+  const models = await Promise.all(modelPromises);
 
   // Build relations
   for (const model of models) {
     buildRelations(model, args.strapi);
   }
+
+  // Call the after mount hook for each model
+  await Promise.all(models.map(model => args.connectorOptions.afterMountModel(model)));
 }
 
 

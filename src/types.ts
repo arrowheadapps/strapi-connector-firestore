@@ -102,6 +102,17 @@ export interface ConnectorOptions {
    * Defaults to the build-in Strapi Admin user model, i.e.: `{ modelKey: "user", plugin: "admin" }`.
    */
   creatorUserModel?: string | { model: string, plugin?: string }
+
+  /**
+   * A hook called before each model is mounted. This can be used to modify any model (particularly useful
+   * for builtin or plugin models), before it is loaded into the Firestore connector.
+   */
+  beforeMountModel?: ((model: StrapiModel) => void | Promise<void>)
+
+  /**
+   * A hook called after each model is mounted. Use with caution!
+   */
+  afterMountModel?: ((model: FirestoreConnectorModel) => void | Promise<void>)
 }
 
 export interface ModelOptions<T extends object, R extends DocumentData = DocumentData> extends StrapiModelOptions {
