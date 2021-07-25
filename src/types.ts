@@ -193,8 +193,14 @@ export interface ModelOptions<T extends object, R extends DocumentData = Documen
 }
 
 export interface DataSource<T extends object> {
+  /**
+   * Indicates whether entries in this data source will have persistent and stable IDs
+   * between server restarts. If `true`, then the connector will allow non-virtual collections
+   * to have dominant references to this virtual collection.
+   */
+  hasStableIds?: boolean
   getData(): { [id: string]: T } | Promise<{ [id: string]: T }>
-  setData(data: { [id: string]: T }): Promise<void>
+  setData?(data: { [id: string]: T }): Promise<void>
 }
 
 export interface Converter<T, R extends DocumentData = DocumentData> {

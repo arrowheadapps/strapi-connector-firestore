@@ -1,18 +1,14 @@
 import * as _ from 'lodash';
-import { convertWhere, ManualFilter, getAtFieldPath } from '../utils/convert-where';
+import { convertWhere } from '../utils/convert-where';
 import { OrderByDirection, FieldPath, DocumentData } from '@google-cloud/firestore';
 import type { Collection, QuerySnapshot } from './collection';
 import type { Converter, DataSource, FirestoreFilter, StrapiOrFilter, StrapiWhereFilter } from '../types';
 import type { FirestoreConnectorModel } from '../model';
 import { coerceModelToFirestore } from '../coerce/coerce-to-firestore';
 import { coerceToModel } from '../coerce/coerce-to-model';
-import type { Snapshot } from './reference';
 import { VirtualReference } from './virtual-reference';
+import { applyManualFilters, ManualFilter, OrderSpec } from '../utils/manual-filter';
 
-interface OrderSpec {
-  field: string | FieldPath
-  directionStr: OrderByDirection
-}
 
 export class VirtualCollection<T extends object = DocumentData> implements Collection<T> {
 
@@ -88,41 +84,20 @@ export class VirtualCollection<T extends object = DocumentData> implements Colle
    */
   async updateData() {
     // Data is modified in place on the original object instance
-    await this.dataSource.setData(await this.getData());
+    if (this.dataSource.setData) {
+      await this.dataSource.setData(await this.getData());
+    }
   }
 
   async get(): Promise<QuerySnapshot<T>> {
-    const virtualData = await this.getData();
-
-    let docs: Snapshot<T>[] = [];
-    for (const [id, rawData] of Object.entries(virtualData)) {
-      // Must match every 'AND' filter (if any exist)
-      // and at least one 'OR' filter (if any exists)
-      const data = rawData ? this.converter.fromFirestore(rawData) : undefined;
-      const snap: Snapshot<T> = {
-        id,
-        ref: new VirtualReference(id, this),
-        exists: data != null,
-        data: () => data,
-      };
-      if (this.manualFilters.every(f => f(snap))) {
-        docs.push(snap);
-      }
-    }
-
-    for (const { field, directionStr } of this._orderBy) {
-      docs = _.orderBy(docs, d => getAtFieldPath(this.model, field, d), directionStr);
-    }
-    
-    // Offset and limit after sorting
-    const offset = Math.max(this._offset || 0, 0);
-    const limit = Math.max(this._limit || 0, 0) || docs.length;
-    docs = docs.slice(offset, offset + limit);
-
-    return {
-      docs,
-      empty: docs.length === 0
-    };
+    return applyManualFilters({
+      model: this.model,
+      data: await this.getData(),
+      filters: this.manualFilters,
+      orderBy: this._orderBy,
+      limit: this._limit,
+      offset: this._offset,
+    });
   }
 
   where(clause: StrapiWhereFilter | StrapiOrFilter | FirestoreFilter): VirtualCollection<T> {
