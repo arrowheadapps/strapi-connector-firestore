@@ -3,9 +3,10 @@ import { WhereFilterOp, FieldPath } from '@google-cloud/firestore';
 import type { FirestoreFilter, StrapiAttribute, StrapiOrFilter, StrapiWhereFilter } from '../types';
 import type { FirestoreConnectorModel } from '../model';
 import { coerceAttrToModel, CoercionError } from '../coerce/coerce-to-model';
-import { isEqualHandlingRef, Snapshot } from '../db/reference';
+import { isEqualHandlingRef } from '../db/reference';
 import { StatusError } from './status-error';
 import { mapNotNull } from './map-not-null';
+import { ManualFilter } from './manual-filter';
 
 const FIRESTORE_MAX_ARRAY_ELEMENTS = 10;
 
@@ -13,35 +14,6 @@ export class EmptyQueryError extends Error {
   constructor() {
     super('Query parameters will result in an empty response');
   }
-}
-
-export type PartialSnapshot<T extends object> =
-  Pick<Snapshot<T>, 'data'> &
-  Pick<Snapshot<T>, 'id'>;
-
-export interface ManualFilter {
-  (data: PartialSnapshot<any>): boolean
-}
-
-export function fieldPathToPath(model: FirestoreConnectorModel<any>, field: string | FieldPath): string {
-  if (field instanceof FieldPath) {
-    if (FieldPath.documentId().isEqual(field)) {
-      return model.primaryKey;
-    }
-    return field.toString();
-  }
-  return field;
-}
-
-export function getAtPath(model: FirestoreConnectorModel<any>, path: string, data: PartialSnapshot<any>): any {
-  if (path === model.primaryKey) {
-    return data.id;
-  }
-  return _.get(data.data(), path, undefined);
-}
-
-export function getAtFieldPath(model: FirestoreConnectorModel<any>, path: string | FieldPath, data: Snapshot<any>): any {
-  return getAtPath(model, fieldPathToPath(model, path), data);
 }
 
 
@@ -112,13 +84,12 @@ export function convertWhere(model: FirestoreConnectorModel<any>, { field, opera
     throw new StatusError(`Query field must not be empty, received: ${JSON.stringify(field)}.`, 400);
   }
 
-  const path = fieldPathToPath(model, field);
-  const attr: StrapiAttribute | undefined = (path === model.primaryKey) ? { type: 'string' } : model.attributes[path];
-  if (attr?.type === 'password') {
+  const attr = model.getAttribute(field);
+  if (attr && attr.type === 'password') {
     throw new StatusError('Not allowed to query password fields', 400);
   }
 
-  const attrIsArray = attr.collection || attr.repeatable;
+  const attrIsArray = attr && (attr.collection || attr.repeatable);
 
   let op: WhereFilterOp | ((filterValue: any, fieldValue: any) => boolean);
   switch (operator) {
@@ -316,9 +287,10 @@ export function convertWhere(model: FirestoreConnectorModel<any>, { field, opera
   }
   
   if (typeof op === 'function') {
+    const path = field;
     const testFn = op;
     return snap => {
-      const fieldValue = getAtPath(model, path, snap);
+      const fieldValue = model.getAttributeValue(path, snap);
       return testFn(fieldValue, value);
     };
   } else {

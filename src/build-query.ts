@@ -5,7 +5,7 @@ import { EmptyQueryError } from './utils/convert-where';
 import { StatusError } from './utils/status-error';
 import { buildPrefixQuery } from './utils/prefix-query';
 import type { Queryable } from './db/collection';
-import type { StrapiAttributeType, StrapiFilter, StrapiOrFilter } from './types';
+import type { StrapiFilter, StrapiOrFilter } from './types';
 import type { FirestoreConnectorModel } from './model';
 import type { Reference } from './db/reference';
 
@@ -93,9 +93,7 @@ function buildSearchQuery<T extends object>(model: FirestoreConnectorModel<T>, v
 
   if (model.options.searchAttribute) {
     const field = model.options.searchAttribute;
-    const type: StrapiAttributeType | undefined = (field === model.primaryKey)
-      ? 'uid'
-      : model.attributes[field].type;
+    const type = model.getAttribute(field)?.type;
 
     // Build a native implementation of primitive search
     switch (type) {

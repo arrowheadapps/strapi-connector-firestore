@@ -30,7 +30,7 @@ export function queries<T extends object>({ model, strapi }: StrapiContext<T>): 
       
       // Populate relations
       return await populateSnapshots(snaps, populate, trans);
-    });
+    }, { readOnly: true });
   };
 
   const findOne: FirestoreConnectorQueries<T>['findOne'] = async (params, populate) => {
@@ -123,7 +123,7 @@ export function queries<T extends object>({ model, strapi }: StrapiContext<T>): 
     return await model.runTransaction(async trans => {
       const snaps = await buildAndFetchQuery({ model, params, allowSearch: true }, trans);
       return await populateSnapshots(snaps, populate, trans);
-    });
+    }, { readOnly: true });
   };
 
   const countSearch: FirestoreConnectorQueries<T>['countSearch'] = async (params) => {
@@ -154,7 +154,7 @@ export function queries<T extends object>({ model, strapi }: StrapiContext<T>): 
           count,
         };
       }));
-    });
+    }, { readOnly: true });
   };
 
   const queries: FirestoreConnectorQueries<T> = {

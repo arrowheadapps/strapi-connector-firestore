@@ -52,6 +52,12 @@ export class RelationHandler<T extends object, R extends object = object> {
       throw new Error('Relation cannot have a dominant reference to a component');
     }
 
+    // Virtual collections are probably transient/unstable unless `hasStableIds` is explicitly set
+    // so references to a virtual collection should not be stored in the database
+    // But we allow virtual collections to refer to other virtual collections because they are not stored in the database
+    if (thisEnd.attr && !thisEnd.model.options.virtualDataSource && otherEnds.some(e => e.model.options.virtualDataSource && !e.model.options.virtualDataSource.hasStableIds)) {
+      throw new Error('Non-virtual collection cannot have a dominant relation to a virtual collection without stable IDs');
+    }
   }
 
   /**

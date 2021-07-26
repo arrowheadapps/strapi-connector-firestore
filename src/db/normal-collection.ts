@@ -1,5 +1,5 @@
 import * as _ from 'lodash';
-import { ManualFilter, convertWhere } from '../utils/convert-where';
+import { convertWhere } from '../utils/convert-where';
 import { Query, QueryDocumentSnapshot, FieldPath, DocumentData, CollectionReference, FirestoreDataConverter } from '@google-cloud/firestore';
 import type { Collection, QuerySnapshot } from './collection';
 import type { FirestoreFilter, StrapiOrFilter, StrapiWhereFilter } from '../types';
@@ -9,6 +9,7 @@ import { coerceToModel } from '../coerce/coerce-to-model';
 import { makeNormalSnap, NormalReference } from './normal-reference';
 import type { ReadRepository } from '../utils/read-repository';
 import { QueryError } from './query-error';
+import type { ManualFilter } from '../utils/manual-filter';
 
 
 export class NormalCollection<T extends object = DocumentData> implements Collection<T> {

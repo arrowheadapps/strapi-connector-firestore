@@ -7,8 +7,8 @@ import type { AttributeKey, ConnectorOptions, FlattenFn, ModelOptions, ModelTest
 import { PickReferenceKeys, PopulatedByKeys, populateDoc, populateSnapshots } from './populate';
 import { buildPrefixQuery } from './utils/prefix-query';
 import type{ Collection } from './db/collection';
-import { DocumentReference, Firestore } from '@google-cloud/firestore';
-import type { Transaction } from './db/transaction';
+import { DocumentReference, FieldPath, Firestore } from '@google-cloud/firestore';
+import type { Transaction, TransactionOpts } from './db/transaction';
 import type { RelationHandler } from './utils/relation-handler';
 import { buildRelations } from './relations';
 import { getComponentModel } from './utils/components';
@@ -16,6 +16,7 @@ import { AttributeIndexInfo, buildIndexers, doesComponentRequireMetadata } from 
 import type { Snapshot } from './db/reference';
 import { StatusError } from './utils/status-error';
 import { makeTransactionRunner } from './utils/transaction-runner';
+import { VirtualCollection } from './db/virtual-collection';
 
 export const DEFAULT_CREATE_TIME_KEY = 'createdAt';
 export const DEFAULT_UPDATE_TIME_KEY = 'updatedAt';
@@ -85,7 +86,11 @@ export interface FirestoreConnectorModel<T extends object = object> extends Stra
   hasPK(obj: any): boolean;
   getPK(obj: any): string;
 
-  runTransaction<TResult>(fn: (transaction: Transaction) => TResult | PromiseLike<TResult>): Promise<TResult>;
+  getAttributePath(fieldOrPath: string | FieldPath): string
+  getAttribute(path: string | FieldPath): StrapiAttribute | undefined
+  getAttributeValue(path: string | FieldPath, snapshot: Pick<Snapshot<T>, 'id' | 'data'>): unknown
+
+  runTransaction<TResult>(fn: (transaction: Transaction) => TResult | PromiseLike<TResult>, opts?: TransactionOpts): Promise<TResult>;
 
   populate<K extends PickReferenceKeys<T>>(data: Snapshot<T>, transaction: Transaction, populate?: K[]): Promise<PopulatedByKeys<T, K>>;
   populateAll<K extends PickReferenceKeys<T>>(datas: Snapshot<T>[], transaction: Transaction, populate?: K[]): Promise<PopulatedByKeys<T, K>[]>;
@@ -104,17 +109,27 @@ export interface FirestoreConnectorModelArgs {
  * They are mounted onto the existing instance because that instance is already 
  * propagated through many parts of Strapi's core.
  */
-export function mountModels(args: FirestoreConnectorModelArgs) {
-  // Mount initialise all models onto the existing model instances
-  const models: FirestoreConnectorModel[] = [];
+export async function mountModels(args: FirestoreConnectorModelArgs) {
+  // Call the before mount hook for each model
+  // then mount initialise all models onto the existing model instances
+  const modelPromises: Promise<FirestoreConnectorModel>[] = [];
   for (const { model, target, key } of allModels<StrapiModel>(args.strapi)) {
-    models.push(mountModel(target, key, model, args));
+    modelPromises.push(
+      Promise.resolve()
+        .then(() => args.connectorOptions.beforeMountModel(model))
+        .then(() => mountModel(target, key, model, args))
+    );
   }
+
+  const models = await Promise.all(modelPromises);
 
   // Build relations
   for (const model of models) {
     buildRelations(model, args.strapi);
   }
+
+  // Call the after mount hook for each model
+  await Promise.all(models.map(model => args.connectorOptions.afterMountModel(model)));
 }
 
 
@@ -146,6 +161,7 @@ function mountModel<T extends object>(target: object, modelKey: string, mdl: Str
     metadataField: opts.metadataField || connectorOptions.metadataField,
     creatorUserModel: opts.creatorUserModel || connectorOptions.creatorUserModel,
     converter: opts.converter || {},
+    virtualDataSource: opts.virtualDataSource || null,
   };
 
   const timestamps: [string, string] | false = (options.timestamps && (typeof options.timestamps === 'boolean'))
@@ -289,6 +305,50 @@ function mountModel<T extends object>(target: object, modelKey: string, mdl: Str
     };
   };
 
+  const getAttributePath = (fieldOrPath: string | FieldPath): string => {
+    let path: string;
+    if (fieldOrPath instanceof FieldPath) {
+      if (FieldPath.documentId().isEqual(fieldOrPath)) {
+        return model.primaryKey;
+      }
+      path = fieldOrPath.toString();
+    } else {
+      path = fieldOrPath;
+    }
+    
+    if (path.endsWith('.id')) {
+      // Special case:
+      // We could encounter field path that refers to the "id" field of a reference
+      // In this case we return the path to the reference itself, and the query value
+      // should be coerced to a reference also for comparison
+      const refPath = path.slice(0, -3);
+      const attr = model.attributes[refPath];
+      if (attr && (attr.model || attr.collection)) {
+        path = refPath;
+      }
+    }
+
+    return path;
+  };
+
+
+  const getAttribute = (fieldOrPath: string | FieldPath): StrapiAttribute | undefined => {
+    const path = getAttributePath(fieldOrPath);
+    if (path === model.primaryKey) {
+      return { type: 'string' };
+    } else {
+      return model.attributes[path];
+    }
+  };
+
+  const getAttributeValue = (fieldOrPath: string | FieldPath, snapshot: Pick<Snapshot<T>, 'id' | 'data'>): unknown | undefined => {
+    const path = getAttributePath(fieldOrPath);
+    if (path === model.primaryKey) {
+      return snapshot.id;
+    }
+    return _.get(snapshot.data(), path, undefined);
+  };
+
   const model: FirestoreConnectorModel<T> = Object.assign({}, mdl, {
     firestore,
     options,
@@ -302,6 +362,9 @@ function mountModel<T extends object>(target: object, modelKey: string, mdl: Str
     defaultPopulate,
     indexers,
     getMetadataMapKey,
+    getAttributePath,
+    getAttribute,
+    getAttributeValue,
 
     // We assign this next
     // The constructors need these other values to be populated onto the model first
@@ -337,10 +400,11 @@ function mountModel<T extends object>(target: object, modelKey: string, mdl: Str
 
   model.db = isComponent
     ? new ComponentCollection<T>(model)
-    : (flattening 
-        ? new FlatCollection<T>(model) 
-        : new NormalCollection<T>(model)
-      )
+    : opts.virtualDataSource 
+    ? new VirtualCollection<T>(model)
+    : flattening 
+    ? new FlatCollection<T>(model) 
+    : new NormalCollection<T>(model)
 
 
   // Mimic built-in connectors

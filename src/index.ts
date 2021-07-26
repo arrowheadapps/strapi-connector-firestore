@@ -50,6 +50,8 @@ const defaultOptions: Required<ConnectorOptions> = {
   logQueries: false,
   metadataField: '$meta',
   creatorUserModel: { model: 'user', plugin: 'admin' },
+  beforeMountModel: () => {},
+  afterMountModel: () => {},
 
   // Default to 200 because of query size used in admin permissions query
   // https://github.com/strapi/strapi/blob/be4d5556936cf923aa3e23d5da82a6c60a5a42bc/packages/strapi-admin/services/permission.js
@@ -126,12 +128,14 @@ module.exports = (strapi: Strapi) => {
         }
 
         // Mount all models
-        mountModels({
+        await mountModels({
           strapi,
           firestore,
           connectorOptions: options,
         });
 
+        // TODO: Find a way to initialise the connection lazily, and avoid performing a write operation on
+        // every startup, because read operations are cheaper.
         // Initialise all flat collections
         // We do it here rather than lazily, otherwise the write which
         // ensures the existence will contend with the transaction that

@@ -4,13 +4,16 @@ import { DeepReference } from '../db/deep-reference';
 import { MorphReference } from '../db/morph-reference';
 import { NormalReference } from '../db/normal-reference';
 import type { Reference, SetOpts } from '../db/reference';
-import type { Transaction, TransactionImpl } from '../db/transaction';
+import type { Transaction } from '../db/transaction';
+import type { ReadWriteTransaction } from '../db/readwrite-transaction';
+import type { ReadOnlyTransaction } from '../db/readonly-transaction';
+import { VirtualReference } from '../db/virtual-reference';
 import { relationsUpdate, shouldUpdateRelations } from '../relations';
 
 export interface LifecycleArgs<T extends object> extends Required<CoerceOpts> {
   ref: Reference<T>
   data: T | Partial<T> | undefined
-  transaction?: TransactionImpl
+  transaction?: ReadWriteTransaction | ReadOnlyTransaction
   opts: SetOpts | undefined
   timestamp: Date
 }
@@ -30,7 +33,7 @@ export async function runUpdateLifecycle<T extends object>({ ref, data, editMode
         ? await trans.getAtomic(ref).then(snap => snap.data())
         : undefined;
       await relationsUpdate(db.model, ref, prevData, newData, editMode, trans);
-      (trans as TransactionImpl).mergeWriteInternal(ref, newData, editMode);
+      (trans as (ReadWriteTransaction | ReadOnlyTransaction)).mergeWriteInternal(ref, newData, editMode);
     };
     
     if (transaction) {
@@ -44,7 +47,8 @@ export async function runUpdateLifecycle<T extends object>({ ref, data, editMode
     } else {
       if ((ref instanceof NormalReference)
         || (ref instanceof DeepReference)
-        || (ref instanceof MorphReference)) {
+        || (ref instanceof MorphReference)
+        || (ref instanceof VirtualReference)) {
         await ref.writeInternal(newData, editMode);
       } else {
         throw new Error(`Unknown type of reference: ${ref}`);

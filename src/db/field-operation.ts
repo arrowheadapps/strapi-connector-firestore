@@ -32,7 +32,7 @@ export abstract class FieldOperation {
     const value = _.get(data, fieldPath);
     const result = valueOrOperation instanceof FieldOperation
       ? valueOrOperation.transform(value)
-      : value;
+      : valueOrOperation;
     if (result === undefined) {
       _.unset(data, fieldPath);
     } else {

@@ -1,6 +1,6 @@
 import * as _ from 'lodash';
 import * as path from 'path';
-import { convertWhere, ManualFilter, getAtFieldPath } from '../utils/convert-where';
+import { convertWhere } from '../utils/convert-where';
 import { DocumentReference, OrderByDirection, FieldPath, DocumentData, FirestoreDataConverter } from '@google-cloud/firestore';
 import type { Collection, QuerySnapshot } from './collection';
 import type { FirestoreFilter, StrapiOrFilter, StrapiWhereFilter } from '../types';
@@ -8,13 +8,9 @@ import { DeepReference } from './deep-reference';
 import type { FirestoreConnectorModel } from '../model';
 import { coerceModelToFirestore, coerceToFirestore } from '../coerce/coerce-to-firestore';
 import { coerceToModel } from '../coerce/coerce-to-model';
-import type { Snapshot } from './reference';
 import type { ReadRepository } from '../utils/read-repository';
+import { applyManualFilters, ManualFilter, OrderSpec } from '../utils/manual-filter';
 
-interface OrderSpec {
-  field: string | FieldPath
-  directionStr: OrderByDirection
-}
 
 export class FlatCollection<T extends object = DocumentData> implements Collection<T> {
 
@@ -118,34 +114,14 @@ export class FlatCollection<T extends object = DocumentData> implements Collecti
       ? (await repo.getAll([{ ref: this.document }]))[0]
       : await this.document.get();
 
-    let docs: Snapshot<T>[] = [];
-    for (const [id, data] of Object.entries<any>(snap.data() || {})) {
-      // Must match every 'AND' filter (if any exist)
-      // and at least one 'OR' filter (if any exists)
-      const snap: Snapshot<T> = {
-        id,
-        ref: new DeepReference(id, this),
-        exists: data != null,
-        data: () => data,
-      };
-      if (this.manualFilters.every(f => f(snap))) {
-        docs.push(snap);
-      }
-    }
-
-    for (const { field, directionStr } of this._orderBy) {
-      docs = _.orderBy(docs, d => getAtFieldPath(this.model, field, d), directionStr);
-    }
-    
-    // Offset and limit after sorting
-    const offset = Math.max(this._offset || 0, 0);
-    const limit = Math.max(this._limit || 0, 0) || docs.length;
-    docs = docs.slice(offset, offset + limit);
-
-    return {
-      docs,
-      empty: docs.length === 0
-    };
+    return applyManualFilters({
+      model: this.model,
+      data: snap.data() || {},
+      filters: this.manualFilters,
+      orderBy: this._orderBy,
+      limit: this._limit,
+      offset: this._offset,
+    });
   }
 
   where(clause: StrapiWhereFilter | StrapiOrFilter | FirestoreFilter): FlatCollection<T> {
