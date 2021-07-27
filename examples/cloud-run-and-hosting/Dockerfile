@@ -13,6 +13,10 @@
 # https://hub.docker.com/_/node
 FROM node:lts-alpine
 
+# Run as a non-privileged user
+# This consequently allows patch-package to run without unsafe permissions
+USER node
+
 # Create and change to the app directory.
 WORKDIR /usr/src/app
 
