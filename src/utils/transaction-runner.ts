@@ -48,7 +48,8 @@ export function makeTransactionRunner<T extends object>(firestore: Firestore, op
     }
   };
 
-  if (options.flatten) {
+  // Virtual option overrides flatten option
+  if (options.flatten && !isVirtual) {
     const queue = new PQueue({ concurrency: 1 });
     return async (fn, opts) => {
       if (opts && opts.readOnly) {
@@ -60,7 +61,7 @@ export function makeTransactionRunner<T extends object>(firestore: Firestore, op
         // So we queue them up rather than allowing them to contend 
         // Contention which would introduce 30-second timeout delays on the emulator, and cause unnecessary
         // read and write operations on the production server
-      return await queue.add(() => normalRunner(fn));
+        return await queue.add(() => normalRunner(fn));
       }
     };
   } else {
