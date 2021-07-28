@@ -66,7 +66,7 @@ export class ReadWriteTransaction implements Transaction {
    */
   async commit() {
     if (this.logStats) {
-      strapi.log.debug(`TRANSACTION (attempt #${this.attempt}): ${this.writes.size} writes, ${this.atomicReads.size + this.nonAtomicReads.size} reads (${this.atomicReads.size} atomic).`);
+      strapi.log.debug(`TRANSACTION (attempt #${this.attempt}): ${this.writes.size} writes, ${this.atomicReads.readCount + this.nonAtomicReads.readCount} reads (${this.atomicReads.readCount} atomic).`);
     }
 
     // If we have fetched flat documents then we need to wait to

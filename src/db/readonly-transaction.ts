@@ -56,8 +56,8 @@ export class ReadOnlyTransaction implements Transaction {
    * @deprecated For internal connector use only
    */
   commit() {
-    if (this.logStats && this.nonAtomicReads.size) {
-      strapi.log.debug(`TRANSACTION (read-only): ${this.nonAtomicReads.size} reads.`);
+    if (this.logStats && this.nonAtomicReads.readCount) {
+      strapi.log.debug(`TRANSACTION (read-only): ${this.nonAtomicReads.readCount} reads.`);
     }
     return Promise.resolve();
   }

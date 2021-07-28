@@ -28,6 +28,7 @@ interface ReadOp {
  */
 export class ReadRepository {
 
+  private readCounter = 0;
   private readonly cache = new Map<string, Promise<DocumentSnapshot<any>>>();
 
   constructor( 
@@ -37,6 +38,10 @@ export class ReadRepository {
 
   get size(): number {
     return this.cache.size;
+  }
+
+  get readCount(): number {
+    return this.readCounter;
   }
 
   /**
@@ -83,6 +88,7 @@ export class ReadRepository {
 
     // Fetch and resolve all of the newly required read operations
     await Promise.all(toRead.map(ops => fetchGroupedReadOp(ops, this.handler)));
+    this.readCounter += toRead.length;
     
     return Promise.all(results);
   }
@@ -95,6 +101,9 @@ export class ReadRepository {
         this.cache.set(path, Promise.resolve(d));
       }
     }
+
+    this.readCounter += (result.docs.length || 1);
+
     return result;
   }
 }
