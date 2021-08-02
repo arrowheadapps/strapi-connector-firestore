@@ -89,6 +89,8 @@ export function convertWhere(model: FirestoreConnectorModel<any>, { field, opera
     throw new StatusError('Not allowed to query password fields', 400);
   }
 
+  // Determine if the target attribute is an array
+  // Meta attributes have "repeatable" set to true
   const attrIsArray = attr && (attr.collection || attr.repeatable);
 
   let op: WhereFilterOp | ((filterValue: any, fieldValue: any) => boolean);

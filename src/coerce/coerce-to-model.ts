@@ -110,6 +110,11 @@ function coerceModelRecursive<T extends object>(model: FirestoreConnectorModel<T
  */
 export function coerceAttrToModel(attr: StrapiAttribute | undefined, value: unknown, opts: CoerceOpts): unknown {
 
+  if (Array.isArray(value) && attr?.isMeta) {
+    // Meta attributes are arrays, so we need to coerce the value recursively
+    return value.map(v => coerceAttrToModel(attr, v, opts));
+  }
+
   // Coerce values inside FieldOperation
   if (value instanceof FieldOperation) {
     return value.coerceWith(v => coerceAttrToModel(attr, v, opts));
@@ -131,7 +136,7 @@ export function coerceAttrToModel(attr: StrapiAttribute | undefined, value: unkn
 
   // Restore number fields back
   // Because Firestore returns BigInt for all integer values
-  // Do this by default for all bigints unless the attribute is specifically a BigInt
+  // Do this by default for all BigInt unless the attribute is specifically a BigInt
   // BigInt fields will come out as native BigInt but will be serialised to JSON as a string
   if ((typeof value === 'bigint') && (!attr || (attr.type !== 'biginteger'))) {
     return Number(value);
@@ -398,7 +403,7 @@ function coerceToReference<T extends object = object>(value: any, to: FirestoreC
 
 /**
  * When deserialised from Firestore, references comes without any converters.
- * Reinstantiates the reference via the target model so that it comes
+ * Re-instantiates the reference via the target model so that it comes
  * loaded with the appropriate converter.
  */
 function reinstantiateReference<T extends object>(value: DocumentReference<T | { [id: string]: T }>, id: string | undefined, to: FirestoreConnectorModel<T> | undefined, opts: CoerceOpts): NormalReference<T> | DeepReference<T> | VirtualReference<T> | null {
@@ -434,4 +439,4 @@ function fault({ editMode }: CoerceOpts, message: string): null {
     strapi.log.warn(message);
     return null;
   }
-};
+}
