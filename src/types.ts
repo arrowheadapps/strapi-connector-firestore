@@ -63,8 +63,8 @@ export interface ConnectorOptions {
   allowNonNativeQueries?: boolean | string | RegExp | ModelTestFn | (string | RegExp | ModelTestFn)[]
 
   /**
-   * If `true`, then IDs are automatically generated and assigned
-   * to embedded components (incl. dynamic zone).
+   * If `true`, then IDs are automatically generated and assigned to component instances.
+   * This setting only applies to component models, and has no effect on other models.
    * 
    * Defaults to `true`.
    */
@@ -150,7 +150,7 @@ export interface ModelOptions<T extends object, R extends DocumentData = Documen
   searchAttribute?: string
 
   /**
-   * Override connector setting per model.
+   * Override connector setting per model. This setting only affects component models.
    * 
    * Defaults to `undefined` (use connector setting).
    */
