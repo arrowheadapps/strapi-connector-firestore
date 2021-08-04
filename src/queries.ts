@@ -40,7 +40,9 @@ export function queries<T extends object>({ model, strapi }: StrapiContext<T>): 
 
   const count: FirestoreConnectorQueries<T>['count'] = async (params) => {
     log('count', { params });
-    return await buildAndCountQuery({ model, params });
+    return await model.runTransaction(async trans => {
+      return await buildAndCountQuery({ model, params }, trans);
+    }, { readOnly: true });
   };
 
   const create: FirestoreConnectorQueries<T>['create'] = async (values, populate = (model.defaultPopulate as any)) => {
@@ -128,7 +130,9 @@ export function queries<T extends object>({ model, strapi }: StrapiContext<T>): 
 
   const countSearch: FirestoreConnectorQueries<T>['countSearch'] = async (params) => {
     log('countSearch', { params });
-    return await buildAndCountQuery({ model, params, allowSearch: true });
+    return await model.runTransaction(async trans => {
+      return await buildAndCountQuery({ model, params, allowSearch: true });
+    }, { readOnly: true });
   };
 
   const fetchRelationCounters: FirestoreConnectorQueries<T>['fetchRelationCounters'] = async (attribute, entitiesIds = []) => {

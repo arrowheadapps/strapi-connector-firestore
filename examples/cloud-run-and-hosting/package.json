@@ -14,16 +14,16 @@
     "clean": "rimraf .temp .cache build"
   },
   "dependencies": {
-    "strapi": "^3.6.5",
-    "strapi-admin": "^3.6.5",
+    "strapi": "^3.6.6",
+    "strapi-admin": "^3.6.6",
     "strapi-connector-firestore": "file:../..",
-    "strapi-plugin-content-manager": "^3.6.5",
-    "strapi-plugin-content-type-builder": "^3.6.5",
-    "strapi-plugin-email": "^3.6.5",
-    "strapi-plugin-upload": "^3.6.5",
-    "strapi-plugin-users-permissions": "^3.6.5",
+    "strapi-plugin-content-manager": "^3.6.6",
+    "strapi-plugin-content-type-builder": "^3.6.6",
+    "strapi-plugin-email": "^3.6.6",
+    "strapi-plugin-upload": "^3.6.6",
+    "strapi-plugin-users-permissions": "^3.6.6",
     "strapi-provider-upload-google-cloud-storage": "^3.6.5",
-    "strapi-utils": "^3.6.5"
+    "strapi-utils": "^3.6.6"
   },
   "devDependencies": {
     "execa": "^5.1.1",
