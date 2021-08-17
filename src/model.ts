@@ -162,6 +162,7 @@ function mountModel<T extends object>(target: object, modelKey: string, mdl: Str
     creatorUserModel: opts.creatorUserModel || connectorOptions.creatorUserModel,
     converter: opts.converter || {},
     virtualDataSource: opts.virtualDataSource || null,
+    onChange: opts.onChange || (() => {}),
   };
 
   const timestamps: [string, string] | false = (options.timestamps && (typeof options.timestamps === 'boolean'))

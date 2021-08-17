@@ -1,5 +1,6 @@
 import type { DocumentData, DocumentReference, FieldPath, Settings, WhereFilterOp } from '@google-cloud/firestore';
 import type { Logger } from 'pino';
+import type { Transaction } from './db/transaction';
 import type { FirestoreConnectorModel } from './model';
 import type { PickReferenceKeys, PopulatedByKeys } from './populate';
 
@@ -190,6 +191,22 @@ export interface ModelOptions<T extends object, R extends DocumentData = Documen
    * to fetch and store data in it's entirety.
    */
   virtualDataSource?: DataSource<T> | null
+
+  /**
+   * A hook that is called inside the transaction whenever an changes. This is called before any change
+   * is committed to the database. If an exception is thrown, then the transaction will be aborted.
+   * Any additional write created by the hook will be committed atomically with this transaction.
+   * 
+   * This hook is only called via the query interface (i.e. `strapi.query(...).create(...)` etc). Any operations performed directly using the model's 
+   * `runTransaction(...)` interface will bypass this hook.
+   * 
+   * @param previousData The previous value of the entity, or `undefined` if the entity is being created.
+   * @param newData The new value of the entity, or `undefined` if the entity is being deleted.
+   * @param transaction The transaction being run. Can be used to fetch additional entities, or make additional
+   *    atomic writes.
+   * @returns If a promise is returned, if will be awaited before completing the transaction.
+   */
+  onChange?: (previousData: T | undefined, newData: T | undefined, transaction: Transaction) => void | Promise<void>
 }
 
 export interface DataSource<T extends object> {

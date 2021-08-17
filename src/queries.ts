@@ -55,6 +55,7 @@ export function queries<T extends object>({ model, strapi }: StrapiContext<T>): 
     return await model.runTransaction(async trans => {
       // Create while coercing data and updating relations
       const data = await trans.create(ref, values);
+      await model.options.onChange(undefined, data, trans);
       
       // Populate relations
       return await populateDoc(model, ref, data, populate, trans);
@@ -80,6 +81,7 @@ export function queries<T extends object>({ model, strapi }: StrapiContext<T>): 
         ...snap.data(),
         ...await trans.update(snap.ref, values),
       };
+      await model.options.onChange(prevData, data, trans);
 
       // Populate relations
       return await populateDoc(model, snap.ref, data, populate, trans);
@@ -114,6 +116,7 @@ export function queries<T extends object>({ model, strapi }: StrapiContext<T>): 
 
     // Delete while updating relations
     await trans.delete(snap.ref);
+    await model.options.onChange(prevData, undefined, trans);
 
     // Populate relations
     return await populateDoc(model, snap.ref, prevData, populate, trans);
