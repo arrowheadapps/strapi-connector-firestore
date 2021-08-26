@@ -13,10 +13,6 @@
 # https://hub.docker.com/_/node
 FROM node:lts-alpine
 
-# Run as a non-privileged user
-# This consequently allows patch-package to run without unsafe permissions
-USER node
-
 # Create and change to the app directory.
 WORKDIR /usr/src/app
 
@@ -31,5 +27,8 @@ RUN npm ci --only=production
 # Copy local code to the container image.
 COPY . ./
 
-# Run the web service on container startup.
+# Change to run as non-privileged user
+USER node
+
+# Run the web service on container startup as an unpriviledged user.
 CMD [ "npm", "start" ]
