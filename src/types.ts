@@ -200,14 +200,26 @@ export interface ModelOptions<T extends object, R extends DocumentData = Documen
    * This hook is only called via the query interface (i.e. `strapi.query(...).create(...)` etc). Any operations performed directly using the model's 
    * `runTransaction(...)` interface will bypass this hook.
    * 
+   * Note: This hook may be called multiple times for a single transaction, if the transaction is retried. The result
+   * of transaction may not necessarily be committed to the database, depending on the success of the transaction.
+   * Return a function from this hook, for any code that should be executed only once upon success of the transaction.
+   * 
    * @param previousData The previous value of the entity, or `undefined` if the entity is being created.
    * @param newData The new value of the entity, or `undefined` if the entity is being deleted.
    * @param transaction The transaction being run. Can be used to fetch additional entities, or make additional
    *    atomic writes.
-   * @returns If a promise is returned, if will be awaited before completing the transaction.
+   * @returns The hook may optionally return a function, or a Promise that optionally resolves to a function.
+   *    If a promise is returned, it will be awaited before completing the transaction.
+   *    If it resolves to a function, this function will be called only once, after the transaction has been
+   *    successfully committed.
+   *    Any errors thrown by this function will be caught and ignored.
+   *    
    */
-  onChange?: (previousData: T | undefined, newData: T | undefined, transaction: Transaction) => void | Promise<void>
+  onChange?: TransactionOnChangeHook<T>
 }
+
+export type TransactionOnChangeHook<T> = (previousData: T | undefined, newData: T | undefined, transaction: Transaction) => (void | TransactionSuccessHook<T>) | PromiseLike<void | TransactionSuccessHook<T>>
+export type TransactionSuccessHook<T> = (result: T | undefined) => (void | PromiseLike<void>)
 
 export interface DataSource<T extends object> {
   /**

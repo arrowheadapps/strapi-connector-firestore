@@ -23,7 +23,8 @@ export function makeTransactionRunner<T extends object>(firestore: Firestore, op
       // The only scenario where a virtual collection may want to perform a Firestore write is if it has
       // a dominant relation to a non-virtual collection. However, because of the (potentially) transient nature of
       // references to virtual collections, dominant relations to a virtual collection are not supported.
-      const trans = new ReadOnlyTransaction(firestore, logTransactionStats);
+      // Don't log stats for virtual collections
+      const trans = new ReadOnlyTransaction(firestore, logTransactionStats && !isVirtual);
       const result = await fn(trans);
       await trans.commit();
       return result;
