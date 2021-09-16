@@ -13,6 +13,7 @@ import type { GetOpts, Transaction } from './transaction';
 export class ReadWriteTransaction implements Transaction {
   
   private readonly writes = new Map<string, WriteOp>();
+  private readonly nativeWrites: ((trans: FirestoreTransaction) => void)[] = [];
 
   private readonly timestamp = new Date();
   private readonly atomicReads: ReadRepository;
@@ -87,6 +88,11 @@ export class ReadWriteTransaction implements Transaction {
         }
       }
     }
+
+    // Commit any native writes
+    for (const cb of this.nativeWrites) {
+      cb(this.nativeTransaction);
+    }
   }
 
 
@@ -127,7 +133,9 @@ export class ReadWriteTransaction implements Transaction {
     });
   }
 
-
+  addNativeWrite(cb: (transaction: FirestoreTransaction) => void): void {
+    this.nativeWrites.push(cb);
+  }
   
   /**
    * Merges a create, update, or delete operation into pending writes for a given

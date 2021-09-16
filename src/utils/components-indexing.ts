@@ -81,6 +81,9 @@ export function generateMetadataForComponent<T extends object>(model: FirestoreC
       if (!arr || !arr.length) {
         meta[key] = null;
       }
+
+      // Add the empty indicator
+      meta[`${key}$empty`] = (arr?.length === 0) as any;
     }
 
     // Only assign meta if there are any keys

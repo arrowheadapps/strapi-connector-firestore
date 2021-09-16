@@ -91,7 +91,12 @@ export class ReadOnlyTransaction implements Transaction {
     }
   }
 
-
+  /**
+   * @deprecated Not supported on ReadOnlyTransaction
+   */
+  addNativeWrite(): never {
+    throw new Error('Writes are not supported on ReadOnlyTransaction');
+  }
   
   /**
    * Performs write operations only for virtual references. All other write operations

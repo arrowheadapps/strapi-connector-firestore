@@ -45,7 +45,7 @@ export function makeTransactionRunner<T extends object>(firestore: Firestore, op
         const result = await fn(wrapper);
         await wrapper.commit();
         return result;
-      });
+      }, { maxAttempts: opts?.maxAttempts });
     }
   };
 

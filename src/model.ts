@@ -579,6 +579,18 @@ function buildMetadataAttributes<T extends object>(model: StrapiModel<T>, { comp
 
             attributes[attrPath] = attrValue;
 
+            // Add the empty indicator meta attribute
+            // This is so that we can query for "empty" without relying on inequality operators, which imposes more restrictions on sorting etc
+            attributes[`${attrPath}$empty`] = {
+              type: 'boolean',
+              isMeta: true,
+              repeatable: true,
+              private: true,
+              configurable: false,
+              writable: false,
+              visible: false,
+            };
+
             // Set layout config on the model so that the attribute is hidden
             _.set(model, ['config', 'attributes', attrPath], { hidden: true });
           }

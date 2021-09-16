@@ -3,6 +3,7 @@
   "compilerOptions": {
     "esModuleInterop": false,
     "strict": true,
+    "useUnknownInCatchVariables": false,
     "noImplicitReturns": true,
     "noUnusedLocals": true,
     "outDir": "lib",
