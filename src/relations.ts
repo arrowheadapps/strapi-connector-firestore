@@ -4,9 +4,10 @@ import type { StrapiModel, StrapiAttribute } from './types';
 import type { Transaction } from './db/transaction';
 import { RelationAttrInfo, RelationHandler, RelationInfo } from './utils/relation-handler';
 import { doesComponentRequireMetadata } from './utils/components-indexing';
-import type { Reference, SetOpts } from './db/reference';
+import type { Reference, UpdateOpts } from './db/reference';
+import type { EditMode } from './coerce/coerce-to-model';
 
-export function shouldUpdateRelations(opts: SetOpts | undefined): boolean {
+export function shouldUpdateRelations(opts: UpdateOpts | undefined): boolean {
   return !opts || (opts.updateRelations !== false);
 }
 
@@ -15,7 +16,7 @@ export function shouldUpdateRelations(opts: SetOpts | undefined): boolean {
  * Parse relation attributes on this updated model and update the referred-to
  * models accordingly.
  */
-export async function relationsUpdate<T extends object>(model: FirestoreConnectorModel<T>, ref: Reference<T>, prevData: T | undefined, newData: T | undefined, editMode: 'create' | 'update', transaction: Transaction) {
+export async function relationsUpdate<T extends object>(model: FirestoreConnectorModel<T>, ref: Reference<T>, prevData: T | undefined, newData: T | undefined, editMode: EditMode, transaction: Transaction) {
   await Promise.all(
     model.relations.map(r => r.update(ref, prevData, newData, editMode, transaction))
   );

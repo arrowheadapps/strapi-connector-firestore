@@ -1,6 +1,7 @@
 import * as _ from 'lodash';
 import type { FirestoreConnectorModel } from '../model';
 import type { Transaction } from '../db/transaction';
+import { WriteCannotSucceedError } from '../db/readwrite-transaction';
 import { StatusError } from './status-error';
 import { MorphReference } from '../db/morph-reference';
 import { FieldOperation } from '../db/field-operation';
@@ -8,6 +9,7 @@ import { isEqualHandlingRef, Reference } from '../db/reference';
 import { NormalReference } from '../db/normal-reference';
 import { DeepReference } from '../db/deep-reference';
 import { mapNotNull } from './map-not-null';
+import type { EditMode } from '../coerce/coerce-to-model';
 
 export interface RelationInfo<T extends object> {
   model: FirestoreConnectorModel<T>
@@ -84,7 +86,7 @@ export class RelationHandler<T extends object, R extends object = object> {
   /**
    * Updates the the related models on the given object.
    */
-  async update(ref: Reference<T>, prevData: T | undefined, newData: T | undefined, editMode: 'create' | 'update', transaction: Transaction): Promise<void> {
+  async update(ref: Reference<T>, prevData: T | undefined, newData: T | undefined, editMode: EditMode, transaction: Transaction): Promise<void> {
     const { attr: thisAttr } = this.thisEnd;
     if (thisAttr) {
       // This end is dominant
@@ -93,7 +95,7 @@ export class RelationHandler<T extends object, R extends object = object> {
       // Update operations will not touch keys that don't exist
       // If the data doesn't have the key, then don't update the relation because we aren't touching it
       // If newData is undefined then we are deleting and we do need to update the relation
-      if ((editMode === 'update') && newData && (_.get(newData, thisAttr.alias) === undefined)) {
+      if (((editMode === 'update') || (editMode === 'setMerge')) && newData && (_.get(newData, thisAttr.alias) === undefined)) {
         return;
       }
 
@@ -266,30 +268,40 @@ export class RelationHandler<T extends object, R extends object = object> {
       ? (attr.isArray ? FieldOperation.arrayUnion(thisRefValue) : thisRefValue)
       : (attr.isArray ? FieldOperation.arrayRemove(thisRefValue) : null);
     
-    if (attr.isMeta) {
-      if (!prevData) {
-        // Relation no longer exists, do not update
-        return;
-      }
-
-      const { componentAlias, parentAlias } = attr.actualAlias!;
-      // The attribute is a metadata map for an array of components
-      // This requires special handling
-      // We need to atomically fetch and process the data then update
-      // Extract a new object with only the fields that are being updated
-      const newData: any = {};
-      const components = _.get(prevData, parentAlias);
-      _.set(newData, parentAlias, components);
-      for (const component of _.castArray(components)) {
-        if (component) {
-          FieldOperation.apply(component, componentAlias, value);
+    try {
+      if (attr.isMeta) {
+        if (!prevData) {
+          // Relation no longer exists, do not update
+          return;
         }
-      }
 
-      await transaction.update(ref, newData, { updateRelations: false });
-    } else {
-      // TODO: Safely handle relations that no longer exist
-      await transaction.update(ref, { [attr.alias]: value } as object, { updateRelations: false });
+        const { componentAlias, parentAlias } = attr.actualAlias!;
+        // The attribute is a metadata map for an array of components
+        // This requires special handling
+        // We need to atomically fetch and process the data then update
+        // Extract a new object with only the fields that are being updated
+        const newData: any = {};
+        const components = _.get(prevData, parentAlias);
+        _.set(newData, parentAlias, components);
+        for (const component of _.castArray(components)) {
+          if (component) {
+            FieldOperation.apply(component, componentAlias, value);
+          }
+        }
+
+        await transaction.update(ref, newData, { updateRelations: false });
+      } else {
+        // TODO: Safely handle relations that no longer exist
+        await transaction.update(ref, { [attr.alias]: value } as object, { updateRelations: false });
+      }
+    } catch (err) {
+      if (err instanceof WriteCannotSucceedError) {
+        // The update has failed if must have followed a delete operation to the
+        // same document within this same transaction
+        // In this case, we can just ignore the error
+      } else {
+        throw err;
+      }
     }
   }
 

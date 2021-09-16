@@ -1,6 +1,6 @@
 import type { Transaction as FirestoreTransaction } from '@google-cloud/firestore';
 import type { Queryable, QuerySnapshot } from './collection';
-import type { Reference, SetOpts, Snapshot } from './reference';
+import type { Reference, UpdateOpts, SetOpts, Snapshot } from './reference';
 
 export interface TransactionOpts {
   /**
@@ -39,9 +39,9 @@ export interface GetOpts {
  *  - Merges all writes within a single document so that each
  *    document is written only once.
  *  - Performs all writes within an atomic transaction.
- *  - The `getNonAtomic(...)` methods will reuse a cached read
- *    from a `getAtomic(...)` call, but not the other way around. 
- *  - The `getAtomic(...)` functions perform the read operations within
+ *  - The `getNonAtomic(…)` methods will reuse a cached read
+ *    from a `getAtomic(…)` call, but not the other way around. 
+ *  - The `getAtomic(…)` functions perform the read operations within
  *    a `Transaction`, which holds a lock on those documents for the 
  *    duration of the transaction.
  */
@@ -57,8 +57,8 @@ export interface Transaction {
    * for the duration of this transaction.
    * 
    * Returns a cached response if the document has already been
-   * fetched and locked using `getAtomic(...)` within this transaction.
-   * Does not return a cached response from `getNonAtomic(...)` because
+   * fetched and locked using `getAtomic(…)` within this transaction.
+   * Does not return a cached response from `getNonAtomic(…)` because
    * that would not establish a lock.
    */
   getAtomic<T extends object>(ref: Reference<T>, opts?: GetOpts): Promise<Snapshot<T>>
@@ -67,7 +67,7 @@ export interface Transaction {
 
   /**
    * Reads the given document. Returns a cached response if the document
-   * has been read *(with `getNonAtomic(...)` or `getAtomic(...)`)* within
+   * has been read *(with `getNonAtomic(…)` or `getAtomic(…)`)* within
    * this transaction.
    */
   getNonAtomic<T extends object>(ref: Reference<T>, opts?: GetOpts): Promise<Snapshot<T>>
@@ -75,26 +75,47 @@ export interface Transaction {
   getNonAtomic<T extends object>(query: Queryable<T>): Promise<QuerySnapshot<T>>
 
   /**
-   * Creates the given document, merging the data with any other `create()` or `update()`
-   * operations on the document within this transaction.
+   * Creates the given document, failing if it already exists.
+   * 
+   * The data is merged with any other `create(…)`, `update(…)`, `set(…)`, or `set(…, { merge: true })` 
+   * operations performed on this transaction.
+   * 
+   * The "create" operation takes precedence over "update" operations, but is overridden by "set" and "delete".
    * 
    * @returns The coerced data
    */
-  create<T extends object>(ref: Reference<T>, data: T, opts?: SetOpts): Promise<T>
-  create<T extends object>(ref: Reference<T>, data: Partial<T>, opts?: SetOpts): Promise<Partial<T>>
+  create<T extends object>(ref: Reference<T>, data: T, opts?: UpdateOpts): Promise<T>
+  create<T extends object>(ref: Reference<T>, data: Partial<T>, opts?: UpdateOpts): Promise<Partial<T>>
   
   /**
-   * Updates the given document, merging the data with any other `create()` or `update()`
-   * operations on the document within this transaction.
+   * Updates the given document, failing if it does not exist.
+   * 
+   * The data is merged with any other `create(…)`, `update(…)`, `set(…)`, or `set(…, { merge: true })`
+   * operations performed on this transaction, and overrides the overall operation to be "update".
+   * 
+   * The "update" but is overridden by "create", "set" and "delete".
    * 
    * @returns The coerced data
    */
-  update<T extends object>(ref: Reference<T>, data: Partial<T>, opts?: SetOpts): Promise<T>
-  update<T extends object>(ref: Reference<T>, data: Partial<Partial<T>>, opts?: SetOpts): Promise<Partial<T>>
+  update<T extends object>(ref: Reference<T>, data: Partial<T>, opts?: UpdateOpts): Promise<T>
+  update<T extends object>(ref: Reference<T>, data: Partial<Partial<T>>, opts?: UpdateOpts): Promise<Partial<T>>
+
+  /**
+   * Creates or overwrites the document.
+   * 
+   * The data is merged with any other `create(…)`, `update(…)`, `set(…)`, or `set(…, { merge: true })` 
+   * operations performed on this transaction, and overrides the overall operation to be "create".
+   * 
+   * The "set" operation is overridden by "delete".
+   * 
+   * @returns The coerced data
+   */
+   set<T extends object>(ref: Reference<T>, data: Partial<T>, opts?: SetOpts): Promise<T>
+   set<T extends object>(ref: Reference<T>, data: Partial<Partial<T>>, opts?: SetOpts): Promise<Partial<T>>
 
   /**
    * Deletes the given document, overriding all other write operations
    * on the document in this transaction.
    */
-  delete<T extends object>(ref: Reference<T>, opts?: SetOpts): Promise<void>
+  delete<T extends object>(ref: Reference<T>, opts?: UpdateOpts): Promise<void>
 }

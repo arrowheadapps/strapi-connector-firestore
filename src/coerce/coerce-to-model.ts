@@ -19,8 +19,10 @@ export class CoercionError extends StatusError {
   }
 }
 
+export type EditMode = 'create' | 'update' | 'set' | 'setMerge' | 'delete';
+
 export interface CoerceOpts {
-  editMode?: 'create' | 'update'
+  editMode?: EditMode
   timestamp?: Date
 }
 

@@ -1,9 +1,10 @@
 import * as _ from 'lodash';
 import type { DocumentReference, DocumentSnapshot } from "@google-cloud/firestore";
 import type { FlatCollection } from './flat-collection';
-import { FlatReferenceShape, Reference, SetOpts, Snapshot } from './reference';
+import { FlatReferenceShape, Reference, UpdateOpts, SetOpts, Snapshot } from './reference';
 import { FieldOperation } from './field-operation';
 import { runUpdateLifecycle } from '../utils/lifecycle';
+import type { EditMode } from '../coerce/coerce-to-model';
 
 /**
  * References an item in a flattened collection 
@@ -31,9 +32,9 @@ export class DeepReference<T extends object> extends Reference<T> {
     return this.doc.firestore;
   }
 
-  async delete(opts?: SetOpts) {
+  async delete(opts?: UpdateOpts) {
     await runUpdateLifecycle({
-      editMode: 'update',
+      editMode: 'delete',
       ref: this,
       data: undefined,
       opts,
@@ -41,9 +42,9 @@ export class DeepReference<T extends object> extends Reference<T> {
     });
   };
 
-  create(data: T, opts?: SetOpts): Promise<T>
-  create(data: Partial<T>, opts?: SetOpts): Promise<Partial<T>>
-  async create(data: T | Partial<T>, opts?: SetOpts) {
+  create(data: T, opts?: UpdateOpts): Promise<T>
+  create(data: Partial<T>, opts?: UpdateOpts): Promise<Partial<T>>
+  async create(data: T | Partial<T>, opts?: UpdateOpts) {
     return await runUpdateLifecycle({
       editMode: 'create',
       ref: this,
@@ -51,13 +52,25 @@ export class DeepReference<T extends object> extends Reference<T> {
       opts,
       timestamp: new Date(),
     });
-  };
+  }
 
-  update(data: T, opts?: SetOpts): Promise<T>
-  update(data: Partial<T>, opts?: SetOpts): Promise<Partial<T>>
-  async update(data: T | Partial<T>, opts?: SetOpts) {
+  update(data: T, opts?: UpdateOpts): Promise<T>
+  update(data: Partial<T>, opts?: UpdateOpts): Promise<Partial<T>>
+  async update(data: T | Partial<T>, opts?: UpdateOpts) {
     return await runUpdateLifecycle({
       editMode: 'update',
+      ref: this,
+      data,
+      opts,
+      timestamp: new Date(),
+    });
+  }
+
+  set(data: T, opts?: SetOpts): Promise<T>
+  set(data: Partial<T>, opts?: SetOpts): Promise<Partial<T>>
+  async set(data: T | Partial<T>, opts?: SetOpts) {
+    return await runUpdateLifecycle({
+      editMode: opts?.merge ? 'setMerge' : 'set',
       ref: this,
       data,
       opts,
@@ -71,8 +84,8 @@ export class DeepReference<T extends object> extends Reference<T> {
    * @private
    * @deprecated For internal connector use only
    */
-  async writeInternal(data: Partial<T> | undefined, editMode: 'create' | 'update') {
-    const d = mapToFlattenedDoc(this, data, editMode === 'update');
+  async writeInternal(data: Partial<T> | undefined, editMode: EditMode) {
+    const d = mapToFlattenedDoc(this, data, (editMode === 'update') || (editMode === 'setMerge'));
     await this.parent.ensureDocument();
 
     // TODO: Fail on create if document already exists

@@ -1,10 +1,11 @@
 import * as _ from 'lodash';
-import { Reference, SetOpts, Snapshot } from './reference';
-import { runUpdateLifecycle } from '../utils/lifecycle';
+import { Reference, UpdateOpts, SetOpts, Snapshot } from './reference';
+import { runUpdateLifecycle, guardEditMode } from '../utils/lifecycle';
 import { VirtualCollection } from './virtual-collection';
 import { DocumentReference } from '@google-cloud/firestore';
 import { StatusError } from '../utils/status-error';
 import { FieldOperation } from './field-operation';
+import type { EditMode } from '../coerce/coerce-to-model';
 
 /**
  * References an item in a virtual collection.
@@ -28,9 +29,9 @@ export class VirtualReference<T extends object> extends Reference<T> {
     return this.parent.model.firestore;
   }
 
-  async delete(opts?: SetOpts) {
+  async delete(opts?: UpdateOpts) {
     await runUpdateLifecycle({
-      editMode: 'update',
+      editMode: 'delete',
       ref: this,
       data: undefined,
       opts,
@@ -38,9 +39,9 @@ export class VirtualReference<T extends object> extends Reference<T> {
     });
   };
 
-  create(data: T, opts?: SetOpts): Promise<T>
-  create(data: Partial<T>, opts?: SetOpts): Promise<Partial<T>>
-  async create(data: T | Partial<T>, opts?: SetOpts) {
+  create(data: T, opts?: UpdateOpts): Promise<T>
+  create(data: Partial<T>, opts?: UpdateOpts): Promise<Partial<T>>
+  async create(data: T | Partial<T>, opts?: UpdateOpts) {
     return await runUpdateLifecycle({
       editMode: 'create',
       ref: this,
@@ -50,11 +51,23 @@ export class VirtualReference<T extends object> extends Reference<T> {
     });
   };
 
-  update(data: T, opts?: SetOpts): Promise<T>
-  update(data: Partial<T>, opts?: SetOpts): Promise<Partial<T>>
-  async update(data: T | Partial<T>, opts?: SetOpts) {
+  update(data: T, opts?: UpdateOpts): Promise<T>
+  update(data: Partial<T>, opts?: UpdateOpts): Promise<Partial<T>>
+  async update(data: T | Partial<T>, opts?: UpdateOpts) {
     return await runUpdateLifecycle({
       editMode: 'update',
+      ref: this,
+      data,
+      opts,
+      timestamp: new Date(),
+    });
+  }
+
+  set(data: T, opts?: SetOpts): Promise<T>
+  set(data: Partial<T>, opts?: SetOpts): Promise<Partial<T>>
+  async set(data: T | Partial<T>, opts?: SetOpts) {
+    return await runUpdateLifecycle({
+      editMode: opts?.merge ? 'setMerge' : 'set',
       ref: this,
       data,
       opts,
@@ -67,21 +80,33 @@ export class VirtualReference<T extends object> extends Reference<T> {
    * @private
    * @deprecated For internal connector use only
    */
-  async writeInternal(data: Partial<T> | undefined, editMode: 'create' | 'update') {
+  async writeInternal(data: Partial<T> | undefined, editMode: EditMode) {
     const virtualData = await this.parent.getData();
 
     if (data === undefined) {
       delete virtualData[this.id];
     } else {
       const existingData = virtualData[this.id];
-      if (editMode === 'create') {
-        if (existingData !== undefined) {
-          throw new StatusError(`Cannot create a new document that already exists (document: ${this.path})`, 400);
-        }
-      } else {
-        if (existingData === undefined) {
-          throw new StatusError(`Cannot update a document that does not exist (document: ${this.path})`, 400);
-        }
+
+      switch (editMode) {
+        case 'create':
+          if (existingData !== undefined) {
+            throw new StatusError(`Cannot create a new document that already exists (document: ${this.path})`, 400);
+          }
+          break;
+        case 'update':
+          if (existingData === undefined) {
+            throw new StatusError(`Cannot update a document that does not exist (document: ${this.path})`, 400);
+          }
+          break;
+
+        case 'delete':
+        case 'set':
+        case 'setMerge':
+          // Ok
+          break;
+        default:
+          guardEditMode(editMode);
       }
 
       // Don't coerce back to native Firestore values because we don't need to

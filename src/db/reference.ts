@@ -54,10 +54,10 @@ export interface Snapshot<T extends object> {
 }
 
 
-export interface SetOpts {
+export interface UpdateOpts {
   /**
    * Indicates whether relation links should be updated on
-   * other related documents. This can extra reads, queries
+   * other related documents. This can cause extra reads, queries
    * and writes to multiple documents.
    * 
    * If not updated, reference links will get into invalid states,
@@ -66,6 +66,13 @@ export interface SetOpts {
    * Defaults to `true`.
    */
   updateRelations?: boolean
+}
+
+export interface SetOpts extends UpdateOpts {
+  /**
+   * 
+   */
+  merge?: boolean;
 }
 
 /**
@@ -81,19 +88,25 @@ export abstract class Reference<T extends object> {
 
   abstract readonly firestore: Firestore;
 
-  abstract delete(opts?: SetOpts): Promise<void>;
+  abstract delete(opts?: UpdateOpts): Promise<void>;
 
   /**
    * @returns The coerced data
    */
-  abstract create(data: T, opts?: SetOpts): Promise<T>;
-  abstract create(data: Partial<T>, opts?: SetOpts): Promise<Partial<T>>;
+  abstract create(data: T, opts?: UpdateOpts): Promise<T>;
+  abstract create(data: Partial<T>, opts?: UpdateOpts): Promise<Partial<T>>;
 
   /**
    * @returns The coerced data
    */
-  abstract update(data: T, opts?: SetOpts): Promise<T>;
-  abstract update(data: Partial<T>, opts?: SetOpts): Promise<Partial<T>>;
+  abstract update(data: T, opts?: UpdateOpts): Promise<T>;
+  abstract update(data: Partial<T>, opts?: UpdateOpts): Promise<Partial<T>>;
+
+  /**
+   * @returns The coerced data
+   */
+  abstract set(data: T, opts?: UpdateOpts): Promise<T>;
+  abstract set(data: Partial<T>, opts?: UpdateOpts): Promise<Partial<T>>;
 
   abstract get(): Promise<Snapshot<T>>;
 

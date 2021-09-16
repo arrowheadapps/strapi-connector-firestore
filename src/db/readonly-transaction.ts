@@ -1,10 +1,11 @@
-import type { Transaction as FirestoreTransaction, Firestore } from '@google-cloud/firestore';
+import type { Firestore } from '@google-cloud/firestore';
 import { ReadRepository } from '../utils/read-repository';
 import type { Queryable, QuerySnapshot } from './collection';
-import type { Reference, SetOpts, Snapshot } from './reference';
+import type { Reference, UpdateOpts, SetOpts, Snapshot } from './reference';
 import { VirtualReference } from './virtual-reference';
 import type { GetOpts, Transaction } from './transaction';
 import { get, getAll, getRefInfo } from './readwrite-transaction';
+import type { EditMode } from '../coerce/coerce-to-model';
 
 
 export class ReadOnlyTransaction implements Transaction {
@@ -15,7 +16,7 @@ export class ReadOnlyTransaction implements Transaction {
   /**
    * @deprecated Not supported on ReadonlyTransaction
    */
-  get nativeTransaction(): FirestoreTransaction {
+  get nativeTransaction(): never {
     throw new Error('nativeTransaction is not supported on ReadonlyTransaction');
   }
 
@@ -33,10 +34,10 @@ export class ReadOnlyTransaction implements Transaction {
   /**
    * @deprecated Not supported on ReadOnlyTransaction
    */
-  getAtomic<T extends object>(ref: Reference<T>, opts?: GetOpts): Promise<Snapshot<T>>
-  getAtomic<T extends object>(refs: Reference<T>[], opts?: GetOpts): Promise<Snapshot<T>[]>
-  getAtomic<T extends object>(query: Queryable<T>): Promise<QuerySnapshot<T>>
-  getAtomic<T extends object>(): Promise<Snapshot<T> | Snapshot<T>[] | QuerySnapshot<T>> {
+  getAtomic<T extends object>(ref: Reference<T>, opts?: GetOpts): never
+  getAtomic<T extends object>(refs: Reference<T>[], opts?: GetOpts): never
+  getAtomic<T extends object>(query: Queryable<T>): never
+  getAtomic(): never {
     throw new Error('getAtomic() is not supported on ReadOnlyTransaction');
   }
   
@@ -63,9 +64,9 @@ export class ReadOnlyTransaction implements Transaction {
   }
 
 
-  create<T extends object>(ref: Reference<T>, data: T, opts?: SetOpts): Promise<T>
-  create<T extends object>(ref: Reference<T>, data: Partial<T>, opts?: SetOpts): Promise<Partial<T>>
-  async create<T extends object>(ref: Reference<T>, data: T | Partial<T>, opts?: SetOpts): Promise<T | Partial<T>> {
+  create<T extends object>(ref: Reference<T>, data: T, opts?: UpdateOpts): Promise<T>
+  create<T extends object>(ref: Reference<T>, data: Partial<T>, opts?: UpdateOpts): Promise<Partial<T>>
+  async create<T extends object>(ref: Reference<T>, data: T | Partial<T>, opts?: UpdateOpts): Promise<T | Partial<T>> {
     if (ref instanceof VirtualReference) {
       return await ref.create(data, opts);
     } else {
@@ -73,13 +74,23 @@ export class ReadOnlyTransaction implements Transaction {
     }
   }
   
-  update<T extends object>(ref: Reference<T>, data: T, opts?: SetOpts): Promise<T>
-  update<T extends object>(ref: Reference<T>, data: Partial<T>, opts?: SetOpts): Promise<Partial<T>>
-  async update<T extends object>(ref: Reference<T>, data: T | Partial<T>, opts?: SetOpts): Promise<T | Partial<T>> {
+  update<T extends object>(ref: Reference<T>, data: T, opts?: UpdateOpts): Promise<T>
+  update<T extends object>(ref: Reference<T>, data: Partial<T>, opts?: UpdateOpts): Promise<Partial<T>>
+  async update<T extends object>(ref: Reference<T>, data: T | Partial<T>, opts?: UpdateOpts): Promise<T | Partial<T>> {
     if (ref instanceof VirtualReference) {
       return await ref.update(data, opts);
     } else {
       throw new Error('update() is not supported on ReadOnlyTransaction');
+    }
+  }
+
+  set<T extends object>(ref: Reference<T>, data: T, opts?: SetOpts): Promise<T>
+  set<T extends object>(ref: Reference<T>, data: Partial<T>, opts?: SetOpts): Promise<Partial<T>>
+  async set<T extends object>(ref: Reference<T>, data: T | Partial<T>, opts?: UpdateOpts): Promise<T | Partial<T>> {
+    if (ref instanceof VirtualReference) {
+      return await ref.set(data, opts);
+    } else {
+      throw new Error('set() is not supported on ReadOnlyTransaction');
     }
   }
   
@@ -99,7 +110,7 @@ export class ReadOnlyTransaction implements Transaction {
    * @private
    * @deprecated For internal connector use only
    */
-  mergeWriteInternal<T extends object>(ref: Reference<T>, data: Partial<T> | undefined, editMode: 'create' | 'update') {
+  mergeWriteInternal<T extends object>(ref: Reference<T>, data: Partial<T> | undefined, editMode: EditMode) {
     const { docRef } = getRefInfo(ref);
     if (!docRef) {
       (ref as VirtualReference<T>).writeInternal(data, editMode);

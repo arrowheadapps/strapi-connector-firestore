@@ -3,7 +3,7 @@ import { CoerceOpts, coerceToModel } from '../coerce/coerce-to-model';
 import { DeepReference } from '../db/deep-reference';
 import { MorphReference } from '../db/morph-reference';
 import { NormalReference } from '../db/normal-reference';
-import type { Reference, SetOpts } from '../db/reference';
+import type { Reference, UpdateOpts } from '../db/reference';
 import type { Transaction } from '../db/transaction';
 import type { ReadWriteTransaction } from '../db/readwrite-transaction';
 import type { ReadOnlyTransaction } from '../db/readonly-transaction';
@@ -14,7 +14,7 @@ export interface LifecycleArgs<T extends object> extends Required<CoerceOpts> {
   ref: Reference<T>
   data: T | Partial<T> | undefined
   transaction?: ReadWriteTransaction | ReadOnlyTransaction
-  opts: SetOpts | undefined
+  opts: UpdateOpts | undefined
   timestamp: Date
 }
 
@@ -29,7 +29,9 @@ export async function runUpdateLifecycle<T extends object>({ ref, data, editMode
   if (shouldUpdateRelations(opts)) {
 
     const runUpdateWithRelations = async (trans: Transaction) => {
-      const prevData = editMode === 'update'
+      // If the edit mode is create, we know that the previous data doesn't exist (or the transaction will fail)
+      // so we don't need to fetch it
+      const prevData = editMode !== 'create'
         ? await trans.getAtomic(ref).then(snap => snap.data())
         : undefined;
       await relationsUpdate(db.model, ref, prevData, newData, editMode, trans);
@@ -57,4 +59,11 @@ export async function runUpdateLifecycle<T extends object>({ ref, data, editMode
   }
 
   return newData;
+}
+
+/**
+ * Always throws and error. To be used as a type guard in switch statements.
+ */
+export function guardEditMode(mode: never): never {
+  throw new Error(`Unexpected edit mode: ${mode}`);
 }

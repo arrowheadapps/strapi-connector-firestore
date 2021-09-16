@@ -1,9 +1,10 @@
 import * as _ from 'lodash';
 import { DeepReference } from './deep-reference';
 import type { Collection } from './collection';
-import { MorphReferenceShape, Reference, SetOpts } from './reference';
+import { MorphReferenceShape, Reference, UpdateOpts, SetOpts } from './reference';
 import { NormalReference } from './normal-reference';
 import { VirtualReference } from './virtual-reference';
+import type { EditMode } from '../coerce/coerce-to-model';
 
 
 /**
@@ -32,20 +33,26 @@ export class MorphReference<T extends object> extends Reference<T> {
     return this.ref.firestore;
   }
 
-  delete(opts?: SetOpts) {
-    return this.ref.delete();
+  delete(opts?: UpdateOpts) {
+    return this.ref.delete(opts);
   };
 
-  create(data: T, opts?: SetOpts): Promise<T>
-  create(data: Partial<T>, opts?: SetOpts): Promise<Partial<T>>
-  create(data: T | Partial<T>, opts?: SetOpts): Promise<T | Partial<T>> {
+  create(data: T, opts?: UpdateOpts): Promise<T>
+  create(data: Partial<T>, opts?: UpdateOpts): Promise<Partial<T>>
+  create(data: T | Partial<T>, opts?: UpdateOpts): Promise<T | Partial<T>> {
     return this.ref.create(data, opts);
-  };
+  }
 
-  update(data: T, opts?: SetOpts): Promise<T>
-  update(data: Partial<T>, opts?: SetOpts): Promise<Partial<T>>
-  update(data: Partial<T>, opts?: SetOpts) {
+  update(data: T, opts?: UpdateOpts): Promise<T>
+  update(data: Partial<T>, opts?: UpdateOpts): Promise<Partial<T>>
+  update(data: Partial<T>, opts?: UpdateOpts) {
     return this.ref.update(data, opts);
+  }
+
+  set(data: T, opts?: SetOpts): Promise<T>
+  set(data: Partial<T>, opts?: SetOpts): Promise<Partial<T>>
+  set(data: Partial<T>, opts?: SetOpts) {
+    return this.ref.set(data, opts);
   }
 
   /**
@@ -53,7 +60,7 @@ export class MorphReference<T extends object> extends Reference<T> {
    * @private
    * @deprecated For internal connector use only
    */
-  writeInternal(data: Partial<T> | undefined, editMode: 'create' | 'update') {
+  writeInternal(data: Partial<T> | undefined, editMode: EditMode) {
     return this.ref.writeInternal(data, editMode);
   }
 
