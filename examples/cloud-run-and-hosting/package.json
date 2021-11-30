@@ -16,13 +16,13 @@
   "dependencies": {
     "strapi": "^3.6.8",
     "strapi-admin": "^3.6.8",
-    "strapi-connector-firestore": "^3.0.0-alpha.40",
+    "strapi-connector-firestore": "^3.0.0-alpha.42",
     "strapi-plugin-content-manager": "^3.6.8",
     "strapi-plugin-content-type-builder": "^3.6.8",
     "strapi-plugin-email": "^3.6.8",
     "strapi-plugin-upload": "^3.6.8",
     "strapi-plugin-users-permissions": "^3.6.8",
-    "strapi-provider-upload-google-cloud-storage": "^3.6.5",
+    "strapi-provider-upload-google-cloud-storage": "^3.6.8",
     "strapi-utils": "^3.6.8"
   },
   "devDependencies": {

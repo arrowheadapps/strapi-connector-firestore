@@ -19,7 +19,7 @@ export interface FirestoreConnectorQueries<T extends object> extends StrapiQuery
 export function queries<T extends object>({ model, strapi }: StrapiContext<T>): FirestoreConnectorQueries<T> {
 
   const log = model.options.logQueries
-    ? (name: string, details: object) => { strapi.log.debug(`QUERY ${model.modelName}.${name}: ${JSON.stringify(details)}`) }
+    ? (name: string, details: object) => { strapi.log.debug(`QUERY ${name}[${model.uid}] ${JSON.stringify(details)}`) }
     : () => {};
 
   const find: FirestoreConnectorQueries<T>['find'] = async (params, populate = (model.defaultPopulate as any)) => {
