@@ -23,6 +23,15 @@ See the discussion in [issue #1](https://github.com/arrowheadapps/strapi-connect
 [![GitHub bug issues](https://img.shields.io/github/issues/arrowheadapps/strapi-connector-firestore/bug)](https://github.com/arrowheadapps/strapi-connector-firestore/issues)
 [![GitHub last commit](https://img.shields.io/github/last-commit/arrowheadapps/strapi-connector-firestore)](https://github.com/arrowheadapps/strapi-connector-firestore)
 
+> **Note about Strapi V4 support:** 
+> As per [this blog post](https://strapi.io/blog/mongo-db-support-in-strapi-past-present-and-future), the V4 release of Strapi 
+> does not have a pluggable database connector layer like V3 did, and therefore cannot support third-party database connectors.
+> The good news is that an extensible database layer is being developed in partnership between Strapi and MongoDB, and that this will
+> hopefully represent a great step forward in extensibility for third-party connectors like this one. However, that pluggable database layer is not expected any sooner
+> than [the last half of 2022](https://strapi.io/blog/mongo-db-support-in-strapi-past-present-and-future). 
+>
+> In short, this connector cannot be used with Strapi V4 until the pluggable database layer is released.
+
 Strapi database connector for [Cloud Firestore](https://firebase.google.com/docs/firestore) database on Google Cloud Platform.
 
 Cloud Firestore is a flexible, scalable database for mobile, web, and server development from Firebase and Google Cloud Platform.
