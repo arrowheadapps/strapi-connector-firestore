@@ -1,5 +1,6 @@
 import type { DocumentData, DocumentReference, FieldPath, Settings, WhereFilterOp } from '@google-cloud/firestore';
 import type { Logger } from 'pino';
+import { Reference } from './db/reference';
 import type { Transaction } from './db/transaction';
 import type { FirestoreConnectorModel } from './model';
 import type { PickReferenceKeys, PopulatedByKeys } from './populate';
@@ -218,8 +219,8 @@ export interface ModelOptions<T extends object, R extends DocumentData = Documen
   onChange?: TransactionOnChangeHook<T>
 }
 
-export type TransactionOnChangeHook<T> = (previousData: T | undefined, newData: T | undefined, transaction: Transaction) => (void | TransactionSuccessHook<T>) | PromiseLike<void | TransactionSuccessHook<T>>
-export type TransactionSuccessHook<T> = (result: T | undefined) => (void | PromiseLike<void>)
+export type TransactionOnChangeHook<T extends object> = (previousData: T | undefined, newData: T | undefined, transaction: Transaction, ref: Reference<T>) => (void | TransactionSuccessHook<T>) | PromiseLike<void | TransactionSuccessHook<T>>
+export type TransactionSuccessHook<T extends object> = (result: T | undefined, ref: Reference<T>) => (void | PromiseLike<void>)
 
 export interface DataSource<T extends object> {
   /**

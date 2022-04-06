@@ -55,7 +55,9 @@ const copyTests = async () => {
 
   // Download the tests from GitHub
   await fs.emptyDir(testsDir);
-  await degit(`strapi/strapi/packages/strapi/${testsDir}`).clone(testsDir)
+  await degit(`strapi/strapi#v${version}`).clone(`${testsDir}/.strapi`);
+  await fs.copy(`${testsDir}/.strapi/packages/strapi/${testsDir}`, testsDir);
+  await fs.remove(`${testsDir}/.strapi`);
 
   // Remove excluded tests
   console.log(`Collection flattening: "${process.env.FLATTENING || 'flatten_none'}"`)

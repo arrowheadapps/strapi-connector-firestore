@@ -72,7 +72,7 @@ export class NormalReference<T extends object> extends Reference<T> {
       } else {
         // Firestore does not run the converter on update operations
         const out = this.parent.converter.toFirestore(data as T);
-        await this.ref.update(out);
+        await this.ref.update(out as any);
       }
     } else {
       await this.ref.delete();

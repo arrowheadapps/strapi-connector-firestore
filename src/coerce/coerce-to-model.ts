@@ -276,6 +276,12 @@ export function coerceAttrToModel(attr: StrapiAttribute | undefined, value: unkn
     }
   }
 
+  if (value instanceof DocumentReference) {
+    // The value is a reference with and unknown model (e.g. polymorphic relation)
+    // so we try to determine the model from the path of the reference itself
+    return reinstantiateReference(value, value.id, undefined, opts);
+  }
+
 
   // References will come out as references unchanged
   // but will be serialised to JSON as path string value

@@ -55,7 +55,7 @@ export function queries<T extends object>({ model, strapi }: StrapiContext<T>): 
     const { result, onSuccess } = await model.runTransaction(async trans => {
       // Create while coercing data and updating relations
       const data = await trans.create(ref, values);
-      const onSuccess = await model.options.onChange(undefined, data, trans);
+      const onSuccess = await model.options.onChange(undefined, data, trans, ref);
       
       // Populate relations
       const result = await populateDoc(model, ref, data, populate, trans);
@@ -63,14 +63,14 @@ export function queries<T extends object>({ model, strapi }: StrapiContext<T>): 
     });
 
     // Run the success hook
-    await runOnSuccess(onSuccess, result as any);
+    await runOnSuccess(onSuccess, result as any, ref);
     return result;
   };
 
   const update: FirestoreConnectorQueries<T>['update'] = async (params, values, populate = (model.defaultPopulate as any)) => {
     log('update', { params, populate });
     
-    const { result, onSuccess } =  await model.runTransaction(async trans => {
+    const { result, onSuccess, ref } =  await model.runTransaction(async trans => {
       const [snap] = await buildAndFetchQuery({
         model,
         params: { ...params, _limit: 1 },
@@ -86,15 +86,15 @@ export function queries<T extends object>({ model, strapi }: StrapiContext<T>): 
         ...snap.data(),
         ...await trans.update(snap.ref, values),
       };
-      const onSuccess = await model.options.onChange(prevData, data, trans);
+      const onSuccess = await model.options.onChange(prevData, data, trans, snap.ref);
 
       // Populate relations
       const result = await populateDoc(model, snap.ref, data, populate, trans);
-      return { result, onSuccess };
+      return { result, onSuccess, ref: snap.ref };
     });
 
     // Run the success hook
-    await runOnSuccess(onSuccess, result as any);
+    await runOnSuccess(onSuccess, result as any, ref);
     return result;
   };
 
@@ -118,10 +118,10 @@ export function queries<T extends object>({ model, strapi }: StrapiContext<T>): 
 
     // Run the success hook
     if (Array.isArray(results)) {
-      await Promise.all(results.map(r => r && runOnSuccess(r.onSuccess, r.result as any)));
+      await Promise.all(results.map(r => r && runOnSuccess(r.onSuccess, r.result as any, r.ref)));
     } else {
       if (results) {
-        await runOnSuccess(results.onSuccess, results.result as any);
+        await runOnSuccess(results.onSuccess, results.result as any, results.ref);
       }
     }
 
@@ -142,11 +142,11 @@ export function queries<T extends object>({ model, strapi }: StrapiContext<T>): 
 
     // Delete while updating relations
     await trans.delete(snap.ref);
-    const onSuccess = await model.options.onChange(prevData, undefined, trans);
+    const onSuccess = await model.options.onChange(prevData, undefined, trans, snap.ref);
 
     // Populate relations
     const result = await populateDoc(model, snap.ref, prevData, populate, trans);
-    return { result, onSuccess };
+    return { result, onSuccess, ref: snap.ref };
   };
 
   const search: FirestoreConnectorQueries<T>['search'] = async (params, populate = (model.defaultPopulate as any)) => {
@@ -241,10 +241,10 @@ async function fetchQuery<T extends object>(queryOrRefs: Queryable<T> | Referenc
   }
 }
 
-async function runOnSuccess<T extends object>(onSuccess: void | TransactionSuccessHook<T>, result: T | undefined) {
+async function runOnSuccess<T extends object>(onSuccess: void | TransactionSuccessHook<T>, result: T | undefined, ref: Reference<T>) {
   if (typeof onSuccess === 'function') {
     try {
-      await onSuccess(result);
+      await onSuccess(result, ref);
     } catch (err) {
       strapi.log.warn(`Transaction onSuccess hook threw an error: ${(err as any).message}`, err);
     }

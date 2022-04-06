@@ -80,7 +80,7 @@ export class DeepReference<T extends object> extends Reference<T> {
 
     // Firestore does not run the converter on update operations
     const out = this.parent.converter.toFirestore(d);
-    await this.doc.update(out);
+    await this.doc.update(out as any);
   }
 
 
