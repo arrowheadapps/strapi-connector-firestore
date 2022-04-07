@@ -76,6 +76,12 @@ export interface Transaction {
    * ```
    */
   addNativeWrite(cb: (transaction: FirestoreTransaction) => void): void;
+
+  /**
+   * Adds a callback that will be run after the transaction is successfully committed.
+   * The callback must not throw.
+   */
+  addSuccessHook(cb: () => (void | PromiseLike<void>)): void;
   
   /**
    * Reads the given document and holds lock on it

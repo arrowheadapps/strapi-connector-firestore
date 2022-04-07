@@ -26,12 +26,25 @@ export async function runUpdateLifecycle<T extends object>({ ref, data, editMode
   const db = ref.parent;
   const newData = data ? coerceToModel(db.model, ref.id, data, null, { editMode, timestamp }) : undefined;
 
-  if (shouldUpdateRelations(opts)) {
+  const updateRelations = shouldUpdateRelations(opts);
+  const runOnChangeHook = (typeof opts?.runOnChangeHook === 'boolean') ? opts.runOnChangeHook:  updateRelations;
+
+  if (updateRelations) {
 
     const runUpdateWithRelations = async (trans: Transaction) => {
       const prevData = editMode === 'update'
         ? await trans.getAtomic(ref).then(snap => snap.data())
         : undefined;
+
+      if (runOnChangeHook) {
+        // Run the change hook before relations are updated
+        // so any changes made by the hook will be included
+        const onSuccess = await ref.parent.model.options.onChange(prevData, newData, trans, ref);
+        if (onSuccess) {
+          trans.addSuccessHook(() => onSuccess(newData, ref));
+        }
+      }
+
       await relationsUpdate(db.model, ref, prevData, newData, editMode, trans);
       (trans as (ReadWriteTransaction | ReadOnlyTransaction)).mergeWriteInternal(ref, newData, editMode);
     };
@@ -42,16 +55,40 @@ export async function runUpdateLifecycle<T extends object>({ ref, data, editMode
       await db.model.runTransaction(runUpdateWithRelations);
     }
   } else {
-    if (transaction) {
-      transaction.mergeWriteInternal(ref, newData, editMode);
-    } else {
-      if ((ref instanceof NormalReference)
-        || (ref instanceof DeepReference)
-        || (ref instanceof MorphReference)
-        || (ref instanceof VirtualReference)) {
-        await ref.writeInternal(newData, editMode);
+    if (runOnChangeHook) {
+      // We always need a transaction when we need to run the change hook
+      const runUpdateWithoutRelations = async (trans: Transaction) => {
+        const prevData = editMode === 'update'
+          ? await trans.getAtomic(ref).then(snap => snap.data())
+          : undefined;
+  
+        // Run the change hook before relations are updated
+        // so any changes made by the hook will be included
+        const onSuccess = await ref.parent.model.options.onChange(prevData, newData, trans, ref);
+        if (onSuccess) {
+          trans.addSuccessHook(() => onSuccess(newData, ref));
+        }
+  
+        (trans as (ReadWriteTransaction | ReadOnlyTransaction)).mergeWriteInternal(ref, newData, editMode);
+      };
+
+      if (transaction) {
+        await runUpdateWithoutRelations(transaction);
       } else {
-        throw new Error(`Unknown type of reference: ${ref}`);
+        await db.model.runTransaction(runUpdateWithoutRelations);
+      }
+    } else {
+      if (transaction) {
+        transaction.mergeWriteInternal(ref, newData, editMode);
+      } else {
+        if ((ref instanceof NormalReference)
+          || (ref instanceof DeepReference)
+          || (ref instanceof MorphReference)
+          || (ref instanceof VirtualReference)) {
+          await ref.writeInternal(newData, editMode);
+        } else {
+          throw new Error(`Unknown type of reference: ${ref}`);
+        }
       }
     }
   }

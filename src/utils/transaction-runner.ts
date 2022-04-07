@@ -18,6 +18,8 @@ export function makeTransactionRunner<T extends object>(firestore: Firestore, op
 
   const normalRunner: TransactionRunner<T> = async (fn, opts) => {
     const isReadOnly = isVirtual || (opts && opts.readOnly);
+    let hooks: (() => (void | PromiseLike<void>))[];
+    let result: Awaited<ReturnType<typeof fn>>;
     if (isReadOnly) {
       // Always use read-only transactions for virtual collections
       // The only scenario where a virtual collection may want to perform a Firestore write is if it has
@@ -25,12 +27,12 @@ export function makeTransactionRunner<T extends object>(firestore: Firestore, op
       // references to virtual collections, dominant relations to a virtual collection are not supported.
       // Don't log stats for virtual collections
       const trans = new ReadOnlyTransaction(firestore, logTransactionStats && !isVirtual);
-      const result = await fn(trans);
+      result = await fn(trans);
+      hooks = trans.successHooks;
       await trans.commit();
-      return result;
     } else {
       let attempt = 0;
-      return await firestore.runTransaction(async (trans) => {
+      const r = await firestore.runTransaction(async (trans) => {
         if ((attempt > 0) && useEmulator) {
           // Random back-off for contested transactions only when running on the emulator
           // The production server has deadlock avoidance but the emulator currently doesn't
@@ -44,9 +46,25 @@ export function makeTransactionRunner<T extends object>(firestore: Firestore, op
         const wrapper = new ReadWriteTransaction(firestore, trans, logTransactionStats, ++attempt);
         const result = await fn(wrapper);
         await wrapper.commit();
-        return result;
+        return { result, hooks: wrapper.successHooks };
       }, { maxAttempts: opts?.maxAttempts });
+
+      result = r.result;
+      hooks = r.hooks;
     }
+
+    // Run the hooks
+    if (hooks.length) {
+      await Promise.all(hooks.map(async hook => {
+        try {
+          await hook();
+        } catch (err) {
+          strapi.log.error(`Error running transaction success hook: ${err.message}`, { err });
+        }
+      }));
+    }
+
+    return result;
   };
 
   // Virtual option overrides flatten option

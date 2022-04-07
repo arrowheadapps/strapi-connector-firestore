@@ -13,6 +13,13 @@ export class ReadOnlyTransaction implements Transaction {
 
 
   /**
+   * @private
+   * @deprecated For internal connector use only
+   */
+  readonly successHooks: (() => (void | PromiseLike<void>))[] = [];
+
+
+  /**
    * @deprecated Not supported on ReadonlyTransaction
    */
   get nativeTransaction(): FirestoreTransaction {
@@ -96,6 +103,10 @@ export class ReadOnlyTransaction implements Transaction {
    */
   addNativeWrite(): never {
     throw new Error('Writes are not supported on ReadOnlyTransaction');
+  }
+
+  addSuccessHook(cb: () => (void | PromiseLike<void>)): void {
+    this.successHooks.push(cb);
   }
   
   /**

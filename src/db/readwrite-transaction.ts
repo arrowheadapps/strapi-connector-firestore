@@ -15,6 +15,12 @@ export class ReadWriteTransaction implements Transaction {
   private readonly writes = new Map<string, WriteOp>();
   private readonly nativeWrites: ((trans: FirestoreTransaction) => void)[] = [];
 
+  /**
+   * @private
+   * @deprecated For internal connector use only
+   */
+  readonly successHooks: (() => (void | PromiseLike<void>))[] = [];
+
   private readonly timestamp = new Date();
   private readonly atomicReads: ReadRepository;
   private readonly nonAtomicReads: ReadRepository;
@@ -135,6 +141,11 @@ export class ReadWriteTransaction implements Transaction {
 
   addNativeWrite(cb: (transaction: FirestoreTransaction) => void): void {
     this.nativeWrites.push(cb);
+  }
+
+
+  addSuccessHook(cb: () => (void | PromiseLike<void>)): void {
+    this.successHooks.push(cb);
   }
   
   /**

@@ -66,6 +66,15 @@ export interface SetOpts {
    * Defaults to `true`.
    */
   updateRelations?: boolean
+
+  /**
+   * Whether or not the `onChange(...)` hook will be run. If not provided,
+   * it defaults to the value of `updateRelations` (which defaults to `true`).
+   * 
+   * This default behaviour means that it will run for all explicit changes, but not 
+   * for implicit changes internally caused to related documents when relations are updated.
+   */
+  runOnChangeHook?: boolean;
 }
 
 /**
