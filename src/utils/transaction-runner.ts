@@ -41,7 +41,7 @@ export function makeTransactionRunner<T extends object>(firestore: Firestore, op
           await new Promise(resolve => setTimeout(resolve, ms));
         }
 
-        const wrapper = new ReadWriteTransaction(firestore, trans, logTransactionStats, ++attempt, options.ignoreMismatchedReferences);
+        const wrapper = new ReadWriteTransaction(firestore, trans, logTransactionStats, ++attempt);
         const result = await fn(wrapper);
         await wrapper.commit();
         return result;

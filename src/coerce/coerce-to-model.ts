@@ -22,7 +22,6 @@ export class CoercionError extends StatusError {
 export interface CoerceOpts {
   editMode?: 'create' | 'update'
   timestamp?: Date
-  ignoreMismatchedReferences?: boolean
 }
 
 /**
@@ -67,7 +66,7 @@ export function coerceToModel<T extends object>(model: FirestoreConnectorModel<T
 }
 
 
-function fallbackCoerceOrCopy(value: any, opts: CoerceOpts): any {
+function fallbackCoerceOrCopy(value: any, opts: CoerceOpts & { ignoreMismatchedReferences: boolean }): any {
   const result = coerceAttrToModel(undefined, value, opts);
   if (result === value) {
     // If coercion returned the same object then we return undefined
@@ -79,6 +78,7 @@ function fallbackCoerceOrCopy(value: any, opts: CoerceOpts): any {
 }
 
 function coerceModelRecursive<T extends object>(model: FirestoreConnectorModel<T>, data: unknown, parentPath: string | null | undefined, opts: CoerceOpts) {
+  const options = { ...opts, ignoreMismatchedReferences: model.options.ignoreMismatchedReferences };
   return _.cloneDeepWith(data, (value, key) => {
     const path = [parentPath, key].filter(Boolean).join('.');
     if (!path) {
@@ -86,7 +86,7 @@ function coerceModelRecursive<T extends object>(model: FirestoreConnectorModel<T
       // Perform basic coercion
       // E.g. this handles document-level FieldOperation.delete()
       // for flattened collections
-      return fallbackCoerceOrCopy(value, opts);
+      return fallbackCoerceOrCopy(value, options);
     }
 
     const attr = model.attributes[path];
@@ -96,11 +96,11 @@ function coerceModelRecursive<T extends object>(model: FirestoreConnectorModel<T
       } else {
         // Stop infinite recursion
         // Perform basic coercion of necessary types
-        return fallbackCoerceOrCopy(value, opts);
+        return fallbackCoerceOrCopy(value, options);
       }
     }
 
-    return coerceAttrToModel(attr, value, opts);
+    return coerceAttrToModel(attr, value, options);
   });
 }
 
@@ -109,7 +109,7 @@ function coerceModelRecursive<T extends object>(model: FirestoreConnectorModel<T
  * Coerces a given attribute value to out of the value stored in Firestore to the
  * value expected by the given attribute schema.
  */
-export function coerceAttrToModel(attr: StrapiAttribute | undefined, value: unknown, opts: CoerceOpts): unknown {
+export function coerceAttrToModel(attr: StrapiAttribute | undefined, value: unknown, opts: CoerceOpts & { ignoreMismatchedReferences: boolean }): unknown {
 
   if (Array.isArray(value) && attr?.isMeta) {
     // Meta attributes are arrays, so we need to coerce the value recursively
@@ -263,24 +263,17 @@ export function coerceAttrToModel(attr: StrapiAttribute | undefined, value: unkn
     const target = attr.model || attr.collection;
     if (target) {
       const assocModel = strapi.db.getModel(target, attr.plugin);
-      if (assocModel) {
-        // Convert DeepReference instances to a string value
-        // that can be serialised to Firestore
-        if (Array.isArray(value)) {
-          value = value.map(v => {
-            return coerceToReference(v, assocModel, opts);
-          });
-        } else {
-          return coerceToReference(value, assocModel, opts);
-        }
+
+      // Convert DeepReference instances to a string value
+      // that can be serialised to Firestore
+      if (Array.isArray(value)) {
+        value = value.map(v => {
+          return coerceToReference(v, assocModel, opts);
+        });
+      } else {
+        return coerceToReference(value, assocModel, opts);
       }
     }
-  }
-
-  if (value instanceof DocumentReference) {
-    // The value is a reference with and unknown model (e.g. polymorphic relation)
-    // so we try to determine the model from the path of the reference itself
-    return reinstantiateReference(value, value.id, undefined, opts);
   }
 
 
@@ -295,7 +288,7 @@ export function coerceAttrToModel(attr: StrapiAttribute | undefined, value: unkn
 /**
  * Coerces a value to a `Reference` if it is one.
  */
-function coerceToReference<T extends object = object>(value: any, to: FirestoreConnectorModel<T> | undefined, opts: CoerceOpts): Reference<T> | null {
+function coerceToReference<T extends object = object>(value: any, to: FirestoreConnectorModel<T> | undefined, opts: CoerceOpts & { ignoreMismatchedReferences: boolean }): Reference<T> | null {
   if ((value === undefined) || (value === null)) {
     return null;
   }
@@ -413,10 +406,10 @@ function coerceToReference<T extends object = object>(value: any, to: FirestoreC
  * Re-instantiates the reference via the target model so that it comes
  * loaded with the appropriate converter.
  */
-function reinstantiateReference<T extends object>(value: DocumentReference<T | { [id: string]: T }>, id: string | undefined, to: FirestoreConnectorModel<T> | undefined, opts: CoerceOpts): NormalReference<T> | DeepReference<T> | VirtualReference<T> | null {
-  if (to) {
+function reinstantiateReference<T extends object>(value: DocumentReference<T | { [id: string]: T }>, id: string | undefined, to: FirestoreConnectorModel<T> | undefined, opts: CoerceOpts & { ignoreMismatchedReferences: boolean }): NormalReference<T> | DeepReference<T> | VirtualReference<T> | null {
+  if (to && !opts.ignoreMismatchedReferences) {
     const newRef = to.db.doc(id || value.id);
-    if ((newRef.parent.path !== value.parent.path) && !opts.ignoreMismatchedReferences) {
+    if (newRef.parent.path !== value.parent.path) {
       return fault(opts, `Reference is pointing to the wrong model. Expected "${newRef.path}", got "${value.path}".`);
     }
     return newRef;

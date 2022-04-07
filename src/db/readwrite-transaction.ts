@@ -26,7 +26,6 @@ export class ReadWriteTransaction implements Transaction {
     readonly nativeTransaction: FirestoreTransaction,
     private readonly logStats: boolean,
     private readonly attempt: number,
-    private readonly ignoreMismatchedReferences: boolean,
   ) {
     
     this.atomicReads = new ReadRepository({
@@ -107,7 +106,6 @@ export class ReadWriteTransaction implements Transaction {
       opts,
       transaction: this,
       timestamp: this.timestamp,
-      ignoreMismatchedReferences: this.ignoreMismatchedReferences,
     }))!;
   }
   
@@ -121,7 +119,6 @@ export class ReadWriteTransaction implements Transaction {
       opts,
       transaction: this,
       timestamp: this.timestamp,
-      ignoreMismatchedReferences: this.ignoreMismatchedReferences,
     }))!;
   }
   
@@ -133,7 +130,6 @@ export class ReadWriteTransaction implements Transaction {
       opts,
       transaction: this,
       timestamp: this.timestamp,
-      ignoreMismatchedReferences: this.ignoreMismatchedReferences,
     });
   }
 

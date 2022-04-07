@@ -277,7 +277,7 @@ export function convertWhere(model: FirestoreConnectorModel<any>, { field, opera
 
   // Coerce the attribute into the correct type
   try {
-    value = coerceAttribute(attr, value);
+    value = coerceAttribute(attr, value, { ignoreMismatchedReferences: model.options.ignoreMismatchedReferences });
   } catch (err) {
     if (err instanceof CoercionError) {
       // If the value cannot be coerced to the appropriate type
@@ -307,13 +307,13 @@ export function convertWhere(model: FirestoreConnectorModel<any>, { field, opera
   }
 }
 
-function coerceAttribute(attr: StrapiAttribute | undefined, value: unknown): unknown {
+function coerceAttribute(attr: StrapiAttribute | undefined, value: unknown, opts: { ignoreMismatchedReferences: boolean }): unknown {
   // Use editMode == 'update' so that strict coercion rules will be applies
   // An error will be thrown rather than silently ignoring
   if (Array.isArray(value)) {
-    value = value.map(v => coerceAttrToModel(attr, v, { editMode: 'update' }));
+    value = value.map(v => coerceAttrToModel(attr, v, { ...opts, editMode: 'update' }));
   } else {
-    value = coerceAttrToModel(attr, value, { editMode: 'update' });
+    value = coerceAttrToModel(attr, value, { ...opts, editMode: 'update' });
   }
   return value;
 }
