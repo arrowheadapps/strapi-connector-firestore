@@ -16,6 +16,9 @@ module.exports = async () => {
     const coverage = await loadCoverage('coverage/coverage-final.json');
     const remapped = await remap(coverage);
     await writeReport(remapped, 'json', {}, 'coverage/coverage.json');
+  } catch (err) {
+    console.log('Error while remapping code coverage');
+    console.log(err);
   } finally {
     process.chdir(cwd);
   }

@@ -45,7 +45,7 @@ It has several advantages such as:
 ## Requirements
 
 - NodeJS `>= 12`
-- Strapi version compatible with `^3.0.0`
+- Strapi version compatible with `^3.0.0` (Strapi V4 is not supported)
 
 ## Installation
 

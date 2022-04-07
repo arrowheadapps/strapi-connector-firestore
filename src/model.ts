@@ -160,6 +160,7 @@ function mountModel<T extends object>(target: object, modelKey: string, mdl: Str
     allowNonNativeQueries: defaultAllowNonNativeQueries(mdl, opts, connectorOptions),
     metadataField: opts.metadataField || connectorOptions.metadataField,
     creatorUserModel: opts.creatorUserModel || connectorOptions.creatorUserModel,
+    ignoreMismatchedReferences: opts.ignoreMismatchedReferences ?? connectorOptions.ignoreMismatchedReferences,
     converter: opts.converter || {},
     virtualDataSource: opts.virtualDataSource || null,
     onChange: opts.onChange || (() => {}),

@@ -38,6 +38,7 @@ export class DeepReference<T extends object> extends Reference<T> {
       data: undefined,
       opts,
       timestamp: new Date(),
+      ignoreMismatchedReferences: this.parent.model.options.ignoreMismatchedReferences,
     });
   };
 
@@ -50,6 +51,7 @@ export class DeepReference<T extends object> extends Reference<T> {
       data,
       opts,
       timestamp: new Date(),
+      ignoreMismatchedReferences: this.parent.model.options.ignoreMismatchedReferences,
     });
   };
 
@@ -62,6 +64,7 @@ export class DeepReference<T extends object> extends Reference<T> {
       data,
       opts,
       timestamp: new Date(),
+      ignoreMismatchedReferences: this.parent.model.options.ignoreMismatchedReferences,
     });
   }
   

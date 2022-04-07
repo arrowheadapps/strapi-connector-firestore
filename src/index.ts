@@ -50,6 +50,7 @@ const defaultOptions: Required<ConnectorOptions> = {
   logQueries: false,
   metadataField: '$meta',
   creatorUserModel: { model: 'user', plugin: 'admin' },
+  ignoreMismatchedReferences: false,
   beforeMountModel: () => {},
   afterMountModel: () => {},
 

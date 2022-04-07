@@ -106,6 +106,13 @@ export interface ConnectorOptions {
   creatorUserModel?: string | { model: string, plugin?: string }
 
   /**
+   * References that point to the wrong model will be left in place rather
+   * than being removed or throwing and error.
+   * Defaults to `false`.
+   */
+  ignoreMismatchedReferences?: boolean
+
+  /**
    * A hook called before each model is mounted. This can be used to modify any model (particularly useful
    * for builtin or plugin models), before it is loaded into the Firestore connector.
    */
@@ -171,6 +178,13 @@ export interface ModelOptions<T extends object, R extends DocumentData = Documen
    * Defaults to `undefined` (use connector setting).
    */
   metadataField?: string | ((attrKey: AttributeKey<T>) => string)
+
+  /**
+   * References that point to the wrong model will be left in place rather
+   * than being removed or throwing and error.
+   * Defaults to `false`.
+   */
+  ignoreMismatchedReferences?: boolean
 
   /**
    * Converter that is run upon data immediately before it

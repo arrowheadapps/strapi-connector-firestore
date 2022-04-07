@@ -22,6 +22,7 @@ export class CoercionError extends StatusError {
 export interface CoerceOpts {
   editMode?: 'create' | 'update'
   timestamp?: Date
+  ignoreMismatchedReferences?: boolean
 }
 
 /**
@@ -389,7 +390,7 @@ function coerceToReference<T extends object = object>(value: any, to: FirestoreC
     if (id) {
       if (to) {
         const deepRef = to.db.doc(id);
-        if (deepRef.path !== _.trim(path, '/')) {
+        if ((deepRef.path !== _.trim(path, '/')) && !opts.ignoreMismatchedReferences) {
           return fault(opts, `Reference is pointing to the wrong model. Expected "${deepRef.path}", got "${id}".`);
         }
         return deepRef;
@@ -415,7 +416,7 @@ function coerceToReference<T extends object = object>(value: any, to: FirestoreC
 function reinstantiateReference<T extends object>(value: DocumentReference<T | { [id: string]: T }>, id: string | undefined, to: FirestoreConnectorModel<T> | undefined, opts: CoerceOpts): NormalReference<T> | DeepReference<T> | VirtualReference<T> | null {
   if (to) {
     const newRef = to.db.doc(id || value.id);
-    if (newRef.parent.path !== value.parent.path) {
+    if ((newRef.parent.path !== value.parent.path) && !opts.ignoreMismatchedReferences) {
       return fault(opts, `Reference is pointing to the wrong model. Expected "${newRef.path}", got "${value.path}".`);
     }
     return newRef;
