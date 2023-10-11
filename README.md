@@ -1,3 +1,8 @@
+## ⚠️⚠️ Archived ⚠️⚠️
+
+As discussed below, Strapi V4 dropped support for pluggable database connectors. This project is no longer maintained and so has been archived.
+
+
 ## ⚠️⚠️ Warning: pre-release ⚠️⚠️
 
 This is package an early work in progress an is not suitable for production in it's current state. Feel free to use it an feedback any issues here:
